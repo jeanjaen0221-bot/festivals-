@@ -1,0 +1,231 @@
+{% extends 'admin/base.html' %}
+{% block admin_title %}Logs{% endblock %}
+
+{% block admin_content %}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+      <div class="text-end mb-2">
+        <img src="{{ url_for('static', filename='img/tete-mort-1.avif') }}" id="activateDeleteMode" alt="Activer mode suppression" title="Activer le mode suppression" style="height: 32px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">
+      </div>
+    <div class="alert alert-warning d-none" id="deleteModeAlert">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i>
+      Mode suppression activé - Appuyez sur les logs pour les supprimer
+      <button type="button" class="btn-close float-end" id="exitDeleteMode"></button>
+    </div>
+    <form class="row g-2 mb-3" method="get">
+      <div class="col-md-4">
+        <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="Recherche (action ou détails)">
+      </div>
+      <div class="col-md-3">
+        <select name="action_type" class="form-select">
+          <option value="">Tous types d'action</option>
+          {% for atype in action_types %}
+            <option value="{{ atype }}" {% if atype == action_type %}selected{% endif %}>{{ atype }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Filtrer</button>
+      </div>
+      <div class="col-md-3 text-end text-muted d-none d-md-block">
+        <small>{{ logs.total }} résultat{{ logs.total > 1 and 's' or '' }}</small>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Date</th>
+            <th>Utilisateur</th>
+            <th>Action</th>
+            <th>Détails</th>
+            <th class="delete-column d-none">Supprimer</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs.items %}
+          <tr class="log-row" data-log-id="{{ log.id }}" data-timestamp="{{ log.timestamp.timestamp() }}">
+            <td>{{ log.timestamp.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td>{% if log.user %}{{ log.user.email }}{% else %}<i>System</i>{% endif %}</td>
+            <td>{{ log.action_type }}</td>
+            <td>{{ log.details }}</td>
+            <td class="delete-column d-none text-center">
+              <button class="btn btn-sm btn-outline-danger delete-log-btn">
+                <i class="bi bi-trash"></i>
+              </button>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center">Aucun log trouvé</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Modal de confirmation de suppression -->
+    <div class="modal fade" id="deleteLogModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Confirmer la suppression</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+          </div>
+          <div class="modal-body">
+            <p>Êtes-vous sûr de vouloir supprimer ce log ? Cette action est irréversible.</p>
+            <p class="text-muted"><small>Note : Les logs de moins d'une heure ne peuvent pas être supprimés.</small></p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+            <button type="button" class="btn btn-danger" id="confirmDeleteLog">Supprimer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Pagination -->
+    <nav aria-label="Pagination logs">
+      <ul class="pagination justify-content-center">
+        <li class="page-item {% if not logs.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.admin_logs', page=logs.prev_num, search=search, action_type=action_type) }}">&laquo;</a>
+        </li>
+        {% for p in range(1, logs.pages+1) %}
+          <li class="page-item {% if logs.page == p %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('admin.admin_logs', page=p, search=search, action_type=action_type) }}">{{ p }}</a>
+          </li>
+        {% endfor %}
+        <li class="page-item {% if not logs.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.admin_logs', page=logs.next_num, search=search, action_type=action_type) }}">&raquo;</a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+<script>
+$(document).ready(function() {
+    let deleteMode = false;
+    let currentLogId = null;
+    
+    // Activer/désactiver le mode suppression en cliquant sur l'icône tête de mort
+    $('#activateDeleteMode').on('click', function(e) {
+        console.log('Clic sur la tête de mort détecté');
+        toggleDeleteMode();
+    });
+    // Échap pour quitter le mode suppression
+    $(document).on('keydown', function(e) {
+        if (deleteMode && e.key === 'Escape') {
+            e.preventDefault();
+            toggleDeleteMode(false);
+        }
+    });
+    
+    // Activer/désactiver le mode suppression sur mobile (appui long sur le titre)
+    let longPressTimer;
+    $('h1').on({
+        'touchstart': function() {
+            longPressTimer = setTimeout(function() {
+                toggleDeleteMode();
+            }, 1000);
+        },
+        'touchend': function() {
+            clearTimeout(longPressTimer);
+        },
+        'touchmove': function() {
+            clearTimeout(longPressTimer);
+        }
+    });
+    
+    // Gérer le clic sur un bouton de suppression
+    $(document).on('click', '.delete-log-btn', function(e) {
+        e.stopPropagation();
+        currentLogId = $(this).closest('.log-row').data('log-id');
+        $('#deleteLogModal').modal('show');
+    });
+    
+    // Confirmer la suppression
+    $('#confirmDeleteLog').on('click', function() {
+        if (!currentLogId) return;
+        
+        $.ajax({
+            url: `/admin/logs/${currentLogId}/delete`,
+            method: 'POST',
+            contentType: 'application/json',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    $(`.log-row[data-log-id="${currentLogId}"]`).fadeOut(400, function() {
+                        $(this).remove();
+                    });
+                } else {
+                    alert(response.message || 'Erreur lors de la suppression du log');
+                }
+                $('#deleteLogModal').modal('hide');
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON || {};
+                alert(response.message || 'Erreur lors de la suppression du log');
+                $('#deleteLogModal').modal('hide');
+            }
+        });
+    });
+    
+    // Quitter le mode suppression
+    $('#exitDeleteMode').on('click', function() {
+        toggleDeleteMode(false);
+    });
+    
+    function toggleDeleteMode(enable = null) {
+        deleteMode = (enable !== null) ? enable : !deleteMode;
+        
+        if (deleteMode) {
+            $('.delete-column').removeClass('d-none');
+            $('.log-row').addClass('delete-mode');
+            $('#deleteModeAlert').removeClass('d-none');
+        } else {
+            $('.delete-column').addClass('d-none');
+            $('.log-row').removeClass('delete-mode');
+            $('#deleteModeAlert').addClass('d-none');
+        }
+    }
+});
+</script>
+
+<style>
+.log-row {
+    transition: background-color 0.2s;
+}
+
+.log-row.delete-mode {
+    cursor: pointer;
+}
+
+.log-row.delete-mode:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+.delete-column {
+    width: 50px;
+}
+
+#deleteModeAlert {
+    position: sticky;
+    top: 1rem;
+    z-index: 1000;
+}
+
+@media (max-width: 768px) {
+    .delete-column {
+        width: 40px;
+    }
+    
+    .delete-log-btn {
+        padding: 0.15rem 0.4rem;
+    }
+}
+</style>
+{% endblock %}

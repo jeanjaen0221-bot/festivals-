@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/matches_modern.css') }}">
+
+
+  <h2 class="mb-4">Paires potentielles Lost ↔ Found</h2>
+
+  {# Barre de filtrage du seuil #}
+  <form class="row g-3 mb-4" method="get" action="{{ url_for('main.list_matches') }}">
+    <div class="col-md-2">
+      <label class="form-label">Seuil similarité (%)</label>
+      <input type="number" name="threshold" class="form-control" min="0" max="100" value="{{ threshold }}">
+    </div>
+    <div class="col-md-2 align-self-end">
+      <button type="submit" class="btn btn-primary">Appliquer</button>
+    </div>
+  </form>
+
+  {% if pairs %}
+    <div class="table-responsive" style="overflow-x:auto;">
+      <table class="table matches-table table-striped align-middle">
+        <thead>
+          <tr>
+             <th scope="col">Photo (Lost)</th>
+            <th scope="col">Lost ID</th>
+            <th scope="col">Titre (Lost)</th>
+            <th scope="col">Photo (Found)</th>
+            <th scope="col">Found ID</th>
+            <th scope="col">Titre (Found)</th>
+            <th scope="col">Catégorie</th>
+            <th scope="col">Score</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pair in pairs %}
+            <tr>
+              <td>
+                {% if pair.lost.photos and pair.lost.photos|length > 0 %}
+                  <img src="{{ url_for('main.uploaded_file', filename=pair.lost.photos[0].filename) }}" alt="Photo Lost" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;">
+                {% elif pair.lost.photo_filename %}
+                  <img src="{{ url_for('main.uploaded_file', filename=pair.lost.photo_filename) }}" alt="Photo Lost" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;">
+                {% else %}
+                  {% set icon_info = pair.lost.category.get_icon_display() if pair.lost.category else None %}
+                  {% if icon_info and icon_info.type == 'image' %}
+                    <img src="{{ icon_info.url }}" alt="Icône catégorie" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;">
+                  {% elif icon_info and icon_info.type == 'bootstrap' %}
+                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width: 60px; height: 60px; border-radius: 0.375rem;">
+                      <i class="{{ icon_info.class }}" style="font-size:1.4rem;"></i>
+                    </div>
+                  {% else %}
+                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width: 60px; height: 60px; border-radius: 0.375rem;"><i class="bi bi-box-seam"></i></div>
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td>{{ pair.lost.id }}</td>
+              <td>
+                {{ pair.lost.title }}
+                {% if pair.is_validated %}
+                  <span class="badge bg-success ms-2">✔ Match validé</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if pair.found.photos and pair.found.photos|length > 0 %}
+                  <img src="{{ url_for('main.uploaded_file', filename=pair.found.photos[0].filename) }}" alt="Photo Found" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;">
+                {% elif pair.found.photo_filename %}
+                  <img src="{{ url_for('main.uploaded_file', filename=pair.found.photo_filename) }}" alt="Photo Found" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;">
+                {% else %}
+                  {% set icon_info_f = pair.found.category.get_icon_display() if pair.found.category else None %}
+                  {% if icon_info_f and icon_info_f.type == 'image' %}
+                    <img src="{{ icon_info_f.url }}" alt="Icône catégorie" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;">
+                  {% elif icon_info_f and icon_info_f.type == 'bootstrap' %}
+                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width: 60px; height: 60px; border-radius: 0.375rem;">
+                      <i class="{{ icon_info_f.class }}" style="font-size:1.4rem;"></i>
+                    </div>
+                  {% else %}
+                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width: 60px; height: 60px; border-radius: 0.375rem;"><i class="bi bi-box-seam"></i></div>
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td>{{ pair.found.id }}</td>
+              <td>
+                {{ pair.found.title }}
+                {% if pair.is_validated %}
+                  <span class="badge bg-success ms-2">✔ Match validé</span>
+                {% endif %}
+              </td>
+              <td>{{ pair.lost.category.name if pair.lost.category else '—' }}</td>
+              <td>{{ pair.score }}%</td>
+              <td>
+  <div class="matches-action-btns d-flex flex-column flex-md-row align-items-center gap-1">
+    <!-- Bouton détails dans un modal -->
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#explanationModal-{{ pair.lost.id }}-{{ pair.found.id }}" title="Voir explication du matching">
+      <i class="bi bi-info-circle"></i> Détails
+    </button>
+    {% if not pair.is_validated %}
+      <form method="post" action="{{ url_for('main.confirm_match') }}" style="display:inline-block;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="lost_id" value="{{ pair.lost.id }}">
+        <input type="hidden" name="found_id" value="{{ pair.found.id }}">
+        <button type="submit" class="btn btn-success btn-sm" title="Valider la correspondance"><i class="bi bi-check-circle"></i> Valider</button>
+      </form>
+      <a href="{{ url_for('main.list_matches') }}" class="btn btn-secondary btn-sm" title="Ignorer"><i class="bi bi-x-circle"></i> Ignorer</a>
+    {% else %}
+      <span class="badge bg-success matches-badge"><i class="bi bi-patch-check"></i> Validé</span>
+    {% endif %}
+  </div>
+  <!-- Modal explication -->
+  <div class="modal fade matches-modal" id="explanationModal-{{ pair.lost.id }}-{{ pair.found.id }}" tabindex="-1" aria-labelledby="explanationModalLabel-{{ pair.lost.id }}-{{ pair.found.id }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title matches-explanation-title" id="explanationModalLabel-{{ pair.lost.id }}-{{ pair.found.id }}">
+            <i class="bi bi-search"></i> Détails du matching
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <span class="fw-bold">Score global :</span>
+            <div class="progress matches-progress mb-2" style="height:1.2rem;">
+              <div class="progress-bar matches-progress-bar js-score" role="progressbar" data-width="{{ pair.score|default(0)|int }}" aria-valuenow="{{ pair.score|default(0)|round(1) }}" aria-valuemin="0" aria-valuemax="100">{{ pair.score|default(0)|round(1) }}%</div>
+            </div>
+          </div>
+          <ul class="matches-explanation-list list-unstyled">
+            {% for champ, detail in pair.explanation.items() %}
+              <li><b>{{ champ|capitalize }}</b> :
+                <div class="mb-1">
+                  <span class="fw-bold">Score :</span>
+                  <span class="badge bg-info text-dark ms-1">{{ detail.score }}%</span>
+                </div>
+                {% if detail.common_words %}
+                  <span class="fw-bold">Mots communs :</span>
+                  {% for word in detail.common_words %}
+                    <span class="matches-highlight">{{ word }}</span>
+                  {% endfor %}
+                  <br>
+                {% endif %}
+                {% if detail.synonyms %}
+                  <span class="fw-bold">Synonymes détectés :</span>
+                  {% for syn in detail.synonyms %}
+                    <span class="badge bg-warning text-dark ms-1">{{ syn }}</span>
+                  {% endfor %}
+                  <br>
+                {% endif %}
+                <span class="text-muted small">Comparé : <span class="fst-italic">{{ detail.raw_lost }}</span> ↔ <span class="fst-italic">{{ detail.raw_found }}</span></span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-muted">Aucune paire potentielle supérieure au seuil {{ threshold }} %.</p>
+  {% endif %}
+
+<script>
+  (function(){
+    function applyWidths(){
+      document.querySelectorAll('.js-score').forEach(function(el){
+        var w = el.getAttribute('data-width');
+        if (w != null) {
+          el.style.width = String(w) + '%';
+        }
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', applyWidths);
+    } else {
+      applyWidths();
+    }
+    // Re-appliquer lorsqu'un modal s'ouvre (contenu parfois recalculé)
+    if (window.bootstrap) {
+      document.querySelectorAll('.matches-modal').forEach(function(modalEl){
+        modalEl.addEventListener('shown.bs.modal', function(){
+          applyWidths();
+        });
+      });
+    } else {
+      document.querySelectorAll('.matches-modal').forEach(function(modalEl){
+        modalEl.addEventListener('shown', applyWidths);
+      });
+    }
+  })();
+  </script>
+
+{% endblock %}

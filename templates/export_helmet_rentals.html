@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Export Locations de Casques</title>
+  <style>
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+  </style>
+</head>
+<body>
+  <h2>Export des locations de casques</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nom</th>
+        <th>Prénom</th>
+        <th>Téléphone</th>
+        <th>Quantité</th>
+        <th>Caution</th>
+        <th>Détail caution</th>
+        <th>Date prêt</th>
+        <th>Date retour</th>
+        <th>Signature</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rental in rentals %}
+      <tr>
+        <td>{{ rental.id }}</td>
+        <td>{{ rental.last_name }}</td>
+        <td>{{ rental.first_name }}</td>
+        <td>{{ rental.phone }}</td>
+        <td>{{ rental.quantity }}</td>
+        <td>{{ rental.deposit_amount }} € ({{ rental.deposit_type.value }})</td>
+        <td>{{ rental.deposit_details or '' }}</td>
+        <td>{{ rental.loan_date.strftime('%d/%m/%Y %H:%M') }}</td>
+        <td>{{ rental.return_date.strftime('%d/%m/%Y %H:%M') if rental.return_date else '' }}</td>
+        <td>
+          {% if rental.signature %}
+            <img src="{{ rental.signature }}" alt="Signature" style="max-width:120px; max-height:60px; border:1px solid #ccc;" />
+          {% else %}
+            <span class="text-muted">-</span>
+          {% endif %}
+        </td>
+        <td>{{ rental.status.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

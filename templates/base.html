@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  {% if csrf_token %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+  {% endif %}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lost & Found Festival</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+  {% if not (request.endpoint in ['main.auth', 'main.report', 'main.report_item']) %}
+
+  {% endif %}
+  <style>
+    body { font-family: 'Inter', Arial, sans-serif; }
+    .card-hover-effect { transition: box-shadow 0.2s, transform 0.2s; }
+    .card-hover-effect:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.12); transform: translateY(-2px) scale(1.02); }
+    .custom-navbar { border-radius: 0 0 1rem 1rem; }
+    .custom-footer { border-radius: 1rem 1rem 0 0; background: #f8f9fa; }
+    .alert-success { background: #e6f9ed; color: #217a47; border: 1px solid #b7e4c7; }
+    .alert-danger { background: #fff0f3; color: #b02a37; border: 1px solid #f5c2c7; }
+    .alert-info, .alert-warning { background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-lg sticky-top custom-navbar" style="border-radius:0 0 1.5rem 1.5rem;">
+  <div class="container-fluid py-2">
+    <a class="navbar-brand d-flex align-items-center gap-2 fs-3 fw-bold text-primary" href="{{ url_for('main.index') }}">
+  <span><i class="bi bi-search-heart"></i></span> Lost & Found
+</a>
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0 gap-2">
+        {% if current_user.is_authenticated %}
+          <li class="nav-item">
+            <a class="nav-link px-3 py-2 fw-semibold fs-5 d-flex align-items-center gap-2" href="/report" aria-label="Signaler un objet">
+              <i class="bi bi-flag"></i> Signaler
+            </a>
+          </li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle px-3 py-2 fw-semibold fs-5 d-flex align-items-center gap-2" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-list-ul"></i> Listes
+            </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='lost') }}"><i class="bi bi-bag-x"></i> Objets perdus</a></li>
+
+<li><a class="dropdown-item d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='found') }}"><i class="bi bi-bag-check"></i> Objets trouvés</a></li>
+              <li><a class="dropdown-item d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='returned') }}"><i class="bi bi-arrow-repeat"></i> Objets rendus</a></li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link px-3 py-2 fw-semibold fs-5 d-flex align-items-center gap-2" href="{{ url_for('main.list_matches') }}" aria-label="Correspondances">
+              <i class="bi bi-link-45deg"></i> Correspondances
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link px-3 py-2 fw-semibold fs-5 d-flex align-items-center gap-2" href="{{ url_for('main.train_schedule') }}" aria-label="Horaires trains">
+              <i class="bi bi-train-front"></i> Horaires trains
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link px-3 py-2 fw-semibold fs-5 d-flex align-items-center gap-2" href="{{ url_for('main.headphone_loans') }}" aria-label="Prêts de casques">
+              <i class="bi bi-headphones"></i> Prêts de casques
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link btn btn-success text-white px-4 py-2 ms-2 d-flex align-items-center gap-2 shadow-sm" style="font-weight:700; border-radius:2rem; font-size:1.15rem; box-shadow:0 4px 16px #b7e4c7; transition:background 0.2s; background:#25D366 !important; color:#fff !important; border:none;" href="https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS" target="_blank" rel="noopener" aria-label="Contact WhatsApp">
+  <i class="bi bi-whatsapp fs-4"></i> Contact WhatsApp
+</a>
+          </li>
+          {% if current_user.is_admin %}
+            <li class="nav-item">
+              <a class="nav-link text-danger fw-bold px-3 py-2 fs-5 d-flex align-items-center gap-2" href="{{ url_for('admin.admin_dashboard') }}" aria-label="Admin">
+                <i class="bi bi-shield-lock"></i> Admin
+              </a>
+            </li>
+          {% endif %}
+        {% endif %}
+      </ul>
+      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 gap-2">
+        {% if current_user.is_authenticated %}
+          <li class="nav-item"><span class="nav-link px-3 py-2 fw-semibold text-primary">{{ current_user.email }}</span></li>
+          <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('main.list_items') }}">Objets trouvés/perdus</a>
+            </li>
+            
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle px-3 py-2 fw-semibold" href="#" id="exportDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              Export HTML
+            </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('main.export_items', status='lost') }}">Exporter perdus</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.export_items', status='found') }}">Exporter trouvés</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.export_items', status='returned') }}">Exporter rendus</a></li>
+            </ul>
+          </li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link px-3 py-2 fw-semibold" href="{{ url_for('main.auth') }}">Authentification</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+</nav>
+<style>
+  .navbar-nav .nav-link {
+    border-radius: 1.5rem;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  .navbar-nav .nav-link:hover, .navbar-nav .nav-link:focus {
+    background: #e6f9ed;
+    color: #157347 !important;
+    text-decoration: underline;
+    box-shadow: 0 2px 8px #b7e4c7;
+    outline: none;
+  }
+  .navbar-nav .nav-link.btn-success:hover, .navbar-nav .nav-link.btn-success:focus {
+    background: #139c4c !important;
+    color: #fff !important;
+    box-shadow: 0 6px 18px #b7e4c7;
+  }
+  @media (max-width: 991.98px) {
+    .navbar-nav .nav-link, .navbar-nav .nav-link.btn-success {
+      font-size: 1rem !important;
+      padding: 1rem 1.2rem !important;
+      margin-bottom: 0.5rem;
+      width: 100%;
+      justify-content: flex-start;
+      border-radius: 1rem !important;
+      box-sizing: border-box;
+    }
+    .navbar-nav .nav-link.btn-success {
+      display: block;
+      width: 100%;
+      font-size: 1.08rem !important;
+      padding: 1.1rem 1.2rem !important;
+      margin-bottom: 0.6rem;
+      box-shadow: 0 4px 16px #b7e4c7;
+      text-align: center;
+      justify-content: center;
+    }
+    .navbar-brand {
+      font-size: 1.3rem !important;
+    }
+    .navbar-nav .nav-link i {
+      font-size: 1.1rem !important;
+    }
+  }
+</style>
+<!-- Décor latéral Lost&Found -->
+<style>
+  .img-border-left, .img-border-right {
+    position: fixed;
+    top: 80px;
+    z-index: 0;
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  .img-border-left {
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    height: 80vh;
+    justify-content: space-between;
+  }
+  .img-border-right {
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    height: 80vh;
+    justify-content: space-between;
+  }
+  @media (max-width: 991px) {
+    .img-border-left, .img-border-right { display: none; }
+  }
+</style>
+<div class="img-border-left">
+  <img src="{{ url_for('static', filename='img/boussole.avif') }}" alt="boussole" style="height:90px; width:auto; margin-top:5vh; margin-bottom:12vh; transform:rotate(-7deg); filter:drop-shadow(0 2px 8px #bbb);"/>
+  <img src="{{ url_for('static', filename='img/monstera.avif') }}" alt="monstera" style="height:120px; width:auto; margin-top:28vh; margin-bottom:3vh; transform:rotate(8deg); filter:drop-shadow(0 2px 8px #bbb);"/>
+</div>
+<div class="img-border-right">
+  <img src="{{ url_for('static', filename='img/sous-marin.avif') }}" alt="sous-marin" style="height:110px; width:auto; margin-top:18vh; margin-bottom:7vh; transform:rotate(-12deg); filter:drop-shadow(0 2px 8px #bbb);"/>
+  <img src="{{ url_for('static', filename='img/tete-mort-1.avif') }}" alt="tête de mort" style="height:80px; width:auto; margin-top:32vh; margin-bottom:2vh; transform:rotate(11deg); filter:drop-shadow(0 2px 8px #bbb);"/>
+</div>
+
+<footer class="footer mt-auto py-3 bg-light border-top custom-footer">
+  <div class="container text-center text-muted small">
+    <span>&copy; {{ 2025 }} Lost &amp; Found Festival &mdash; <a href="https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS" class="text-decoration-none" target="_blank" rel="noopener">Contactez-nous sur WhatsApp</a></span>
+  </div>
+</footer>
+
+  <div class="container mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/carousel_swipe.js') }}"></script>
+  {% if not (request.endpoint in ['main.auth', 'main.report', 'main.report_item']) %}
+
+  {% endif %}
+</body>
+</html>

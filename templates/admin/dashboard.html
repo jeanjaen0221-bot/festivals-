@@ -1,0 +1,49 @@
+{% extends 'admin/base.html' %}
+{% block admin_title %}Tableau de bord{% endblock %}
+{% block admin_content %}
+<div class="row g-4 mb-4">
+  <!-- Statistiques à remplir dynamiquement -->
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card shadow-sm border-0">
+      <div class="card-body text-center">
+        <h5 class="card-title">Objets trouvés</h5>
+        <h2 class="display-6" id="nb_found">{{ nb_found }}</h2>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card shadow-sm border-0">
+      <div class="card-body text-center">
+        <h5 class="card-title">Objets perdus</h5>
+        <h2 class="display-6" id="nb_lost">{{ nb_lost }}</h2>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card shadow-sm border-0">
+      <div class="card-body text-center">
+        <h5 class="card-title">Utilisateurs</h5>
+        <h2 class="display-6" id="nb_users">{{ nb_users }}</h2>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card shadow-sm border-0">
+      <div class="card-body text-center">
+        <h5 class="card-title">Demandes suppression</h5>
+        <h2 class="display-6" id="nb_deletions">{{ nb_deletions }}</h2>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="row">
+  <div class="col-12 mb-3">
+    <a href="{{ url_for('admin.category_icons') }}" class="btn btn-outline-primary">
+      <i class="bi bi-images"></i> Gérer les icônes de catégories
+    </a>
+  </div>
+  <div class="col-12">
+    <div class="alert alert-info">Bienvenue dans l'administration. Utilisez le menu à gauche pour naviguer.</div>
+  </div>
+</div>
+{% endblock %}

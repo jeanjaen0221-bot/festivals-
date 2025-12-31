@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2 class="mb-4"><i class="bi bi-pencil-square text-primary"></i> Modifier l'objet : {{ item.title }}</h2>
+<div class="card p-4 bg-light border-0 shadow-sm mb-4">
+  <form method="post" enctype="multipart/form-data">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+      <label class="form-label"><i class="bi bi-tag"></i> {{ form.title.label.text }}</label>
+      {{ form.title(class="form-control", placeholder="Titre de l’objet (ex : Porte-monnaie noir)") }}
+    </div>
+    <div class="mb-3">
+      <label class="form-label"><i class="bi bi-chat-left-text"></i> {{ form.comments.label.text }}</label>
+      {{ form.comments(class="form-control", rows="3", placeholder="Description ou détails de l’objet, circonstances, etc.") }}
+    </div>
+    <div class="mb-3">
+      <label class="form-label"><i class="bi bi-geo-alt"></i> {{ form.location.label.text }}</label>
+      {{ form.location(class="form-control", placeholder="Lieu précis (ex : Scène B, camping…)") }}
+    </div>
+    <div class="mb-3">
+      {{ form.category.label(class="form-label") }}
+      {{ form.category(class="form-select") }}
+    </div>
+    {% if item.status.name == 'FOUND' %}
+      <div class="mb-3">
+        <label class="form-label"><i class="bi bi-geo-alt"></i> {{ form.found_location.label.text }}</label>
+        {{ form.found_location(class="form-select") }}
+      </div>
+      <div class="mb-3">
+        <label class="form-label"><i class="bi bi-pencil"></i> {{ form.found_location_other.label.text }}</label>
+        {{ form.found_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
+      </div>
+      <div class="mb-3">
+        <label class="form-label"><i class="bi bi-geo-alt-fill"></i> {{ form.storage_location.label.text }}</label>
+        {{ form.storage_location(class="form-select") }}
+      </div>
+      <div class="mb-3">
+        <label class="form-label"><i class="bi bi-pencil-fill"></i> {{ form.storage_location_other.label.text }}</label>
+        {{ form.storage_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
+      </div>
+    {% endif %}
+    <div class="mb-3">
+      <label class="form-label"><i class="bi bi-person"></i> {{ form.reporter_name.label.text }}</label>
+      {{ form.reporter_name(class="form-control", placeholder="Votre nom ou pseudo") }}
+    </div>
+    <div class="mb-3">
+      <label class="form-label"><i class="bi bi-envelope"></i> {{ form.reporter_email.label.text }}</label>
+      {{ form.reporter_email(class="form-control", placeholder="Votre e-mail pour contact") }}
+    </div>
+    <div class="mb-3">
+      <label class="form-label"><i class="bi bi-telephone"></i> {{ form.reporter_phone.label.text }}</label>
+      {{ form.reporter_phone(class="form-control", placeholder="Votre numéro (optionnel)") }}
+    </div>
+    {% if item.status.name == 'FOUND' %}
+      <div class="mb-3">
+        <label class="form-label"><i class="bi bi-images"></i> {{ form.photos.label.text }}</label>
+        {{ form.photos(class="form-control", accept="image/*", capture="environment", multiple=True) }}
+        {% if item.photos and item.photos|length > 0 %}
+          <div class="mb-2">Photos actuelles :
+            <div class="row g-2">
+              {% for photo in item.photos %}
+                <div class="col-4 col-md-3 text-center">
+                  <img src="{{ url_for('main.uploaded_file', filename=photo.filename) }}" class="img-thumbnail w-100 shadow-sm mb-1" style="aspect-ratio: 1/1; object-fit: cover;" alt="Photo">
+                  <div>
+                    <input type="checkbox" name="delete_photos" value="{{ photo.id }}" id="del-photo-{{ photo.id }}">
+                    <label for="del-photo-{{ photo.id }}" class="small text-danger"><i class="bi bi-trash"></i> Supprimer</label>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+        <div class="form-text">Formats autorisés : jpg, jpeg, png. Max 30 Mo.</div>
+      </div>
+    {% elif item.status.name == 'LOST' %}
+      <div class="mb-3">
+        <span class="form-text">Aucune photo n’est demandée pour les objets perdus. Une icône de catégorie sera affichée automatiquement.</span>
+      </div>
+    {% endif %}
+    <button type="submit" id="submit-btn" class="btn btn-success btn-lg rounded-pill px-4 shadow-sm"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span><i class="bi bi-save"></i> Enregistrer</button>
+</form>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var editForm = document.querySelector('form[method="post"]');
+  var submitBtn = document.getElementById('submit-btn');
+  if(editForm) {
+    editForm.addEventListener('submit', function(e) {
+      var checked = editForm.querySelectorAll('input[type="checkbox"][name="delete_photos"]:checked');
+      if(checked.length > 0) {
+        if(!confirm('⚠️ Voulez-vous vraiment supprimer la/les photo(s) sélectionnée(s) ?')) {
+          e.preventDefault();
+          return false;
+        }
+      }
+      // Désactive bouton et affiche spinner
+      if(submitBtn) {
+        submitBtn.disabled = true;
+        var spinner = submitBtn.querySelector('.spinner-border');
+        if(spinner) spinner.classList.remove('d-none');
+      }
+    });
+  }
+});
+</script>
+  </form>
+</div>
+{% endblock %}

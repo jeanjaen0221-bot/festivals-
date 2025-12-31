@@ -1,0 +1,268 @@
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+}
+
+.custom-navbar {
+    border-bottom: 1.5px solid #e1e7ef;
+    background: #fff;
+}
+.custom-navbar .navbar-brand {
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.superposed-card {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.09) !important;
+  transition: box-shadow 0.2s;
+}
+.superposed-card:hover {
+  box-shadow: 0 8px 32px rgba(0,0,0,0.20) !important;
+  z-index: 20;
+}
+
+.navbar .nav-link {
+    border-radius: 20px;
+    transition: background 0.2s, color 0.2s;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+.navbar .nav-link.active, .navbar .nav-link:hover {
+    background: #e7f1ff;
+    color: #0d6efd !important;
+}
+
+.footer {
+    background: #f8f9fa;
+    border-top: 1px solid #e1e7ef;
+    color: #888;
+}
+
+.btn, .btn-primary, .btn-success, .btn-secondary {
+    border-radius: 1.5rem;
+    font-weight: 500;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.btn:focus, .btn-primary:focus, .btn-success:focus, .btn-secondary:focus {
+    outline: 3px solid #0d6efd;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25);
+}
+
+.card {
+    border-radius: 0.75rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+img.img-thumbnail {
+    border-radius: 0.7rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    transition: transform 0.2s;
+}
+img.img-thumbnail:hover {
+    transform: scale(1.08);
+    z-index: 2;
+}
+
+.card {
+    border-radius: 0.75rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* Correspondence (matches) UI */
+.matches-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 576px) {
+  .matches-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 992px) {
+  .matches-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.match-card {
+  display: flex;
+  align-items: stretch;
+  padding: 12px;
+  border: 1px solid #e9ecef;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.match-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+}
+
+.match-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  margin-right: 12px;
+  background: #e9ecef;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #495057;
+  font-weight: 600;
+}
+
+.match-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+}
+
+.match-thumb i {
+  font-size: 1.6rem;
+}
+
+.match-body { flex: 1; min-width: 0; }
+.match-title { font-weight: 600; color: #212529; margin-bottom: 2px; }
+.match-title a { text-decoration: none; color: inherit; }
+.match-title a:hover { text-decoration: underline; }
+
+.score-badge {
+  background: linear-gradient(135deg, #e7f5ff, #edf2ff);
+  color: #0b7285;
+  border: 1px solid #d0ebff;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.score-bar {
+  height: 8px;
+  border-radius: 6px;
+  background: #f1f3f5;
+  overflow: hidden;
+}
+.score-bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, #51cf66, #94d82d);
+}
+
+.match-actions { display: flex; gap: 8px; align-items: center; }
+.btn-associate, .btn-explain { border-radius: 999px; }
+.btn-associate.loading, .btn-explain.loading {
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+/* Match explanation modal */
+.explain-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 768px) {
+  .explain-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.explain-card {
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.explain-field {
+  border: 1px dashed #e9ecef;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fcfcfd;
+}
+.explain-field .title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.explain-mini-bar {
+  height: 6px;
+  background: #f1f3f5;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.explain-mini-bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, #4dabf7, #91a7ff);
+}
+
+.chip { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; border: 1px solid #e9ecef; background: #f8f9fa; margin: 2px 4px 0 0; }
+.chip.warning { background: #fff3bf; border-color: #ffe066; }
+.chip.info { background: #e7f5ff; border-color: #d0ebff; }
+.chip.success { background: #ebfbee; border-color: #c3fae8; }
+
+.hl-word { background: #fff3cd; padding: 0 4px; border-radius: 4px; }
+
+/* Global progress for explanation (detail modal) */
+.global-progress {
+  height: 14px;
+  border-radius: 999px;
+  background: #e9f1ff;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+.global-progress .global-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4dabf7, #228be6);
+  color: #fff;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width .35s ease;
+}
+
+/* Styles pour les icônes de catégorie */
+.category-icon {
+    width: 64px;
+    height: 64px;
+    font-size: 3rem;
+}
+
+.category-icon:hover {
+color: #495057;
+background: rgba(108, 117, 125, 0.15);
+transform: scale(1.05);
+    color: #495057;
+    background: rgba(108, 117, 125, 0.15);
+    transform: scale(1.05);
+}
+
+/* Icônes de catégorie dans les cartes */
+.card .category-icon {
+    width: 80px;
+    height: 80px;
+    font-size: 2.5rem;
+}
+
+/* Icônes de catégorie dans les détails */
+.detail-category-icon {
+    width: 96px;
+    height: 96px;
+    font-size: 4rem;
+    color: #495057;
+    background: rgba(13, 110, 253, 0.1);
+    border-radius: 16px;
+}
+
+/* Icônes de catégorie dans l'admin */
+.admin-category-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 1.5rem;
+    color: #6c757d;
+    background: rgba(108, 117, 125, 0.08);
+    border-radius: 8px;
+}

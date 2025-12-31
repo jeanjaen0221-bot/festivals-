@@ -1,0 +1,52 @@
+/* Responsive fixes pour images de card sur mobile */
+@media (max-width: 575.98px) {
+  .card-img-top,
+  .bg-light[style*='height: 220px;'],
+  .bg-light[style*='height: 200px;'],
+  .bg-light[style*='height: 300px;'] {
+    height: 120px !important;
+  }
+  .form-control, .form-select, .form-check-input, .btn {
+    font-size: 1.1rem;
+    min-height: 2.5rem;
+    margin-bottom: 0.7rem;
+  }
+  .form-check-input {
+    width: 2.5rem;
+    height: 1.5rem;
+    min-width: 2.5rem;
+    min-height: 1.5rem;
+    cursor: pointer;
+  }
+  .form-check-label {
+    font-size: 1.05rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    cursor: pointer;
+  }
+  .form-label, label {
+    font-size: 1rem;
+  }
+  .accordion-body, .tab-content {
+    padding: 1rem 0.5rem;
+  }
+  .btn {
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+    min-width: 2.5rem;
+  }
+  .table-responsive .btn {
+    min-width: 2.5rem;
+    font-size: 1rem;
+    padding: 0.4rem 0.8rem;
+  }
+  .admin-content, .card {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+  .sidebar .btn, .alert .btn-close {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    font-size: 1.2rem;
+  }
+}

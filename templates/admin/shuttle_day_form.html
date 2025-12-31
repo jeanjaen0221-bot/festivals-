@@ -1,0 +1,27 @@
+
+{% block title %}{{ title or 'Jour navette' }}{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">{{ title or 'Jour navette' }}</h2>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+      {{ form.date.label(class="form-label") }}
+      {{ form.date(class="form-control") }}
+      {% for error in form.date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.label.label(class="form-label") }}
+      {{ form.label(class="form-control") }}
+      {% for error in form.label.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.note.label(class="form-label") }}
+      {{ form.note(class="form-control") }}
+      {% for error in form.note.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
+    <a href="{{ url_for('admin_shuttle.shuttle_schedule') }}" class="btn btn-secondary ms-2">Retour</a>
+  </form>
+</div>
+{% endblock %}

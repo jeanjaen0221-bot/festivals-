@@ -1,0 +1,214 @@
+
+{% extends "base.html" %}
+{% block content %}
+  <div class="text-center mb-4">
+  <span class="fs-1 text-primary"><i class="bi bi-flag"></i></span>
+  <h2 class="fw-bold">Signaler un objet</h2>
+  <p class="text-muted">Déclarez un objet perdu ou trouvé lors du festival</p>
+</div>
+  {% if active_tab == 'found' %}
+  <ul class="nav nav-tabs mb-3" id="reportTab" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active d-flex align-items-center gap-2" id="found-tab" type="button" role="tab" aria-controls="found" aria-selected="true" disabled><i class="bi bi-emoji-smile text-success"></i> Objet trouvé</button>
+    </li>
+  </ul>
+  <div class="tab-content" id="reportTabContent">
+    <div class="tab-pane fade show active" id="found" role="tabpanel" aria-labelledby="found-tab">
+      <div class="accordion mb-4 shadow-sm rounded-4" id="accordionFound">
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingFound">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFound" aria-expanded="true" aria-controls="collapseFound">
+              Formulaire objet trouvé
+            </button>
+          </h2>
+          <div id="collapseFound" class="accordion-collapse collapse show" aria-labelledby="headingFound" data-bs-parent="#accordionFound">
+            <div class="accordion-body">
+              {% with messages = get_flashed_messages(category_filter=['found']) %}
+                {% for message in messages %}
+                  <div class="alert alert-warning">{{ message }}</div>
+                {% endfor %}
+              {% endwith %}
+              <form method="post" enctype="multipart/form-data" autocomplete="off">
+                {{ found_form.hidden_tag() }}
+                {% set form = found_form %}
+                {% set prefix = 'found-' %}
+                <div class="border border-success border-3 rounded-4 p-3 mb-3 bg-light-subtle">
+                  <div class="mb-2 text-success fw-bold fs-5 d-flex align-items-center gap-2">
+                    <i class="bi bi-emoji-smile"></i> Déclaration d'objet TROUVÉ
+                  </div>
+                  <div class="mb-2 text-success-emphasis small">
+                    Vous avez trouvé un objet ? Remplissez ce formulaire.<br>
+                    <span class="fw-semibold">Attention :</span> Si vous avez perdu un objet, utilisez le formulaire rouge à gauche.
+                  </div>
+                  {% include '_item_form_fields.html' with context %}
+
+                  <button type="submit" name="submit_found" id="submit-found-btn" class="btn btn-success w-100 mt-2 found-confirm-btn"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Signaler objet TROUVÉ</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% else %}
+  <ul class="nav nav-tabs mb-3" id="reportTab" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active d-flex align-items-center gap-2" id="lost-tab" type="button" role="tab" aria-controls="lost" aria-selected="true" disabled><i class="bi bi-emoji-frown text-primary"></i> Objet perdu</button>
+    </li>
+  </ul>
+  <div class="tab-content" id="reportTabContent">
+    <div class="tab-pane fade show active" id="lost" role="tabpanel" aria-labelledby="lost-tab">
+      <div class="accordion mb-4 shadow-sm rounded-4" id="accordionLost">
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingLost">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLost" aria-expanded="true" aria-controls="collapseLost">
+              Formulaire objet perdu
+            </button>
+          </h2>
+          <div id="collapseLost" class="accordion-collapse collapse show" aria-labelledby="headingLost" data-bs-parent="#accordionLost">
+            <div class="accordion-body">
+              {% with messages = get_flashed_messages(category_filter=['lost']) %}
+                {% for message in messages %}
+                  <div class="alert alert-warning">{{ message }}</div>
+                {% endfor %}
+              {% endwith %}
+              <form method="post" autocomplete="off">
+                {{ lost_form.hidden_tag() }}
+                {% set form = lost_form %}
+                {% set prefix = 'lost-' %}
+                <div class="border border-danger border-3 rounded-4 p-3 mb-3 bg-light-subtle">
+                  <div class="mb-2 text-danger fw-bold fs-5 d-flex align-items-center gap-2">
+                    <i class="bi bi-emoji-frown"></i> Déclaration d'objet PERDU
+                  </div>
+                  <div class="mb-2 text-danger-emphasis small">
+                    Vous avez perdu un objet ? Remplissez ce formulaire.<br>
+                    <span class="fw-semibold">Attention :</span> Si vous avez trouvé un objet, utilisez le bouton vert à droite.
+                  </div>
+                  {% include '_item_form_fields.html' with context %}
+
+                  <button type="submit" name="submit_lost" id="submit-lost-btn" class="btn btn-primary w-100 mt-2 lost-confirm-btn"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Signaler objet PERDU</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+  </div>
+  <!-- Modal de suggestion de doublons -->
+  <div class="modal fade" id="doublonModal" tabindex="-1" aria-labelledby="doublonModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="doublonModalLabel">
+            <i class="bi bi-exclamation-triangle text-warning me-2"></i>Objets similaires trouvés
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          <div id="doublonListContainer">
+            <ul id="doublonList" class="list-unstyled mb-0"></ul>
+          </div>
+          <div id="noDoublon" class="text-muted d-none">Aucun objet similaire trouvé.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="button" class="btn btn-primary" id="confirmSubmit">Continuer et créer quand même</button>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+function confirmLostSubmit() {
+  return confirm("Confirmez-vous que vous voulez déclarer un objet PERDU ?\n\nAssurez-vous d'utiliser ce formulaire uniquement si vous êtes le propriétaire de l'objet perdu.");
+}
+function confirmFoundSubmit() {
+  return confirm("Confirmez-vous que vous voulez déclarer un objet TROUVÉ ?\n\nUtilisez ce formulaire uniquement si vous rendez un objet trouvé.");
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var lostForm = document.querySelector('form[action=""], form[action="."]');
+  var lostBtn = document.getElementById('submit-lost-btn');
+  var foundBtn = document.getElementById('submit-found-btn');
+  if(lostForm) {
+    lostForm.addEventListener('submit', function(e) {
+      // Désactive les boutons et affiche les spinners
+      if(lostBtn) {
+        lostBtn.disabled = true;
+        var sp = lostBtn.querySelector('.spinner-border');
+        if(sp) sp.classList.remove('d-none');
+      }
+      if(foundBtn) {
+        foundBtn.disabled = true;
+        var sp2 = foundBtn.querySelector('.spinner-border');
+        if(sp2) sp2.classList.remove('d-none');
+      }
+    });
+  }
+});
+</script>
+{% endblock %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // LOST
+  var prefix = "";
+  const toggle = document.getElementById(prefix + 'new-category-toggle');
+  const existingGroup = document.getElementById(prefix + 'existing-category-group');
+  const newGroup = document.getElementById(prefix + 'new-category-group');
+  const categorySelect = document.querySelector('select[name="' + prefix + 'category"]');
+  const newCategoryInput = document.querySelector('input[name="' + prefix + 'new_category"]');
+  if (toggle && existingGroup && newGroup && categorySelect && newCategoryInput) {
+    toggle.addEventListener('change', function() {
+      if (this.checked) {
+        existingGroup.style.display = 'none';
+        newGroup.style.display = 'block';
+        categorySelect.required = false;
+        newCategoryInput.required = true;
+      } else {
+        existingGroup.style.display = 'block';
+        newGroup.style.display = 'none';
+        categorySelect.required = true;
+        newCategoryInput.required = false;
+      }
+    });
+    if (newCategoryInput.value) {
+      toggle.checked = true;
+      existingGroup.style.display = 'none';
+      newGroup.style.display = 'block';
+      categorySelect.required = false;
+      newCategoryInput.required = true;
+    }
+  }
+  // FOUND
+  var prefix2 = "found-";
+  const toggle2 = document.getElementById(prefix2 + 'new-category-toggle');
+  const existingGroup2 = document.getElementById(prefix2 + 'existing-category-group');
+  const newGroup2 = document.getElementById(prefix2 + 'new-category-group');
+  const categorySelect2 = document.querySelector('select[name="' + prefix2 + 'category"]');
+  const newCategoryInput2 = document.querySelector('input[name="' + prefix2 + 'new_category"]');
+  if (toggle2 && existingGroup2 && newGroup2 && categorySelect2 && newCategoryInput2) {
+    toggle2.addEventListener('change', function() {
+      if (this.checked) {
+        existingGroup2.style.display = 'none';
+        newGroup2.style.display = 'block';
+        categorySelect2.required = false;
+        newCategoryInput2.required = true;
+      } else {
+        existingGroup2.style.display = 'block';
+        newGroup2.style.display = 'none';
+        categorySelect2.required = true;
+        newCategoryInput2.required = false;
+      }
+    });
+    if (newCategoryInput2.value) {
+      toggle2.checked = true;
+      existingGroup2.style.display = 'none';
+      newGroup2.style.display = 'block';
+      categorySelect2.required = false;
+      newCategoryInput2.required = true;
+    }
+  }
+});
+</script>

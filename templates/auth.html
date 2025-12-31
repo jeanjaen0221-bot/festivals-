@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-5" style="overflow-x:hidden;">
+  <div class="row justify-content-center">
+    <div class="col-lg-5 d-flex align-items-center mb-4 mb-lg-0 order-1 order-lg-0">
+      <div class="card shadow border-0 w-100 bg-light bg-gradient rounded-4 px-3 py-4">
+        <div class="card-body">
+          <div class="d-flex align-items-center mb-2">
+            <span class="fs-2 text-info me-2"><i class="bi bi-info-circle-fill"></i></span>
+            <h5 class="mb-0">Nouveau sur la plateforme&nbsp;?</h5>
+          </div>
+          <ul class="mb-2 ps-3">
+            <li>Remplissez <b>Email</b> et <b>Mot de passe</b> dans l’onglet <b>Créer un compte</b>.</li>
+            <li>Mot de passe&nbsp;: minimum 6 caractères.</li>
+            <li>Accès immédiat après inscription.</li>
+            <li>Organisateur&nbsp;? Cochez “Créer un compte administrateur”.</li>
+          </ul>
+          <div class="small text-muted">Besoin d’aide&nbsp;? <a href="https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS" target="_blank" rel="noopener" class="text-success fw-bold">Contactez l’équipe sur WhatsApp</a>.</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6 col-md-8 order-0 order-lg-1">
+      <div class="text-center mb-4">
+        <span class="fs-1 text-primary"><i class="bi bi-person-circle"></i></span>
+        <h2 class="fw-bold">Authentification</h2>
+        <p class="text-muted">Connectez-vous ou créez un compte pour accéder au service</p>
+      </div>
+      <ul class="nav nav-tabs mb-4" id="authTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#login" type="button" role="tab" aria-controls="login" aria-selected="true">Connexion</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="register-tab" data-bs-toggle="tab" data-bs-target="#register" type="button" role="tab" aria-controls="register" aria-selected="false">Créer un compte</button>
+    </li>
+  </ul>
+  <div class="tab-content" id="authTabsContent">
+    <div class="tab-pane fade show active" id="login" role="tabpanel" aria-labelledby="login-tab">
+      <form method="POST" action="{{ url_for('main.auth') }}?tab=login">
+        <input type="hidden" name="csrf_token" value="{{ login_form.csrf_token._value() }}" id="login_csrf_token">
+        <div class="mb-3">
+          {{ login_form.email.label(class="form-label", for="login_email") }}
+          {{ login_form.email(class="form-control", id="login_email") }}
+        </div>
+        <div class="mb-3">
+          {{ login_form.password.label(class="form-label", for="login_password") }}
+          {{ login_form.password(class="form-control", id="login_password") }}
+        </div>
+        <div class="mb-3 form-check">
+          {{ login_form.remember(class="form-check-input") }}
+          {{ login_form.remember.label(class="form-check-label") }}
+        </div>
+        <button type="submit" class="btn btn-primary w-100" name="submit_login">Connexion</button>
+        {% for field, errors in login_form.errors.items() %}
+          {% for error in errors %}
+            <div class="alert alert-danger mt-2">{{ error }}</div>
+          {% endfor %}
+        {% endfor %}
+      </form>
+    </div>
+    <div class="tab-pane fade" id="register" role="tabpanel" aria-labelledby="register-tab">
+      <form method="POST" action="{{ url_for('main.auth') }}?tab=register">
+        <input type="hidden" name="csrf_token" value="{{ register_form.csrf_token._value() }}" id="register_csrf_token">
+        <div class="mb-3">
+          {{ register_form.first_name.label(class="form-label", for="register_first_name") }}
+          {{ register_form.first_name(class="form-control", id="register_first_name") }}
+        </div>
+        <div class="mb-3">
+          {{ register_form.last_name.label(class="form-label", for="register_last_name") }}
+          {{ register_form.last_name(class="form-control", id="register_last_name") }}
+        </div>
+        <div class="mb-3">
+          {{ register_form.email.label(class="form-label", for="register_email") }}
+          {{ register_form.email(class="form-control", id="register_email") }}
+        </div>
+        <div class="mb-3">
+          {{ register_form.password.label(class="form-label", for="register_password") }}
+          {{ register_form.password(class="form-control", id="register_password") }}
+        </div>
+        <div class="mb-3">
+          {{ register_form.password2.label(class="form-label", for="register_password2") }}
+          {{ register_form.password2(class="form-control", id="register_password2") }}
+        </div>
+        {% if show_admin_checkbox %}
+        <div class="mb-3 form-check">
+          {{ register_form.is_admin(class="form-check-input") }}
+          {{ register_form.is_admin.label(class="form-check-label") }}
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-success w-100" name="submit_register">Créer le compte</button>
+        {% for field, errors in register_form.errors.items() %}
+          {% for error in errors %}
+            <div class="alert alert-danger mt-2">{{ error }}</div>
+          {% endfor %}
+        {% endfor %}
+      </form>
+    </div>
+    </div>
+
+  </div>
+</div>
+<script>
+  // Active tab persistence based on query param
+  document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if(tab === 'register') {
+      const registerTab = document.getElementById('register-tab');
+      new bootstrap.Tab(registerTab).show();
+    } else {
+      const loginTab = document.getElementById('login-tab');
+      new bootstrap.Tab(loginTab).show();
+    }
+  });
+</script>
+{% endblock %}

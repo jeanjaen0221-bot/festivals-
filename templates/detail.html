@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+{% block content %}
+  <div id="itemContext" data-item-id="{{ item.id }}" data-api-explain="{{ url_for('main.api_match_explain') }}" style="display:none"></div>
+  <div class="row">
+    <div class="col-md-6">
+
+      {# Affiche la photo de restitution si objet rendu #}
+      {% if item.status == Status.RETURNED and item.return_photo_filename %}
+        <img src="{{ url_for('main.uploaded_file', filename=item.return_photo_filename) }}" class="img-fluid"
+             class="img-fluid mb-3" alt="Photo de restitution">
+      {% elif item.photos and item.photos|length > 0 %}
+        <div class="row g-2 mb-3">
+  {% for photo in item.photos %}
+    <div class="col-6 col-md-4 col-lg-3">
+      <img src="{{ url_for('main.uploaded_file', filename=photo.filename) }}" class="img-thumbnail w-100 shadow-sm enlarge-photo img-fluid" style="aspect-ratio: 1/1; object-fit: cover; cursor: zoom-in;" alt="Photo" data-bs-toggle="modal" data-bs-target="#photoModal" data-photo-url="{{ url_for('main.uploaded_file', filename=photo.filename) }}">
+    </div>
+  {% endfor %}
+</div>
+
+<!-- Modal pour agrandir la photo -->
+<div class="modal fade" id="photoModal" tabindex="-1" aria-labelledby="photoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content bg-transparent border-0">
+      <div class="modal-body text-center p-0">
+        <img id="modalPhoto" src="" class="img-fluid rounded shadow" alt="Photo agrandie">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var photoModal = document.getElementById('photoModal');
+  var modalPhoto = document.getElementById('modalPhoto');
+  document.querySelectorAll('.enlarge-photo').forEach(function(img) {
+    img.addEventListener('click', function() {
+      var url = this.getAttribute('data-photo-url');
+      modalPhoto.src = url;
+    });
+  });
+  if(photoModal) {
+    photoModal.addEventListener('hidden.bs.modal', function() {
+      modalPhoto.src = '';
+    });
+  }
+});
+</script>
+
+      {% elif item.photo_filename %}
+        <img src="{{ url_for('main.uploaded_file', filename=item.photo_filename) }}" class="img-fluid"
+             class="img-fluid mb-3" alt="Photo">
+      {% else %}
+        <div class="bg-light d-flex align-items-center justify-content-center w-100" style="height: 300px;">
+          {% if item.category %}
+            {% set icon_info = item.category.get_icon_display() %}
+            {% if icon_info.type == 'image' %}
+              <img src="{{ icon_info.url }}" alt="{{ item.category.name }}" class="img-fluid" 
+                   class="img-fluid" style="max-width: 150px; max-height: 150px; object-fit: contain;">
+            {% else %}
+              <i class="{{ icon_info.class }} detail-category-icon d-flex align-items-center justify-content-center"></i>
+            {% endif %}
+          {% else %}
+            <i class="bi bi-box-seam detail-category-icon d-flex align-items-center justify-content-center"></i>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# Formulaire de restitution dédié (photo obligatoire) #}
+      {% if item.status == Status.FOUND %}
+        <div class="alert alert-info mb-3"><i class="bi bi-check2-circle"></i> Restitution : prendre une photo du propriétaire avec l’objet rendu.</div>
+        <form method="post" enctype="multipart/form-data">
+          {{ confirm_return_form.hidden_tag() }}
+          <div class="mb-3">
+            {{ confirm_return_form.return_photo.label(class="form-label") }}
+            {{ confirm_return_form.return_photo(class="form-control", accept="image/*", capture="environment") }}
+            {% if confirm_return_form.return_photo.errors %}
+              <div class="text-danger small">{{ confirm_return_form.return_photo.errors[0] }}</div>
+            {% endif %}
+            <div class="form-text">Photo obligatoire (formats : jpg, jpeg, png)</div>
+          </div>
+          <div class="mb-3">
+            {{ confirm_return_form.return_comment.label(class="form-label") }}
+            {{ confirm_return_form.return_comment(class="form-control", rows=2, placeholder="Commentaire (facultatif)") }}
+          </div>
+          <button type="submit" name="submit_return" class="btn btn-success">Confirmer la restitution</button>
+        </form>
+        <hr>
+      {% endif %}
+      {# Détails de l'objet #}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="fw-bold d-flex align-items-center gap-2 mb-0">
+    <i class="bi bi-box-seam text-primary"></i> {{ item.title }}
+    <span class="badge {% if item.status == Status.LOST %}bg-danger{% elif item.status == Status.FOUND %}bg-primary{% elif item.status == Status.RETURNED %}bg-success{% elif item.status == Status.PENDING_DELETION %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-2">
+      {{ item.status.name.capitalize() }}
+    </span>
+
+  </h3>
+  {% if current_user.is_authenticated %}
+    <a href="{{ url_for('main.edit_item', item_id=item.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Modifier la fiche</a>
+  {% endif %}
+</div>
+  <i class="bi bi-box-seam text-primary"></i> {{ item.title }}
+  <span class="badge {% if item.status == Status.LOST %}bg-danger{% elif item.status == Status.FOUND %}bg-primary{% elif item.status == Status.RETURNED %}bg-success{% elif item.status == Status.PENDING_DELETION %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-2">
+    {{ item.status.name.capitalize() }}
+  </span>
+  {% if has_match %}
+    <span class="badge bg-success ms-2">Match validé</span>
+  {% endif %}
+</h3>
+      <div class="card p-3 mb-3 bg-light border-0 shadow-sm rounded-4">
+  <p class="mb-2"><i class="bi bi-tag text-secondary"></i> <strong>Catégorie :</strong>
+    {% if item.category %}{{ item.category.name }}{% else %}—{% endif %}
+  </p>
+  {% if item.status == Status.FOUND %}
+    <p class="mb-2"><i class="bi bi-geo-alt text-primary"></i> <strong>Lieu de découverte :</strong> {{ item.found_location or '—' }}</p>
+    <p class="mb-2"><i class="bi bi-flag text-danger"></i> <strong>Lieu de stockage :</strong> {{ item.storage_location or '—' }}</p>
+  {% else %}
+    <p class="mb-2"><i class="bi bi-geo-alt text-danger"></i> <strong>Lieu :</strong> {{ item.location or '—' }}</p>
+  {% endif %}
+  <p class="mb-2"><i class="bi bi-calendar-event text-info"></i> <strong>Date signalement :</strong> {{ item.date_reported.strftime('%d/%m/%Y %H:%M') }}</p>
+  <p class="mb-0"><i class="bi bi-chat-left-text text-success"></i> <strong>Description :</strong><br> {{ item.comments or '—' }}</p>
+</div>
+
+      <hr>
+      <h5>Informations déclarant</h5>
+      <p><strong>Nom :</strong> {{ item.reporter_name }}</p>
+      <p><strong>Email :</strong> {{ item.reporter_email }}</p>
+      <p><strong>Téléphone :</strong> {{ item.reporter_phone or '—' }}</p>
+
+      {# Si l'objet est déjà rendu #}
+      {% if item.status == Status.PENDING_DELETION %}
+  <div class="alert alert-warning">Cet objet est en attente de suppression. Il n'est plus visible publiquement.</div>
+{% elif item.status == Status.RETURNED %}
+        <hr>
+        <h5>Objet rendu</h5>
+        <p><strong>Date restitution :</strong>
+          {% if item.return_date %}
+            {{ item.return_date.strftime('%d/%m/%Y %H:%M') }}
+          {% else %}
+            —
+          {% endif %}
+        </p>
+        <p><strong>Réclamant :</strong> {{ item.claimant_name or '—' }}</p>
+        <p><strong>Email réclamant :</strong> {{ item.claimant_email or '—' }}</p>
+        <p><strong>Téléphone réclamant :</strong> {{ item.claimant_phone or '—' }}</p>
+        <p><strong>Commentaire restitution :</strong><br> {{ item.return_comment or '—' }}</p>
+
+      {# Sinon, deux formulaires : correspondance puis réclamation #}
+      {% else %}
+        <hr>
+        {% if item.status != Status.PENDING_DELETION %}
+        {# 1) Formulaire de correspondance si match_form est défini #}
+        {% if match_form %}
+          {% if not has_match %}
+            <h5 class="d-flex align-items-center gap-2 mb-3"><i class="bi bi-link-45deg text-warning"></i> Correspondances proposées</h5>
+            {% if suggestions and suggestions|length > 0 %}
+              <div class="matches-grid mb-3">
+                {% for s in suggestions %}
+                  <div class="match-card">
+                    {% if s.photo_url %}
+                      <div class="match-thumb"><img src="{{ s.photo_url }}" alt="photo"></div>
+                    {% elif s.category_icon_url %}
+                      <div class="match-thumb"><img src="{{ s.category_icon_url }}" alt="icône catégorie"></div>
+                    {% elif s.category_icon_class %}
+                      <div class="match-thumb"><i class="{{ s.category_icon_class }}"></i></div>
+                    {% else %}
+                      <div class="match-thumb"><i class="bi bi-box-seam"></i></div>
+                    {% endif %}
+                    <div class="match-body">
+                      <div class="d-flex align-items-center justify-content-between mb-1">
+                        <div class="match-title text-truncate">
+                          <a href="{{ s.url_detail }}" target="_blank" title="Voir la fiche">{{ s.title }}</a>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                          {% if loop.first %}
+                            <span class="badge text-bg-warning" title="Meilleure suggestion">TOP</span>
+                          {% endif %}
+                          <span class="score-badge" title="Score de correspondance">{{ s.score }}%</span>
+                        </div>
+                      </div>
+                      <div class="text-muted small mb-2">
+                        {% if s.category_name %}<i class="bi bi-tag"></i> {{ s.category_name }} · {% endif %}
+                        {% if s.meta_location %}<i class="bi bi-geo-alt"></i> {{ s.meta_location }} · {% endif %}
+                        {% if s.date_reported %}<i class="bi bi-calendar-event"></i> {{ s.date_reported.strftime('%d/%m/%Y %H:%M') }}{% endif %}
+                      </div>
+                      <div class="score-bar mb-2" aria-label="Score de correspondance" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ s.score }}">
+                        <div class="score-bar-fill" data-width="{{ s.score }}"></div>
+                      </div>
+                      <div class="match-actions">
+                        <button type="button" class="btn btn-outline-secondary btn-sm btn-explain" data-bs-toggle="tooltip" data-bs-title="Voir pourquoi cette proposition" data-candidate-id="{{ s.id }}"><i class="bi bi-question-circle"></i> Pourquoi</button>
+                        <button type="button" class="btn btn-warning btn-sm btn-associate" data-bs-toggle="tooltip" data-bs-title="Associer définitivement ces deux fiches" data-candidate-id="{{ s.id }}"><i class="bi bi-link"></i> Associer</button>
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+              {% if has_more and more_url %}
+                <div class="d-flex justify-content-center">
+                  <a class="btn btn-outline-primary" href="{{ more_url }}">
+                    <i class="bi bi-plus-circle"></i> Voir plus de suggestions
+                  </a>
+                </div>
+              {% endif %}
+            {% else %}
+              <div class="alert alert-secondary">Aucune suggestion trouvée pour le moment.</div>
+            {% endif %}
+
+            <h6 class="mt-3">Autre méthode</h6>
+            <form method="post" class="mb-3">
+              {{ match_form.hidden_tag() }}
+              <div class="mb-2">
+                {{ match_form.match_with.label(class="form-label") }}
+                {{ match_form.match_with(class="form-select") }}
+              </div>
+              <button type="submit" name="submit_match" class="btn btn-outline-warning"><i class="bi bi-check2"></i> Confirmer correspondance</button>
+            </form>
+
+            {# Formulaire caché pour correspondance directe #}
+            <form id="directMatchForm" method="post" class="d-none">
+              {{ match_form.hidden_tag() }}
+              <input type="hidden" name="match_with_id" id="match_with_id" value="">
+              <input type="hidden" name="submit_match" value="1">
+            </form>
+            <hr>
+          {% else %}
+            <div class="alert alert-success mb-3">
+              <i class="bi bi-check-circle me-2"></i>
+              Une correspondance a déjà été validée pour cet objet.
+            </div>
+          {% endif %}
+        {% endif %}
+
+        {# 2) Formulaire de réclamation classique supprimé pour objets trouvés/rendus : le flux restitution dédié est utilisé #}
+        {% endif %}
+      {% endif %}
+      <hr>
+      {% if item.status == Status.PENDING_DELETION %}
+  <div class="alert alert-warning mt-4">Cet objet est en attente de suppression par l'administrateur.</div>
+{% elif current_user.is_authenticated and not current_user.is_admin %}
+  <form method="post" action="{{ url_for('main.delete_item', item_id=item.id) }}" class="mt-4">
+    {{ delete_form.hidden_tag() }}
+    <button type="submit" class="btn btn-warning btn-lg w-100 mt-2"><i class="bi bi-x-circle"></i> Demander la suppression</button>
+    <div class="form-text text-warning">L'administrateur sera notifié. L'objet sera masqué en attendant validation.</div>
+  </form>
+{% elif current_user.is_authenticated and current_user.is_admin %}
+  <form method="post" action="{{ url_for('main.delete_item', item_id=item.id) }}" class="mt-4">
+    {{ delete_form.hidden_tag() }}
+    <div class="mb-2">
+      <label for="delete_password" class="form-label text-danger"><i class="bi bi-exclamation-triangle"></i> Mot de passe suppression :</label>
+      {{ delete_form.delete_password(class="form-control", placeholder="Mot de passe", autocomplete="current-password", id="delete_password") }}
+      {% if delete_form.delete_password.errors %}
+        <div class="text-danger small">{{ delete_form.delete_password.errors[0] }}</div>
+      {% endif %}
+    </div>
+    <button type="submit" class="btn btn-danger btn-lg w-100 mt-2"><i class="bi bi-trash"></i> Supprimer définitivement</button>
+    <div class="form-text text-danger">Action irréversible : suppression totale de l’objet.</div>
+  </form>
+{% endif %}
+    </div>
+  </div>
+{% endblock %}
+
+{# Modale d'explication #}
+<div class="modal fade" id="explainModal" tabindex="-1" aria-labelledby="explainModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="explainModalLabel"><i class="bi bi-question-circle text-secondary me-2"></i>Pourquoi cette suggestion ?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        <div id="explainContent" class="small"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+ </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // Associer directement
+  document.querySelectorAll('.btn-associate').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var candId = this.getAttribute('data-candidate-id');
+      this.classList.add('loading');
+      this.disabled = true;
+      var input = document.getElementById('match_with_id');
+      if (input) {
+        input.value = candId;
+        document.getElementById('directMatchForm').submit();
+      }
+    });
+  });
+
+  // Explication
+  document.querySelectorAll('.btn-explain').forEach(function(btn){
+    btn.addEventListener('click', async function(){
+      var candId = this.getAttribute('data-candidate-id');
+      var ctx = document.getElementById('itemContext');
+      var itemId = ctx ? ctx.dataset.itemId : null;
+      try {
+        this.classList.add('loading');
+        this.disabled = true;
+        var explainUrl = ctx ? ctx.dataset.apiExplain : '/api/match_explain';
+        const resp = await fetch(explainUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_id: itemId, candidate_id: candId })
+        });
+        const data = await resp.json();
+        const container = document.getElementById('explainContent');
+        if (data.error) {
+          container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        } else {
+          const d = data.details || {};
+          function blockFor(field){
+            if (!d[field]) return '';
+            const common = (d[field].common_words || []).join(', ');
+            const syns = (d[field].synonyms_found || []).map(p=>`${p[1]}→${p[0]}`).join(', ');
+            return `
+              <div class="mb-2">
+                <div class="fw-semibold text-capitalize">${field} — score: ${d[field].score}%</div>
+                ${common ? `<div class="text-muted">Mots communs: ${common}</div>` : ''}
+                ${syns ? `<div class="text-muted">Synonymes: ${syns}</div>` : ''}
+              </div>`;
+          }
+          const chips = `
+            <div class="explain-card mb-3">
+              <div class="d-flex flex-wrap gap-2">
+                <span class="chip info"><i class="bi bi-type"></i> Texte: <b>${data.score_base}%</b></span>
+                <span class="chip info"><i class="bi bi-image"></i> Image: <b>${data.image_similarity ?? 0}%</b></span>
+                <span class="chip"><i class="bi bi-sliders"></i> Poids: t=${data.weights?.text ?? 0.6}, i=${data.weights?.image ?? 0.4}</span>
+                <span class="chip ${data.bonus>=0?'success':'warning'}"><i class="bi bi-plus-slash-minus"></i> Bonus: ${data.bonus >= 0 ? '+' : ''}${data.bonus}</span>
+                <span class="chip success"><i class="bi bi-speedometer"></i> Final: <b>${data.score_final}%</b></span>
+              </div>
+            </div>`;
+
+          const fld = (name) => {
+            const d = data.details?.[name] || {};
+            const sc = d.score ?? 0;
+            const common = (d.common_words || []).map(w=>`<span class='chip'>${w}</span>`).join(' ');
+            const syns = (d.synonyms_found || d.synonyms || []).map(p=>{
+              if (Array.isArray(p)) { return `<span class='chip warning'>${p[1]} → ${p[0]}</span>`; }
+              return `<span class='chip warning'>${p}</span>`;
+            }).join(' ');
+            const rawLost = d.raw_lost ? `<div class='text-muted small mt-1'>Perdu: <span class='hl-word'>${d.raw_lost}</span></div>` : '';
+            const rawFound = d.raw_found ? `<div class='text-muted small'>Trouvé: <span class='hl-word'>${d.raw_found}</span></div>` : '';
+            return `
+              <div class="explain-field">
+                <div class="title">
+                  <span class="text-capitalize">${name}</span>
+                  <span class="badge text-bg-info text-dark">${sc}%</span>
+                </div>
+                <div class="explain-mini-bar mb-2"><div style="width:${sc}%"></div></div>
+                ${common ? `<div class='mb-1'><span class='fw-semibold'>Mots communs:</span> ${common}</div>` : ''}
+                ${syns ? `<div class='mb-1'><span class='fw-semibold'>Synonymes:</span> ${syns}</div>` : ''}
+                ${rawLost}${rawFound}
+              </div>`;
+          };
+
+          const global = `
+            <div class="mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="fw-semibold">Score global</span>
+                <span class="fw-semibold">${(data.score_final ?? 0).toFixed(1)}%</span>
+              </div>
+              <div class="global-progress"><div class="global-progress-bar" style="width:${Math.round(data.score_final ?? 0)}%"></div></div>
+            </div>`;
+
+          container.innerHTML = `
+            ${global}
+            ${chips}
+            <div class="explain-grid">
+              ${fld('title')}
+              ${fld('comments')}
+              ${fld('location')}
+            </div>
+          `;
+        }
+        var modal = new bootstrap.Modal(document.getElementById('explainModal'));
+        modal.show();
+      } catch(e) {
+        const container = document.getElementById('explainContent');
+        container.innerHTML = `<div class="alert alert-danger">Erreur: ${e}</div>`;
+        var modal = new bootstrap.Modal(document.getElementById('explainModal'));
+        modal.show();
+      }
+      this.classList.remove('loading');
+      this.disabled = false;
+    });
+  });
+
+  // Tooltips bootstrap
+  if (window.bootstrap && bootstrap.Tooltip) {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el){
+      new bootstrap.Tooltip(el);
+    });
+  }
+
+  // Initialize score bar widths
+  document.querySelectorAll('.score-bar-fill').forEach(function(el){
+    var w = el.getAttribute('data-width');
+    if (w != null) {
+      el.style.width = String(w) + '%';
+    }
+  });
+});
+</script>

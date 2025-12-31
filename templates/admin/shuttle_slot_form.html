@@ -1,0 +1,37 @@
+
+{% block title %}{{ title or 'Créneau navette' }}{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">{{ title or 'Créneau navette' }}</h2>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+      {{ form.start_time.label(class="form-label") }}
+      {{ form.start_time(class="form-control") }}
+      {% for error in form.start_time.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.end_time.label(class="form-label") }}
+      {{ form.end_time(class="form-control") }}
+      {% for error in form.end_time.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.from_location.label(class="form-label") }}
+      {{ form.from_location(class="form-control") }}
+      {% for error in form.from_location.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.to_location.label(class="form-label") }}
+      {{ form.to_location(class="form-control") }}
+      {% for error in form.to_location.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.note.label(class="form-label") }}
+      {{ form.note(class="form-control") }}
+      {% for error in form.note.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
+    <a href="{{ url_for('admin_shuttle.shuttle_schedule') }}" class="btn btn-secondary ms-2">Retour</a>
+  </form>
+</div>
+{% endblock %}

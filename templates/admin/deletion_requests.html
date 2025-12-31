@@ -1,0 +1,101 @@
+{% extends 'admin/base.html' %}
+{% block admin_title %}Demandes de suppression{% endblock %}
+{% block admin_content %}
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <h2>Demandes de suppression d'objets</h2>
+    <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Titre</th>
+          <th>Catégorie</th>
+          <th>Déclarant</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.id }}</td>
+          <td>
+            <a href="{{ url_for('main.detail_item', item_id=item.id) }}">{{ item.title }}</a>
+            {% if item.photos and item.photos|length > 0 %}
+              <br>
+              <img src="{{ url_for('main.uploaded_file', filename=item.photos[0].filename) }}" alt="Photo objet" style="max-width:60px; max-height:60px; border-radius:6px; margin-top:2px;">
+            {% elif item.photo_filename %}
+              <br>
+              <img src="{{ url_for('main.uploaded_file', filename=item.photo_filename) }}" alt="Photo objet" style="max-width:60px; max-height:60px; border-radius:6px; margin-top:2px;">
+            {% endif %}
+          </td>
+          <td>{{ item.category.name if item.category else '—' }}</td>
+          <td>{{ item.reporter_name }}</td>
+          <td>{{ item.date_reported.strftime('%d/%m/%Y') }}</td>
+          <td class="text-nowrap">
+            <div class="d-flex flex-wrap gap-1">
+              <a href="{{ url_for('main.detail_item', item_id=item.id) }}" class="btn btn-sm btn-outline-primary">Détail</a>
+              <form method="post" action="{{ url_for('admin.confirm_deletion', item_id=item.id) }}" class="d-inline">
+                {{ csrf_form.hidden_tag() }}
+                <button class="btn btn-sm btn-danger" type="submit" title="Supprimer"><i class="bi bi-check-circle"></i> <span class="d-none d-md-inline">Supprimer</span></button>
+              </form>
+              <form method="post" action="{{ url_for('admin.reject_deletion', item_id=item.id) }}" class="d-inline">
+                {{ csrf_form.hidden_tag() }}
+                <button class="btn btn-sm btn-secondary" type="submit" title="Rejeter"><i class="bi bi-x-circle"></i> <span class="d-none d-md-inline">Rejeter</span></button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center">Aucune demande en attente</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mt-4">
+  <div class="card-body">
+    <h2>Demandes de suppression de prêts de casques</h2>
+    <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Nom</th>
+          <th>Prénom</th>
+          <th>Téléphone</th>
+          <th>Date prêt</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for loan in loans %}
+        <tr>
+          <td>{{ loan.id }}</td>
+          <td>{{ loan.last_name }}</td>
+          <td>{{ loan.first_name }}</td>
+          <td>{{ loan.phone }}</td>
+          <td>{{ loan.loan_date.strftime('%d/%m/%Y %H:%M') if loan.loan_date else '' }}</td>
+          <td class="text-nowrap">
+            <div class="d-flex flex-wrap gap-1">
+              <form method="post" action="{{ url_for('admin.confirm_loan_deletion', loan_id=loan.id) }}" class="d-inline">
+                {{ csrf_form.hidden_tag() }}
+                <button class="btn btn-sm btn-danger" type="submit" title="Supprimer"><i class="bi bi-check-circle"></i> <span class="d-none d-md-inline">Supprimer</span></button>
+              </form>
+              <form method="post" action="{{ url_for('admin.reject_loan_deletion', loan_id=loan.id) }}" class="d-inline">
+                {{ csrf_form.hidden_tag() }}
+                <button class="btn btn-sm btn-secondary" type="submit" title="Restaurer"><i class="bi bi-x-circle"></i> <span class="d-none d-md-inline">Restaurer</span></button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center">Aucune demande en attente</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

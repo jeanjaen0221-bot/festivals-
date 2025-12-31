@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="mb-3 d-flex gap-2">
+    <a href="{{ url_for('main.list_items', status='lost') }}" class="btn btn-outline-secondary {% if status == 'lost' %}active{% endif %}">Perdus</a>
+    <a href="{{ url_for('main.list_items', status='found') }}" class="btn btn-outline-secondary {% if status == 'found' %}active{% endif %}">Trouvés</a>
+    <a href="{{ url_for('main.list_items', status='returned') }}" class="btn btn-outline-secondary {% if status == 'returned' %}active{% endif %}">Rendus</a>
+  </div>
+  <h2 class="mb-1">Objets {{ status.capitalize() }}</h2>
+  <div class="text-muted small mb-3">
+    {% if status == 'found' %}
+      <i class="bi bi-info-circle"></i> Un badge <span class="badge bg-success">Matché</span> apparaît lorsque deux fiches sont déjà liées.
+    {% endif %}
+    <span class="ms-2"><i class="bi bi-link-45deg text-success"></i> Un ruban vert s'affiche sur une carte lorsqu'une correspondance existe pour cet objet.</span>
+  </div>
+  <form class="row g-3 mb-4" method="get" action="{{ url_for('main.list_items', status=status) }}">
+    <input type="hidden" name="status" value="{{ status }}">
+    <div class="col-md-3">
+      <select name="category" class="form-select">
+        <option value="">Toutes catégories</option>
+        {% for cat in categories %}
+          <option value="{{ cat.id }}" {% if cat.id == selected_category %}selected{% endif %}>{{ cat.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <input type="text" class="form-control" name="q" placeholder="Rechercher (titre ou description)" value="{{ q or '' }}">
+    </div>
+    <div class="col-md-2">
+      <input type="date" class="form-control" name="from_date" value="{{ from_date or '' }}" placeholder="Du">
+    </div>
+    <div class="col-md-2">
+      <input type="date" class="form-control" name="to_date" value="{{ to_date or '' }}" placeholder="Au">
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-outline-primary">Filtrer</button>
+    </div>
+  </form>
+  {% if items %}
+  <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-4" style="overflow-x:hidden;">
+    {% for group in grouped_items %}
+      <div class="col position-relative" style="min-height: 240px;">
+        {% set visible_group = group | selectattr('status', 'ne', Status.PENDING_DELETION) | list %}
+        {% if visible_group|length == 2 %}
+          <div class="stacked-back" style="position: absolute; top: 12px; left: 12px; width: 92%; opacity: 0.85; z-index: 1; transform: rotate(-2deg);">
+            {% set obj = visible_group[1] %}
+            {% include 'list_card.html' %}
+          </div>
+          <div style="position: relative; z-index: 2;">
+            {% set obj = visible_group[0] %}
+            {% include 'list_card.html' %}
+            {% set has_match_flag_top = (matches_map.get(visible_group[0].id) if matches_map else False) or (matches_map.get(visible_group[1].id) if matches_map else False) %}
+            {% if has_match_flag_top %}
+              <span class="badge bg-success position-absolute bottom-0 end-0 m-2 shadow match-badge" style="z-index:3;">Matché</span>
+            {% endif %}
+          </div>
+        {% elif visible_group|length == 1 %}
+          <div style="position: relative;">
+            {% set has_match_flag = matches_map.get(visible_group[0].id) if matches_map else False %}
+            {% if has_match_flag %}
+              <span class="badge bg-success position-absolute bottom-0 end-0 m-2 shadow match-badge">Matché</span>
+            {% endif %}
+            {% set obj = visible_group[0] %}
+            {% include 'list_card.html' %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <nav aria-label="Pagination" class="mt-4">
+    <ul class="pagination justify-content-center">
+      {% if pagination.has_prev %}
+        <li class="page-item">
+          <a class="page-link" href="{{ url_for('main.list_items', status=status, page=pagination.prev_num, category=selected_category) }}">Précédent</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">Précédent</span></li>
+      {% endif %}
+      {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if p %}
+          {% if p == pagination.page %}
+            <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+          {% else %}
+            <li class="page-item">
+              <a class="page-link" href="{{ url_for('main.list_items', status=status, page=p, category=selected_category) }}">{{ p }}</a>
+            </li>
+          {% endif %}
+        {% else %}
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+      {% if pagination.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="{{ url_for('main.list_items', status=status, page=pagination.next_num, category=selected_category) }}">Suivant</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">Suivant</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% else %}
+  <p>Aucun objet {{ status }} pour le moment.</p>
+  {% endif %}
+{% endblock %}

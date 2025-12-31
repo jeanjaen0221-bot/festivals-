@@ -1,0 +1,97 @@
+<div class="card h-100 shadow-sm border-0 rounded-4 card-hover-effect position-relative">
+  {# Badge lieu stockage #}
+  {% if obj.status.name == 'FOUND' or obj.status.name == 'RETURNED' %}
+    {% if obj.storage_location %}
+      {% set lieu_lower = obj.storage_location|lower %}
+      {% set badge_class = (
+        'bg-danger text-white' if 'camping famille' in lieu_lower else
+        'bg-primary text-white' if 'point info festival' in lieu_lower else
+        'bg-success text-white' if 'festivalier' in lieu_lower else
+        'bg-secondary text-white' if 'autre' in lieu_lower else
+        'bg-warning text-dark'
+      ) %}
+      <span class="position-absolute top-0 end-0 m-2 badge {{ badge_class }} storage-badge d-flex align-items-center gap-1" style="z-index:2; font-size:0.95em;" title="Lieu de stockage" aria-label="Lieu de stockage">
+        <i class="bi bi-box-seam"></i> {{ obj.storage_location }}
+      </span>
+    {% endif %}
+    {% if obj.found_location %}
+      <span class="position-absolute top-0 start-0 m-2 badge bg-info text-dark found-badge d-flex align-items-center gap-1" style="z-index:2; font-size:0.90em;" title="Lieu de trouvaille" aria-label="Lieu de trouvaille">
+        <i class="bi bi-geo-alt-fill"></i> {{ obj.found_location }}
+      </span>
+    {% endif %}
+  {% endif %}
+  {% if obj.photos and obj.photos|length > 0 %}
+    <img src="{{ url_for('main.uploaded_file', filename=obj.photos[0].filename) }}"
+         class="card-img-top photo-clickable w-100 img-fluid"
+         style="object-fit: cover; height: 200px; cursor: zoom-in;"
+         loading="lazy" alt="Photo de l'objet"
+         data-bs-toggle="modal" data-bs-target="#photoModal-{{ obj.id }}">
+
+  {% elif obj.photo_filename %}
+    <img src="{{ url_for('main.uploaded_file', filename=obj.photo_filename) }}"
+         class="card-img-top photo-clickable w-100 img-fluid"
+         style="object-fit: cover; height: 200px; cursor: zoom-in;"
+         loading="lazy" alt="Photo de l'objet"
+         data-bs-toggle="modal" data-bs-target="#photoModal-{{ obj.id }}">
+
+  {% else %}
+    <div class="bg-light d-flex align-items-center justify-content-center w-100" style="height: 200px;">
+      {% if obj.category %}
+        {% set icon_info = obj.category.get_icon_display() %}
+        {% if icon_info.type == 'image' %}
+          <img src="{{ icon_info.url }}" alt="{{ obj.category.name }}" class="img-fluid" 
+               class="img-fluid" style="max-width: 120px; max-height: 120px; object-fit: contain;">
+        {% else %}
+          <i class="{{ icon_info.class }} category-icon"></i>
+        {% endif %}
+      {% else %}
+        <i class="bi bi-box-seam category-icon"></i>
+      {% endif %}
+    </div>
+  {% endif %}
+  <div class="card-body d-flex flex-column">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="card-title fw-bold mb-0 text-truncate" title="{{ obj.title }}">{{ obj.title }}</h5>
+      <span class="badge {% if obj.status.name == 'LOST' %}bg-danger{% elif obj.status.name == 'FOUND' %}bg-primary{% elif obj.status.name == 'RETURNED' %}bg-success{% else %}bg-secondary{% endif %}">
+        {{ obj.status.name.capitalize() }}
+      </span>
+    </div>
+    <div class="text-muted small mb-2">
+      <i class="bi bi-tag"></i> {{ obj.category.name if obj.category else '—' }} ·
+      {% if obj.status.name == 'FOUND' or obj.status.name == 'RETURNED' %}
+        <i class="bi bi-geo-alt"></i> {{ obj.found_location or '—' }} ·
+        <i class="bi bi-flag"></i> {{ obj.storage_location or '—' }} ·
+      {% elif obj.status.name == 'LOST' %}
+        <i class="bi bi-geo-alt"></i> {{ obj.location or '—' }} ·
+      {% else %}
+        <i class="bi bi-geo-alt"></i> {{ obj.location or obj.storage_location or obj.found_location or '—' }} ·
+      {% endif %}
+      <i class="bi bi-calendar-event"></i> {{ obj.date_reported.strftime('%d/%m/%Y') }}
+    </div>
+    {% if obj.comments %}
+      <div class="text-truncate small text-secondary mb-2" title="{{ obj.comments }}">{{ obj.comments }}</div>
+    {% endif %}
+    <a href="{{ url_for('main.detail_item', item_id=obj.id) }}" class="btn btn-outline-primary mt-auto">
+      <i class="bi bi-box-arrow-up-right"></i> Voir détail
+    </a>
+  </div>
+</div>
+
+{# Modal Bootstrap pour aperçu de la photo #}
+<div class="modal fade" id="photoModal-{{ obj.id }}" tabindex="-1" aria-labelledby="photoModalLabel-{{ obj.id }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content bg-dark">
+      <div class="modal-header border-0">
+        <h5 class="modal-title text-white" id="photoModalLabel-{{ obj.id }}">Aperçu de la photo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body text-center">
+        {% if obj.photos and obj.photos|length > 0 %}
+          <img src="{{ url_for('main.uploaded_file', filename=obj.photos[0].filename) }}" class="img-fluid rounded shadow" style="max-height: 70vh;" alt="Photo de l'objet">
+        {% elif obj.photo_filename %}
+          <img src="{{ url_for('main.uploaded_file', filename=obj.photo_filename) }}" class="img-fluid rounded shadow" style="max-height: 70vh;" alt="Photo de l'objet">
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>

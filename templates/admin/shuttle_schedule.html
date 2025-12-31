@@ -1,0 +1,46 @@
+
+{% block title %}Planning Navettes{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">Planning des navettes</h2>
+  <a href="{{ url_for('admin_shuttle.add_shuttle_day') }}" class="btn btn-primary mb-3">Ajouter un jour</a>
+  <table class="table table-bordered table-hover bg-white">
+    <thead class="table-light">
+      <tr>
+        <th>Date</th>
+        <th>Libellé</th>
+        <th>Note</th>
+        <th>Créneaux horaires</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for day in days %}
+      <tr>
+        <td>{{ day.date.strftime('%A %d %B %Y') }}</td>
+        <td>{{ day.label }}</td>
+        <td>{{ day.note or '' }}</td>
+        <td>
+          <ul class="list-unstyled mb-0">
+            {% for slot in day.slots %}
+            <li>
+              <strong>{{ slot.start_time.strftime('%H:%M') }} - {{ slot.end_time.strftime('%H:%M') }}</strong>
+              : <span class="text-muted">{{ slot.from_location }}</span> ⇄ <span class="text-muted">{{ slot.to_location }}</span>
+              {% if slot.note %}<span class="badge bg-info ms-2">{{ slot.note }}</span>{% endif %}
+              <a href="{{ url_for('admin_shuttle.edit_shuttle_slot', slot_id=slot.id) }}" class="btn btn-sm btn-outline-primary ms-2">Modifier</a>
+              <a href="{{ url_for('admin_shuttle.delete_shuttle_slot', slot_id=slot.id) }}" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Supprimer ce créneau ?')">Supprimer</a>
+            </li>
+            {% endfor %}
+          </ul>
+          <a href="{{ url_for('admin_shuttle.add_shuttle_slot', day_id=day.id) }}" class="btn btn-sm btn-success mt-1">Ajouter un créneau</a>
+        </td>
+        <td>
+          <a href="{{ url_for('admin_shuttle.edit_shuttle_day', day_id=day.id) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
+          <a href="{{ url_for('admin_shuttle.delete_shuttle_day', day_id=day.id) }}" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Supprimer ce jour et tous ses créneaux ?')">Supprimer</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

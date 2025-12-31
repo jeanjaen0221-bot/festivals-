@@ -1,0 +1,183 @@
+{% extends 'admin/base.html' %}
+{% block admin_title %}Gestion des icônes{% endblock %}
+
+{% block admin_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2 class="mb-1">Gestion des icônes de catégories</h2>
+    <p class="text-muted mb-0">Choisissez entre icônes Bootstrap ou images personnalisées pour chaque catégorie</p>
+  </div>
+  <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i> Retour
+  </a>
+</div>
+
+<!-- Guide d'aide -->
+<div class="row mb-4">
+  <div class="col-md-6">
+    <div class="alert alert-info border-0 bg-light">
+      <i class="bi bi-lightbulb text-info"></i>
+      <strong>Icônes Bootstrap :</strong> Légères, vectorielles, toujours nettes. 
+      <a href="https://icons.getbootstrap.com/" target="_blank" class="alert-link">Voir la galerie</a>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="alert alert-warning border-0 bg-light">
+      <i class="bi bi-image text-warning"></i>
+      <strong>Images personnalisées :</strong> JPG, PNG, SVG acceptés. Max 2MB.
+    </div>
+  </div>
+</div>
+
+<!-- Grille des catégories -->
+<div class="row g-4">
+  {% for cat in categories %}
+  <div class="col-lg-6 col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pb-0">
+        <h5 class="card-title mb-1">{{ cat.name }}</h5>
+        {% set icon_info = cat.get_icon_display() %}
+        <small class="text-muted">
+          {% if icon_info.type == 'image' %}
+            <i class="bi bi-image text-primary"></i> Image personnalisée
+          {% else %}
+            <i class="bi bi-bootstrap text-success"></i> Bootstrap Icon
+          {% endif %}
+        </small>
+      </div>
+      
+      <div class="card-body text-center">
+        <!-- Aperçu de l'icône actuelle -->
+        <div class="mb-4 p-3 bg-light rounded-3">
+          {% if icon_info.type == 'image' %}
+            <img src="{{ icon_info.url }}" alt="{{ cat.name }}" 
+                 class="img-fluid" style="max-width: 64px; max-height: 64px; object-fit: contain;">
+            <div class="mt-2">
+              <small class="text-muted">{{ icon_info.filename }}</small>
+            </div>
+          {% else %}
+            <i class="{{ icon_info.class }} d-block" style="font-size: 3rem; color: #6c757d;"></i>
+            <div class="mt-2">
+              <code class="small">{{ icon_info.class }}</code>
+            </div>
+          {% endif %}
+        </div>
+        
+        <!-- Formulaire de modification -->
+        <form method="post" enctype="multipart/form-data" 
+              action="{{ url_for('admin.update_category_icon', category_id=cat.id) }}" 
+              class="icon-form" data-category="{{ cat.name }}">
+          {{ icon_form.hidden_tag() }}
+          
+          <!-- Sélecteur de type -->
+          <div class="mb-3">
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="icon_type" id="bootstrap-{{ cat.id }}" 
+                     value="bootstrap" {% if not cat.has_custom_icon %}checked{% endif %}>
+              <label class="btn btn-outline-primary" for="bootstrap-{{ cat.id }}">
+                <i class="bi bi-bootstrap"></i> Bootstrap
+              </label>
+              
+              <input type="radio" class="btn-check" name="icon_type" id="custom-{{ cat.id }}" 
+                     value="custom" {% if cat.has_custom_icon %}checked{% endif %}>
+              <label class="btn btn-outline-warning" for="custom-{{ cat.id }}">
+                <i class="bi bi-image"></i> Image
+              </label>
+            </div>
+          </div>
+          
+          <!-- Champs conditionnels -->
+          <div class="bootstrap-fields" {% if cat.has_custom_icon %}style="display: none;"{% endif %}>
+            <div class="mb-3">
+              <input type="text" name="icon_class" class="form-control" 
+                     placeholder="Ex: bi bi-phone, bi bi-laptop" 
+                     value="{{ cat.icon_class or '' }}">
+            </div>
+          </div>
+          
+          <div class="custom-fields" {% if not cat.has_custom_icon %}style="display: none;"{% endif %}>
+            <div class="mb-3">
+              <input type="file" name="custom_icon" class="form-control" 
+                     accept=".jpg,.jpeg,.png,.svg">
+            </div>
+          </div>
+          
+          <button type="submit" class="btn btn-primary w-100 mb-2">
+            <i class="bi bi-check-lg"></i> Mettre à jour
+          </button>
+        </form>
+        
+        <!-- Actions supplémentaires -->
+        <div class="d-flex gap-2">
+          {% if cat.has_custom_icon %}
+          <form method="post" action="{{ url_for('admin.remove_custom_icon', category_id=cat.id) }}" 
+                style="flex: 1;">
+            {{ csrf_form.hidden_tag() }}
+            <button type="submit" class="btn btn-outline-secondary btn-sm w-100" 
+                    onclick="return confirm('Supprimer l\'image personnalisée ?');">
+              <i class="bi bi-trash"></i> Supprimer image
+            </button>
+          </form>
+          {% endif %}
+          
+          <form method="post" action="{{ url_for('admin.delete_category', category_id=cat.id) }}" 
+                style="flex: 1;">
+            {{ csrf_form.hidden_tag() }}
+            <button type="submit" class="btn btn-outline-danger btn-sm w-100" 
+                    onclick="return confirm('Supprimer cette catégorie ? Action irréversible.');">
+              <i class="bi bi-x-lg"></i> Supprimer catégorie
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- JavaScript pour l'interface dynamique -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Gestion des formulaires d'icônes
+  document.querySelectorAll('.icon-form').forEach(form => {
+    const bootstrapRadio = form.querySelector('input[value="bootstrap"]');
+    const customRadio = form.querySelector('input[value="custom"]');
+    const bootstrapFields = form.querySelector('.bootstrap-fields');
+    const customFields = form.querySelector('.custom-fields');
+    
+    function toggleFields() {
+      if (bootstrapRadio.checked) {
+        bootstrapFields.style.display = 'block';
+        customFields.style.display = 'none';
+      } else {
+        bootstrapFields.style.display = 'none';
+        customFields.style.display = 'block';
+      }
+    }
+    
+    bootstrapRadio.addEventListener('change', toggleFields);
+    customRadio.addEventListener('change', toggleFields);
+  });
+});
+</script>
+
+<style>
+.card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
+}
+.btn-check:checked + .btn {
+  background-color: var(--bs-primary);
+  border-color: var(--bs-primary);
+  color: white;
+}
+.btn-check:checked + .btn.btn-outline-warning {
+  background-color: var(--bs-warning);
+  border-color: var(--bs-warning);
+  color: black;
+}
+</style>
+{% endblock %}

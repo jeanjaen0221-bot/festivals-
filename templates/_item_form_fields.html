@@ -1,0 +1,355 @@
+<div class="mb-3">
+  <label class="form-label"><i class="bi bi-tag"></i> {{ form.title.label.text }}</label>
+  {{ form.title(class="form-control", placeholder="Titre de l’objet (ex : Porte-monnaie noir)") }}
+  {% if prefix == 'lost-' %}
+    <div class="form-text text-danger-emphasis small">Vous déclarez un <b>objet perdu</b> : ce formulaire est réservé à l’usage du propriétaire de l’objet.</div>
+  {% elif prefix == 'found-' %}
+    <div class="form-text text-success-emphasis small">Vous déclarez un <b>objet trouvé</b> : ce formulaire est réservé à la personne qui remet l’objet au stand ou à l’organisation.</div>
+  {% endif %}
+</div>
+
+{# Formulaire unique pour déclaration d’objet PERDU ou TROUVÉ
+  - Aucun doublon de champ (description, catégorie, etc.)
+  - Aucun champ nom/email/téléphone déclarant/bénévole
+  - Affichage dynamique selon prefix (lost-/found-)
+  - UX claire pour bénévoles
+#}
+
+{# Intro contextuelle #}
+{% if prefix == 'lost-' %}
+  <div class="alert alert-danger d-flex align-items-center gap-2 mb-4" style="font-size:1.13em;">
+    <i class="bi bi-emoji-question fs-3"></i>
+    <div>
+      <strong>Formulaire à remplir avec le festivalier qui a perdu un objet</strong><br>
+      Posez-lui toutes les questions utiles, soyez précis : cela aide à retrouver l’objet plus vite !
+    </div>
+  </div>
+{% elif prefix == 'found-' %}
+  <div class="alert alert-success d-flex align-items-center gap-2 mb-4" style="font-size:1.13em;">
+    <i class="bi bi-emoji-smile fs-3"></i>
+    <div>
+      <strong>Formulaire réservé aux bénévoles des points info&nbsp;!</strong><br>
+      Merci de remplir ce formulaire lorsqu’un objet vous est confié.<br>
+      <span class="fw-normal">Soyez précis, cela aide à retrouver le propriétaire.</span>
+    </div>
+  </div>
+{% endif %}
+
+{# Bloc lieux #}
+{% if prefix == 'lost-' %}
+  <!-- SECTION LIEU PRÉSUMÉ DE PERTE -->
+  <div class="mb-3">
+    <label class="form-label"><i class="bi bi-geo-alt text-danger"></i> <strong>Où pense-t-il avoir perdu l’objet&nbsp;?</strong></label>
+    {{ form.location(class="form-select", id=prefix ~ 'location-select') }}
+    <div class="form-text text-danger small">Exemple&nbsp;: “Camping Festivalier”, “Entrée Nord”, “Zone concerts”, etc.<br><b>Demandez au festivalier, même s’il n’est pas sûr.</b></div>
+  </div>
+  <div class="mb-3" id="{{ prefix }}location-other-group" style="display: none;">
+    <label class="form-label"><i class="bi bi-pencil"></i> Précisez le lieu</label>
+    {{ form.location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
+    <div class="form-text small">Soyez aussi précis que possible.</div>
+  </div>
+{% elif prefix == 'found-' %}
+  <!-- SECTION LIEU DE DÉCOUVERTE -->
+  <div class="mb-3">
+    <label class="form-label"><i class="bi bi-geo-alt text-info"></i> <strong>Où l’objet a-t-il été trouvé&nbsp;?</strong></label>
+    {{ form.found_location(class="form-select", id=prefix ~ 'found-location-select') }}
+    <div class="form-text text-info small">Exemple&nbsp;: “Camping Festivalier”, “Entrée Nord”, “Zone concerts”, etc.<br><b>Demandez au festivalier ou indiquez ce que vous savez.</b></div>
+  </div>
+  <div class="mb-3" id="{{ prefix }}found-location-other-group" style="display: none;">
+    <label class="form-label"><i class="bi bi-pencil"></i> Précisez le lieu de découverte</label>
+    {{ form.found_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
+    <div class="form-text small">Soyez aussi précis que possible.</div>
+  </div>
+  <!-- SECTION LIEU DE STOCKAGE -->
+  <div class="mb-3">
+    <label class="form-label"><i class="bi bi-archive text-danger"></i> <strong>Où l’objet est-il stocké maintenant&nbsp;?</strong></label>
+    {{ form.storage_location(class="form-select", id=prefix ~ 'storage-location-select') }}
+    <div class="form-text text-danger small">Exemple&nbsp;: “Point Info Festival”, “Stand Bénévoles”, etc.<br><b>Indiquez l’endroit où l’objet sera gardé jusqu’à restitution.</b></div>
+  </div>
+  <div class="mb-3" id="{{ prefix }}storage-location-other-group" style="display: none;">
+    <label class="form-label"><i class="bi bi-pencil"></i> Précisez le lieu de stockage</label>
+    {{ form.storage_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
+    <div class="form-text small">Soyez clair pour que tout bénévole puisse retrouver l’objet facilement.</div>
+  </div>
+{% endif %}
+
+{# Description unique #}
+<div class="mb-3">
+  <label class="form-label"><i class="bi bi-chat-left-text"></i> <strong>Description de l’objet</strong></label>
+  {{ form.comments(class="form-control", rows="3", placeholder="Ex : Portefeuille noir, marque Quiksilver, usé sur le côté, contient une carte d'identité.") }}
+  <div class="form-text small">Donnez le plus de détails possibles (marque, couleur, contenu, état, particularités visibles…)</div>
+</div>
+
+{# Photos: seulement pour FOUND. Pour LOST, pas nécessaire. #}
+{% if prefix == 'found-' %}
+  <div class="mb-3">
+    <label class="form-label"><i class="bi bi-images"></i> Ajouter une ou plusieurs photos</label>
+    {{ form.photos(class="form-control", accept="image/*", capture="environment", multiple=True) }}
+    <div class="form-text">Formats autorisés : jpg, jpeg, png. Max 30 Mo. <b>Photo vivement conseillée&nbsp;!</b></div>
+  </div>
+{% elif prefix == 'lost-' %}
+  <div class="mb-2 text-muted small"><i class="bi bi-info-circle"></i> Pour un objet perdu, la photo n’est pas requise.</div>
+{% endif %}
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var prefix = "{{ prefix }}";
+  // LOST
+  var select = document.getElementById(prefix + 'location-select');
+  var otherGroup = document.getElementById(prefix + 'location-other-group');
+  function updateOther() {
+    if (select && otherGroup) {
+      if (select.value === 'autre') {
+        otherGroup.style.display = 'block';
+        otherGroup.querySelector('input').required = true;
+      } else {
+        otherGroup.style.display = 'none';
+        otherGroup.querySelector('input').required = false;
+      }
+    }
+  }
+  if (select && otherGroup) {
+    select.addEventListener('change', updateOther);
+    updateOther();
+  }
+  // FOUND: found_location
+  var foundSelect = document.getElementById(prefix + 'found-location-select');
+  var foundOtherGroup = document.getElementById(prefix + 'found-location-other-group');
+  function updateFoundOther() {
+    if (foundSelect && foundOtherGroup) {
+      if (foundSelect.value === 'autre') {
+        foundOtherGroup.style.display = 'block';
+        foundOtherGroup.querySelector('input').required = true;
+      } else {
+        foundOtherGroup.style.display = 'none';
+        foundOtherGroup.querySelector('input').required = false;
+      }
+    }
+  }
+  if (foundSelect && foundOtherGroup) {
+    foundSelect.addEventListener('change', updateFoundOther);
+    updateFoundOther();
+  }
+  // FOUND: storage_location
+  var storageSelect = document.getElementById(prefix + 'storage-location-select');
+  var storageOtherGroup = document.getElementById(prefix + 'storage-location-other-group');
+  function updateStorageOther() {
+    if (storageSelect && storageOtherGroup) {
+      if (storageSelect.value === 'autre') {
+        storageOtherGroup.style.display = 'block';
+        storageOtherGroup.querySelector('input').required = true;
+      } else {
+        storageOtherGroup.style.display = 'none';
+        storageOtherGroup.querySelector('input').required = false;
+      }
+    }
+  }
+  if (storageSelect && storageOtherGroup) {
+    storageSelect.addEventListener('change', updateStorageOther);
+    updateStorageOther();
+  }
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var prefix = "{{ prefix }}";
+  var select = document.getElementById(prefix + 'location-select');
+  var otherGroup = document.getElementById(prefix + 'location-other-group');
+  function updateOther() {
+    if (select.value === 'autre') {
+      otherGroup.style.display = 'block';
+      otherGroup.querySelector('input').required = true;
+    } else {
+      otherGroup.style.display = 'none';
+      otherGroup.querySelector('input').required = false;
+    }
+  }
+  if (select && otherGroup) {
+    select.addEventListener('change', updateOther);
+    updateOther();
+  }
+});
+</script>
+{# Utilisation d'un préfixe pour chaque formulaire (lost/found) #}
+{% set prefix = prefix if prefix is defined else '' %}
+<div class="mb-3">
+  <div class="form-check form-switch mb-2">
+    <input class="form-check-input" type="checkbox" id="{{ prefix }}new-category-toggle">
+    <label class="form-check-label" for="{{ prefix }}new-category-toggle">Ajouter une nouvelle catégorie</label>
+  </div>
+  
+  <div id="{{ prefix }}existing-category-group">
+    {{ form.category.label(class="form-label") }}
+    <input type="text" class="form-control mb-2" id="{{ prefix }}category-search" placeholder="Rechercher une catégorie…" autocomplete="off" style="font-size:1.15rem;">
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        var search = document.getElementById('{{ prefix }}category-search');
+        var select = document.getElementById('{{ prefix }}category-select');
+        if (!search || !select) return;
+        function autoSelect(filter) {
+          var lower = filter.toLowerCase();
+          var best = null;
+          var bestStarts = null;
+          var opts = select.querySelectorAll('option');
+          opts.forEach(function(opt){
+            if (opt.value === '') return; // ignore placeholder
+            var txt = opt.textContent.trim().toLowerCase();
+            if (!lower) return;
+            if (txt.startsWith(lower)) {
+              if (!bestStarts) bestStarts = opt;
+            } else if (txt.includes(lower)) {
+              if (!best) best = opt;
+            }
+          });
+          var chosen = bestStarts || best;
+          if (chosen) {
+            select.value = chosen.value;
+          } else {
+            // aucune correspondance → rester sur placeholder
+            select.value = '';
+          }
+          // Notifie le changement pour validations dépendantes
+          var evt = new Event('change', { bubbles: true });
+          select.dispatchEvent(evt);
+        }
+        search.addEventListener('input', function() {
+          var filter = this.value.trim().toLowerCase();
+          var optgroups = select.querySelectorAll('optgroup');
+          var options = select.querySelectorAll('option');
+          // Affiche tout si champ vide
+          if (!filter) {
+            optgroups.forEach(function(g) { g.style.display = ''; });
+            options.forEach(function(opt) { opt.style.display = ''; });
+            select.value = '';
+            var evt = new Event('change', { bubbles: true });
+            select.dispatchEvent(evt);
+            return;
+          }
+          // Filtrage visuel
+          optgroups.forEach(function(group) {
+            var hasVisible = false;
+            group.querySelectorAll('option').forEach(function(opt) {
+              if (opt.textContent.toLowerCase().includes(filter)) {
+                opt.style.display = '';
+                hasVisible = true;
+              } else {
+                opt.style.display = 'none';
+              }
+            });
+            group.style.display = hasVisible ? '' : 'none';
+          });
+          // Options hors optgroup (rare)
+          select.childNodes.forEach(function(node) {
+            if (node.nodeName === 'OPTION' && node.value === '') return; // Garde "Sélectionnez..."
+            if (node.nodeName === 'OPTION') {
+              node.style.display = node.textContent.toLowerCase().includes(filter) ? '' : 'none';
+            }
+          });
+          // Sélection automatique de la meilleure correspondance
+          autoSelect(filter);
+        });
+        // Sélection au blur si l'utilisateur a tapé un nom exact
+        search.addEventListener('blur', function(){
+          var filter = this.value.trim();
+          if (!filter) return;
+          autoSelect(filter);
+        });
+      });
+    </script>
+    {{ form.category(class="form-select", id=prefix ~ 'category-select', style='min-height:3.2em;font-size:1.15rem;') }}
+  </div>
+
+<div id="{{ prefix }}new-category-group" style="display: none;">
+    {{ form.new_category.label(class="form-label") }}
+    {{ form.new_category(
+        class="form-control", 
+        id=prefix ~ 'new-category-input',
+        placeholder="Entrez le nom de la nouvelle catégorie"
+    ) }}
+    <div class="form-text">La catégorie sera créée et disponible pour les prochaines déclarations.</div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var prefix = "{{ prefix }}";
+  var toggle = document.getElementById(prefix + 'new-category-toggle');
+  var select = document.getElementById(prefix + 'category-select');
+  var input = document.getElementById(prefix + 'new-category-input');
+  var newGroup = document.getElementById(prefix + 'new-category-group');
+  var existingGroup = document.getElementById(prefix + 'existing-category-group');
+  function updateCategoryFields() {
+    if (toggle.checked) {
+      // Désélectionne et désactive le select
+      if (select) {
+        select.value = '';
+        select.disabled = true;
+      }
+      // Active et rend obligatoire le champ texte
+      if (input) {
+        input.disabled = false;
+        input.required = true;
+      }
+      newGroup.style.display = 'block';
+      existingGroup.style.opacity = '0.5';
+    } else {
+      // Réactive le select
+      if (select) {
+        select.disabled = false;
+        select.required = true;
+      }
+      // Vide et désactive le champ texte
+      if (input) {
+        input.value = '';
+        input.disabled = true;
+        input.required = false;
+      }
+      newGroup.style.display = 'none';
+      existingGroup.style.opacity = '1';
+    }
+  }
+  if (toggle) {
+    toggle.addEventListener('change', updateCategoryFields);
+    updateCategoryFields();
+  }
+});
+</script>
+</div>
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Récupère le préfixe depuis le template Jinja
+  var prefix = "{{ prefix }}";
+  const toggle = document.getElementById(prefix + 'new-category-toggle');
+  const existingGroup = document.getElementById(prefix + 'existing-category-group');
+  const newGroup = document.getElementById(prefix + 'new-category-group');
+  const categorySelect = document.querySelector('select[name="' + prefix + 'category"]');
+  const newCategoryInput = document.querySelector('input[name="' + prefix + 'new_category"]');
+
+  if (!toggle || !existingGroup || !newGroup || !categorySelect || !newCategoryInput) return;
+
+  toggle.addEventListener('change', function() {
+    if (this.checked) {
+      existingGroup.style.display = 'none';
+      newGroup.style.display = 'block';
+      categorySelect.required = false;
+      newCategoryInput.required = true;
+    } else {
+      existingGroup.style.display = 'block';
+      newGroup.style.display = 'none';
+      categorySelect.required = true;
+      newCategoryInput.required = false;
+    }
+  });
+
+  if (newCategoryInput && newCategoryInput.value) {
+    toggle.checked = true;
+    existingGroup.style.display = 'none';
+    newGroup.style.display = 'block';
+    categorySelect.required = false;
+    newCategoryInput.required = true;
+  }
+});
+</script>
+{% endblock %}
+

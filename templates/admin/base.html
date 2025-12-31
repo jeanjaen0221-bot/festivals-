@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+{% block title %}Admin | {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <!-- Hamburger menu for mobile -->
+  <button class="btn btn-primary d-lg-none position-fixed top-0 start-0 m-2 zindex-tooltip" style="z-index: 1052;" type="button" aria-label="Ouvrir le menu admin" data-bs-toggle="sidebar" aria-controls="sidebarMenu" aria-expanded="false">
+    <span class="navbar-toggler-icon"></span>
+  </button>
+  <div class="row">
+    <!-- Sidebar -->
+    <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-block bg-dark sidebar" aria-label="Menu administratif" aria-controls="sidebarMenu" aria-expanded="false">
+      <!-- Mobile close button -->
+      <button type="button" class="btn-close btn-close-white d-lg-none position-absolute top-0 end-0 m-3" style="z-index:1051;" aria-label="Fermer le menu" onclick="toggleSidebar(false)"></button>
+      <div class="position-sticky pt-3">
+        <ul class="nav flex-column">
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path == url_for('admin.admin_dashboard') %}active{% endif %}" href="{{ url_for('admin.admin_dashboard') }}">
+              <i class="bi bi-speedometer2"></i> Tableau de bord
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.deletion_requests')) %}active{% endif %}" href="{{ url_for('admin.deletion_requests') }}">
+              <i class="bi bi-trash"></i> Demandes de suppression
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.admin_users')) %}active{% endif %}" href="{{ url_for('admin.admin_users') }}">
+              <i class="bi bi-people"></i> Utilisateurs
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.admin_logs')) %}active{% endif %}" href="{{ url_for('admin.admin_logs') }}">
+              <i class="bi bi-journal-text"></i> Logs
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.helmet_rentals')) %}active{% endif %}" href="{{ url_for('admin.helmet_rentals') }}">
+              <i class="bi bi-headphones"></i> Locations casques
+            </a>
+          </li>
+
+          <li class="nav-item mt-3">
+            <a class="nav-link text-success fw-bold" href="https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS" target="_blank" rel="noopener"><i class="bi bi-whatsapp"></i> Contact WhatsApp</a>
+          </li>
+          <li class="nav-item mt-3">
+            <a class="nav-link text-secondary" href="{{ url_for('main.index') }}">
+              <i class="bi bi-arrow-left"></i> Retour au site
+            </a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4" id="adminMainContent">
+
+      <!-- Header admin -->
+      <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+        <div class="d-flex align-items-center gap-3">
+          <span class="fs-4 fw-bold text-primary"><i class="bi bi-shield-lock-fill me-2"></i>Administration</span>
+          <span class="badge bg-primary d-none d-md-inline">LostFound Festival</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="text-muted small">{{ current_user.first_name }} {{ current_user.last_name }}</span>
+          <span class="bg-secondary-subtle rounded-circle d-inline-flex align-items-center justify-content-center" style="width:36px;height:36px;">
+            <i class="bi bi-person-circle fs-4 text-secondary"></i>
+          </span>
+        </div>
+      </div>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block admin_content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<!-- Bootstrap Icons CDN -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+
+<style>
+  body {
+    background-color: #f8f9fa;
+  }
+  .sidebar {
+    min-height: 100vh;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+    background: linear-gradient(180deg, #212529 80%, #343a40 100%);
+    position: relative;
+  }
+  .sidebar .nav-link.active {
+    background: #0d6efd;
+    color: #fff !important;
+    font-weight: bold;
+    border-radius: 5px;
+  }
+  .sidebar .nav-link {
+    transition: background 0.2s;
+    border-radius: 5px;
+    margin-bottom: 2px;
+    font-size: 1.08rem;
+  }
+  .sidebar .nav-link:hover {
+    background: #0d6efd33;
+    color: #fff !important;
+  }
+  .btn-close[aria-label="Fermer le menu"] {
+    display: none;
+  }
+  @media (max-width: 991.98px) {
+    #sidebarMenu {
+      position: fixed;
+      z-index: 9999;
+      left: 0;
+      top: 0;
+      height: 100vh;
+      width: 220px;
+      background: #212529;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease-in-out;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.15);
+      display: block !important;
+    }
+    #sidebarMenu.show {
+      transform: translateX(0);
+    }
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 9998;
+    }
+    .btn-close[aria-label="Fermer le menu"] {
+      display: block;
+    }
+    .position-sticky.pt-3 {
+      padding-top: 3.5rem !important;
+    }
+    .zindex-tooltip {
+      z-index: 1052 !important;
+    }
+  }
+  @media (max-width: 767.98px) {
+    main, #adminMainContent {
+      padding: 1rem 0.5rem !important;
+    }
+    .sidebar {
+      font-size: 1rem;
+    }
+    .navbar, .d-flex.justify-content-between.flex-wrap.flex-md-nowrap.align-items-center.pb-2.mb-3.border-bottom {
+      position: sticky;
+      top: 0;
+      z-index: 1030;
+      background: #fff;
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+    }
+  }
+  /* Prevent horizontal scroll on mobile */
+  html, body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+</style>
+<script>
+  // Sidebar responsive toggle
+  document.addEventListener('DOMContentLoaded', function() {
+    var sidebar = document.getElementById('sidebarMenu');
+    var backdrop;
+    function toggleSidebar(show) {
+      if (show) {
+        sidebar.classList.add('show');
+        backdrop = document.createElement('div');
+        backdrop.className = 'sidebar-backdrop';
+        backdrop.onclick = function() { toggleSidebar(false); };
+        document.body.appendChild(backdrop);
+        // Prevent scrolling when sidebar is open
+        document.body.style.overflow = 'hidden';
+      } else {
+        sidebar.classList.remove('show');
+        if (backdrop) backdrop.remove();
+        document.body.style.overflow = '';
+      }
+    }
+    document.body.addEventListener('click', function(e) {
+      if (e.target.matches('[data-bs-toggle="sidebar"]')) {
+        e.preventDefault();
+        toggleSidebar(true);
+      }
+    });
+    window.toggleSidebar = toggleSidebar;
+  });
+</script>
+{% endblock %}

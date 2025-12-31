@@ -1,0 +1,344 @@
+{% extends 'base.html' %}
+{% block title %}Prêts de casques | {{ super() }}{% endblock %}
+{% block content %}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <h2>Enregistrer un prêt de casque</h2>
+    <form method="post" onsubmit="return validateQuantity();">
+      {{ form.hidden_tag() }}
+      <div class="row g-3">
+        <div class="col-md-3">
+          {{ form.first_name.label(class="form-label") }}
+          {{ form.first_name(class="form-control") }}
+        </div>
+        <div class="col-md-3">
+          {{ form.last_name.label(class="form-label") }}
+          {{ form.last_name(class="form-control") }}
+        </div>
+        <div class="col-md-3">
+          {{ form.phone.label(class="form-label") }}
+          {{ form.phone(class="form-control") }}
+        </div>
+        <div class="col-md-3">
+          {{ form.deposit_type.label(class="form-label mb-2") }}
+          <div class="d-flex align-items-center gap-3">
+            {% for subfield in form.deposit_type %}
+              <div class="form-check">
+                {{ subfield(class="form-check-input", id=subfield.id) }}
+                <label for="{{ subfield.id }}" class="form-check-label">{{ subfield.label.text }}</label>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-3" id="depositAmountField" style="display:none;">
+          {{ form.deposit_amount.label(class="form-label") }}
+          {{ form.deposit_amount(class="form-control") }}
+        </div>
+        <div class="col-md-3">
+          {{ form.quantity.label(class="form-label") }}
+          {{ form.quantity(class="form-control", min="1", step="1", pattern="[0-9]+") }}
+        </div>
+        <div class="col-md-6">
+          {{ form.deposit_details.label(class="form-label") }}
+          {{ form.deposit_details(class="form-control") }}
+        </div>
+        <div class="col-md-6" id="id-card-photo-field" style="display:none;">
+          <div class="alert alert-warning mb-2">Champ photo CI (test/debug) : doit apparaître si 'Carte d'identité' est sélectionné.</div>
+          {{ form.id_card_photo.label(class="form-label") }}
+          <div class="input-group">
+            {{ form.id_card_photo(class="form-control d-none", id="id-card-photo-input", accept="image/*", capture="environment", onchange="previewIdCardPhoto(event)") }}
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('id-card-photo-input').click();">
+              Prendre une photo / Choisir une image
+            </button>
+          </div>
+          <small class="form-text text-muted">Sur mobile, ce bouton ouvre la caméra.</small>
+          <div id="id-card-photo-preview" class="mt-2"></div>
+        </div>
+        <div class="col-md-12">
+          <button type="submit" id="submit-loan-btn" class="btn btn-success mt-2"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Enregistrer le prêt</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <h2>Liste des prêts de casques</h2>
+    <form method="get" class="mb-3">
+      <div class="row g-2 align-items-center">
+        <div class="col-auto">
+          <input type="text" name="q" value="{{ search }}" class="form-control" placeholder="Filtrer par nom ou prénom" autocomplete="off">
+        </div>
+        <div class="col-auto">
+          <select name="sort" class="form-select" onchange="this.form.submit()">
+            <option value="date" {% if request.args.get('sort', 'date') == 'date' %}selected{% endif %}>Trié par heure de prêt</option>
+            <option value="name" {% if request.args.get('sort') == 'name' %}selected{% endif %}>Trié par nom (A-Z)</option>
+          </select>
+        </div>
+        <div class="col-auto d-none d-md-block">
+          <button class="btn btn-outline-primary" type="submit">Rechercher</button> <!-- bouton caché en live -->
+        </div>
+      </div>
+    </form>
+    <div class="table-responsive">
+<table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Nom</th>
+          <th>Prénom</th>
+          <th>Téléphone</th>
+          <th>Quantité</th>
+          <th>Caution</th>
+          <th>Montant (€)</th>
+          <th>Date prêt</th>
+          <th>Date retour</th>
+          <th>Signature retour</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for loan in loans %}
+        <tr>
+          <td>{{ loan.last_name }}</td>
+          <td>{{ loan.first_name }}</td>
+          <td>{{ loan.phone }}</td>
+          <td>{{ loan.quantity }}</td>
+          <td>{{ loan.deposit_type.value if loan.deposit_type else '' }}<br>{{ loan.deposit_details }}</td>
+          <td>{% if loan.deposit_amount %}{{ '%.2f'|format(loan.deposit_amount) }}{% endif %}</td>
+          <td>{{ loan.loan_date.strftime('%d/%m/%Y %H:%M') if loan.loan_date else '' }}</td>
+          <td>{{ loan.return_date.strftime('%d/%m/%Y %H:%M') if loan.return_date else '' }}</td>
+          <td>
+            {% if not loan.return_date %}
+              <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#signatureModal{{ loan.id }}">Retourner</button>
+              <!-- Modal pour signature -->
+              <div class="modal fade" id="signatureModal{{ loan.id }}" tabindex="-1" aria-labelledby="signatureModalLabel{{ loan.id }}" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered" style="max-width:95vw;">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h5 class="modal-title" id="signatureModalLabel{{ loan.id }}">Signature de retour</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                      <canvas id="signaturePad{{ loan.id }}" width="400" height="200" style="border:1px solid #ccc;"></canvas>
+                      <div class="mt-2">
+                        <button class="btn btn-secondary btn-sm" onclick="clearSignature(Number('{{ loan.id }}'))">Effacer</button>
+                        <button class="btn btn-primary btn-sm" id="save-signature-btn-{{ loan.id }}" onclick="saveSignature(Number('{{ loan.id }}'))"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Valider</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% elif loan.signature %}
+              <button class="btn btn-link" data-bs-toggle="modal" data-bs-target="#signatureModal{{ loan.id }}">Voir</button>
+              <!-- Modal pour voir la signature -->
+              <div class="modal fade" id="signatureModal{{ loan.id }}" tabindex="-1" aria-labelledby="signatureModalLabel{{ loan.id }}" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered" style="max-width:95vw;">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h5 class="modal-title" id="signatureModalLabel{{ loan.id }}">Signature de retour</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                      <img src="{{ loan.signature }}" alt="Signature" style="max-width:100%; border:1px solid #ccc;" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            {% if loan.status.name == 'PENDING_DELETION' %}
+              <span class="badge bg-warning text-dark">En attente suppression</span>
+            {% elif not loan.return_date %}
+              <div class="d-flex flex-column flex-md-row align-items-start gap-1">
+                <form method="post" action="{{ url_for('main.request_loan_deletion', loan_id=loan.id) }}" style="display:inline;" onsubmit="return confirm('Demander la suppression de ce prêt ?');">
+                  {{ form.csrf_token }}
+                  <button type="submit" class="btn btn-outline-danger btn-sm ms-2">Demander suppression</button>
+                </form>
+              </div>
+            {% else %}
+              <span class="badge bg-success">Retourné</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+</div> <!-- .table-responsive -->
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.6/dist/signature_pad.umd.min.js"></script>
+<script>
+// Gestion signature dynamique par prêt
+const signaturePads = {};
+function initSignaturePad(loanId) {
+  const canvas = document.getElementById('signaturePad' + loanId);
+  if (canvas && !signaturePads[loanId]) {
+    signaturePads[loanId] = new SignaturePad(canvas);
+  }
+}
+function clearSignature(loanId) {
+  if (signaturePads[loanId]) signaturePads[loanId].clear();
+}
+function saveSignature(loanId) {
+  var btn = document.getElementById('save-signature-btn-' + loanId);
+  if(btn) {
+    btn.disabled = true;
+    var spinner = btn.querySelector('.spinner-border');
+    if(spinner) spinner.classList.remove('d-none');
+  }
+  const pad = signaturePads[loanId];
+  if (!pad || pad.isEmpty()) {
+    alert('Merci de signer avant de valider.');
+    return;
+  }
+  const dataUrl = pad.toDataURL();
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  fetch(`/loans/${loanId}/return`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrfToken || ''
+    },
+    body: JSON.stringify({ signature: dataUrl })
+  })
+    .then(async resp => {
+      let data;
+      try { data = await resp.json(); } catch (e) {
+        alert('Erreur serveur: réponse non conforme (pas du JSON).');
+        return;
+      }
+      if (resp.ok && data.success) {
+        location.reload();
+      } else {
+        alert('Erreur: ' + (data && data.error ? data.error : 'Impossible de sauvegarder la signature.'));
+      }
+    })
+    .catch(err => {
+      alert('Erreur réseau ou JSON: ' + err);
+    });
+}
+// Bootstrap : initialisation du pad à l’ouverture du modal
+window.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.modal.fade[id^="signatureModal"]').forEach(function(modal) {
+    modal.addEventListener('shown.bs.modal', function() {
+      const loanId = this.id.replace('signatureModal', '');
+      initSignaturePad(loanId);
+    });
+  });
+});
+// Affiche/masque le champ montant selon le choix de la caution
+function updateDepositAmountField() {
+  const radios = document.getElementsByName('deposit_type');
+  let show = false;
+  for (const radio of radios) {
+    if (radio.checked && radio.value === 'cash') show = true;
+  }
+  document.getElementById('depositAmountField').style.display = show ? '' : 'none';
+  if (show) {
+    autoFillDepositAmount();
+  }
+}
+function autoFillDepositAmount() {
+  var quantityInput = document.getElementById('quantity');
+  var depositAmountInput = document.getElementById('deposit_amount');
+  if (quantityInput && depositAmountInput) {
+    let q = parseInt(quantityInput.value, 10);
+    if (isNaN(q) || q < 1) q = 1;
+    depositAmountInput.value = (q * 20).toFixed(2);
+  }
+}
+window.addEventListener('DOMContentLoaded', function() {
+  var radios = document.getElementsByName('deposit_type');
+  for (var i = 0; i < radios.length; i++) {
+    radios[i].addEventListener('change', updateDepositAmountField);
+  }
+  var quantityInput = document.getElementById('quantity');
+  if (quantityInput) {
+    quantityInput.addEventListener('input', function() {
+      const radios = document.getElementsByName('deposit_type');
+      for (const radio of radios) {
+        if (radio.checked && radio.value === 'cash') {
+          autoFillDepositAmount();
+        }
+      }
+    });
+  }
+  updateDepositAmountField();
+});
+
+let currentLoanId = null;
+let signaturePad = null;
+
+function openSignatureModal(loanId) {
+  currentLoanId = loanId;
+  const modal = new bootstrap.Modal(document.getElementById('signatureModal'));
+  modal.show();
+  if (!signaturePad) {
+    const canvas = document.getElementById('signaturePad');
+    signaturePad = new SignaturePad(canvas);
+  } else {
+    signaturePad.clear();
+  }
+}
+
+var clearBtn = document.getElementById('clearSignature');
+if (clearBtn) {
+    clearBtn.onclick = function() {
+        if (signaturePad) signaturePad.clear();
+    };
+}
+
+var saveBtn = document.getElementById('saveSignature');
+if (saveBtn) {
+    saveBtn.onclick = function() {
+        if (!signaturePad || signaturePad.isEmpty()) {
+            alert('Merci de signer avant de valider.');
+            return;
+        }
+        const dataUrl = signaturePad.toDataURL();
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        fetch(`/loans/${currentLoanId}/return`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken || ''
+            },
+            body: JSON.stringify({ signature: dataUrl })
+        })
+        .then(async resp => {
+            let data;
+            try {
+                data = await resp.json();
+            } catch (e) {
+                alert('Erreur serveur: réponse non conforme (pas du JSON).');
+                return;
+            }
+            if (resp.ok && data.success) {
+                location.reload();
+            } else {
+                alert('Erreur: ' + (data && data.error ? data.error : 'Impossible de sauvegarder la signature.'));
+            }
+        })
+        .catch(err => {
+            alert('Erreur réseau ou JSON: ' + err);
+        });
+    };
+}
+function validateQuantity() {
+  var q = document.getElementById('quantity');
+  if (q) {
+    let v = parseInt(q.value, 10);
+    if (isNaN(v) || v < 1) {
+      q.value = 1;
+    } else {
+      q.value = v;
+    }
+  }
+  return true;
+}
+</script>
+<script src="{{ url_for('static', filename='js/loans-search.js') }}"></script>
+{% endblock %}
