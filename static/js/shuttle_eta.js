@@ -53,12 +53,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   } catch (e) {}
 
-  // Params summary (static)
-  paramsEl.textContent = `Paramètres: ~${settings.mean_leg_minutes || 5} min entre arrêts, temps d'arrêt selon parcours, ` +
-    `${settings.loop_enabled ? 'mode boucle activé' : 'mode non bouclé'}, ` +
-    `${settings.bidirectional_enabled ? 'bidirectionnel' : 'sens unique'}, ` +
-    `affichage: ${(settings.display_direction || 'forward')}${settings.display_base_stop_sequence ? ', départ séquence ' + settings.display_base_stop_sequence : ''}` +
-    `${settings.constrain_to_today_slots ? ' (limité aux créneaux du jour)' : ''}`;
+  try {
+    const parts = [];
+    parts.push(`~${settings.mean_leg_minutes || 5} min entre arrêts`);
+    parts.push(`temps d'arrêt selon parcours`);
+    parts.push(settings.loop_enabled ? 'mode boucle activé' : 'mode non bouclé');
+    parts.push(settings.bidirectional_enabled ? 'bidirectionnel' : 'sens unique');
+    if (settings.bidirectional_enabled) {
+      const dirLabel = (settings.display_direction === 'backward' ? 'Retour' : 'Aller');
+      parts.push(`affichage: ${dirLabel}`);
+    }
+    if (settings.display_base_stop_sequence) {
+      parts.push(`départ séquence ${settings.display_base_stop_sequence}`);
+    }
+    if (settings.constrain_to_today_slots) {
+      parts.push('limité aux créneaux du jour');
+    }
+    paramsEl.textContent = `Paramètres: ${parts.join(', ')}`;
+  } catch (e) {}
 
   function addMinutes(base, minutes) {
     const d = new Date(base.getTime());

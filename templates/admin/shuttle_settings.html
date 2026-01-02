@@ -25,6 +25,7 @@
       <div class="col-md-6">
         {{ form.display_direction.label(class="form-label") }}
         {{ form.display_direction(class="form-select") }}
+        <div class="form-text">N'a d'effet que si le mode bidirectionnel est activé.</div>
       </div>
       <div class="col-md-6">
         {{ form.display_base_stop_sequence.label(class="form-label") }}
@@ -34,5 +35,43 @@
     </div>
     <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
   </form>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var bidi = document.getElementById('bidirectionalEnabled');
+      var dir = document.querySelector('select[name="display_direction"]');
+      var formEl = (dir && dir.closest('form'));
+      var mirror = null;
+      function ensureMirror() {
+        if (!mirror && formEl) {
+          mirror = document.createElement('input');
+          mirror.type = 'hidden';
+          mirror.name = dir.name;
+          mirror.value = dir.value;
+          formEl.appendChild(mirror);
+        }
+      }
+      function removeMirror() {
+        if (mirror) { mirror.remove(); mirror = null; }
+      }
+      function sync() {
+        if (!bidi || !dir) return;
+        if (bidi.checked) {
+          // enable select and remove mirror
+          dir.disabled = false;
+          removeMirror();
+        } else {
+          // disable select and keep submitting its value via hidden input
+          dir.disabled = true;
+          ensureMirror();
+          if (mirror) mirror.value = dir.value;
+        }
+      }
+      if (bidi && dir) {
+        bidi.addEventListener('change', sync);
+        dir.addEventListener('change', function(){ if (mirror) mirror.value = dir.value; });
+        sync();
+      }
+    });
+  </script>
 </div>
 {% endblock %}
