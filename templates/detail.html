@@ -99,14 +99,9 @@ document.addEventListener('DOMContentLoaded', function() {
     <a href="{{ url_for('main.edit_item', item_id=item.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Modifier la fiche</a>
   {% endif %}
 </div>
-  <i class="bi bi-box-seam text-primary"></i> {{ item.title }}
-  <span class="badge {% if item.status == Status.LOST %}bg-danger{% elif item.status == Status.FOUND %}bg-primary{% elif item.status == Status.RETURNED %}bg-success{% elif item.status == Status.PENDING_DELETION %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-2">
-    {{ item.status.name.capitalize() }}
-  </span>
   {% if has_match %}
     <span class="badge bg-success ms-2">Match validé</span>
   {% endif %}
-</h3>
       <div class="card p-3 mb-3 bg-light border-0 shadow-sm rounded-4">
   <p class="mb-2"><i class="bi bi-tag text-secondary"></i> <strong>Catégorie :</strong>
     {% if item.category %}{{ item.category.name }}{% else %}—{% endif %}

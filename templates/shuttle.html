@@ -5,25 +5,41 @@
   <h1 class="mb-4"><i class="bi bi-bus-front"></i> Navette Esperanzah</h1>
   <div class="row g-4">
     <div class="col-lg-6">
-      <div class="card shadow-sm">
-        <div class="card-header bg-white fw-semibold border-bottom"><i class="bi bi-signpost"></i> Parcours</div>
+      <div class="card shadow rounded-3 border-0">
+        <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-signpost"></i> Parcours</span>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="popover" data-bs-placement="bottom" title="Parcours"
+            data-bs-content="Liste des arrêts dans l'ordre. Le badge +X min indique le temps d'arrêt moyen. Le badge ‘Départ’ marque le point de départ affiché."><i class="bi bi-question-circle"></i></button>
+        </div>
         <div class="card-body">
           <ol id="shuttle-route" class="list-group list-group-numbered"></ol>
         </div>
       </div>
-      <div class="card shadow-sm mt-3">
-        <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center"><span><i class="bi bi-calendar-event"></i> Planning d'aujourd'hui</span><span id="shuttle-service-badge" class="badge rounded-pill ms-2"></span></div>
+      <div class="card shadow rounded-3 border-0 mt-3">
+        <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-calendar-event"></i> Planning d'aujourd'hui</span>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="popover" data-bs-placement="bottom" title="Planning du jour"
+              data-bs-content="Créneaux où la navette circule. ‘En cours’ = actuellement actif. ‘À venir’ = prochain créneau."><i class="bi bi-question-circle"></i></button>
+            <span id="shuttle-service-badge" class="badge rounded-pill ms-2"></span>
+          </div>
+        </div>
         <div class="card-body">
           <div id="shuttle-today" class="small text-muted"></div>
           <ul id="shuttle-today-slots" class="list-group mt-2"></ul>
+          <div class="text-muted small mt-2">Légende: <span class="badge bg-success">En cours</span> service actif · <span class="badge bg-warning text-dark">À venir</span> prochain créneau · <span class="badge bg-info text-dark">Note</span> précision.</div>
         </div>
       </div>
     </div>
     <div class="col-lg-6">
-      <div class="card shadow-sm">
+      <div class="card shadow rounded-3 border-0">
         <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center">
-          <span>Tableau d'arrivée (approx.)</span>
-          <small id="shuttle-clock" class="text-muted"></small>
+          <span><i class="bi bi-clock"></i> Tableau d'arrivée (approx.)</span>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="popover" data-bs-placement="bottom" title="Arrivées estimées"
+              data-bs-content="Heures calculées à partir des réglages et du parcours. Ligne surlignée = prochain arrêt."><i class="bi bi-question-circle"></i></button>
+            <small id="shuttle-clock" class="text-muted"></small>
+          </div>
         </div>
         <div class="card-body">
           <div class="table-responsive mt-1">
@@ -52,5 +68,13 @@
   #shuttle-today-slots .list-group-item { padding-top: .5rem; padding-bottom: .5rem; }
   #shuttle-route + .small, #shuttle-today + .small { color: #6c757d; }
 </style>
-<script src="{{ url_for('static', filename='js/shuttle_eta.js') }}?v=20260103-1"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    if (window.bootstrap && bootstrap.Popover) {
+      [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+        .forEach(function (el) { new bootstrap.Popover(el, {container: 'body'}); });
+    }
+  });
+</script>
+<script src="{{ url_for('static', filename='js/shuttle_eta.js') }}?v=20260103-2"></script>
 {% endblock %}
