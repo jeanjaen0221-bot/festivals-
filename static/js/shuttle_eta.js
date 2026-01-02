@@ -2,10 +2,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const routeEl = document.getElementById('shuttle-route');
   const todayInfoEl = document.getElementById('shuttle-today');
   const todaySlotsEl = document.getElementById('shuttle-today-slots');
-  const selectStopEl = document.getElementById('shuttle-current-stop');
-  const startTimeEl = document.getElementById('shuttle-start-time');
   const etaTableBody = document.querySelector('#shuttle-eta-table tbody');
   const paramsEl = document.getElementById('shuttle-params');
+  const clockEl = document.getElementById('shuttle-clock');
 
   let route = [];
   let settings = { mean_leg_minutes: 5, loop_enabled: false, bidirectional_enabled: false, constrain_to_today_slots: false };
@@ -28,20 +27,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (Array.isArray(route) && route.length) {
     route.sort((a,b) => (a.sequence||0) - (b.sequence||0));
     routeEl.innerHTML = '';
-    selectStopEl.innerHTML = '';
     route.forEach((s, idx) => {
       const li = document.createElement('li');
       li.className = 'list-group-item d-flex justify-content-between align-items-center';
       li.innerHTML = `<span>${s.name}</span><span class="badge bg-secondary">+${s.dwell_minutes || 0} min</span>`;
       routeEl.appendChild(li);
-      const opt = document.createElement('option');
-      opt.value = idx;
-      opt.textContent = `${s.sequence}. ${s.name}`;
-      selectStopEl.appendChild(opt);
     });
   } else {
     routeEl.innerHTML = '<li class="list-group-item text-muted">Aucun arrêt configuré.</li>';
-    selectStopEl.innerHTML = '<option value="0">—</option>';
   }
 
   // Render today schedule
@@ -60,26 +53,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   } catch (e) {}
 
-  // Default start time to current HH:mm
-  try {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    startTimeEl.value = `${hh}:${mm}`;
-  } catch (e) {}
-
-  // Toggle direction selector depending on settings
-  const dirGroup = document.getElementById('shuttle-direction-group');
-  const dirSelect = document.getElementById('shuttle-direction');
-  if (settings.bidirectional_enabled && dirGroup) {
-    dirGroup.style.display = '';
-  } else if (dirGroup) {
-    dirGroup.style.display = 'none';
-  }
-
+  // Params summary (static)
   paramsEl.textContent = `Paramètres: ~${settings.mean_leg_minutes || 5} min entre arrêts, temps d'arrêt selon parcours, ` +
     `${settings.loop_enabled ? 'mode boucle activé' : 'mode non bouclé'}, ` +
-    `${settings.bidirectional_enabled ? 'bidirectionnel' : 'sens unique'}` +
+    `${settings.bidirectional_enabled ? 'bidirectionnel' : 'sens unique'}, ` +
+    `affichage: ${(settings.display_direction || 'forward')}${settings.display_base_stop_sequence ? ', départ séquence ' + settings.display_base_stop_sequence : ''}` +
     `${settings.constrain_to_today_slots ? ' (limité aux créneaux du jour)' : ''}`;
 
   function addMinutes(base, minutes) {
@@ -115,16 +93,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     return null;
   }
 
-  document.getElementById('shuttle-eta-form').addEventListener('submit', (e) => {
-    e.preventDefault();
+
+  function computeAndRenderBoard() {
     if (!route || !route.length) return;
-    const startIdx = parseInt(selectStopEl.value || '0', 10) || 0;
-    const timeVal = startTimeEl.value || '00:00';
     const warningEl = document.getElementById('shuttle-eta-warning');
     if (warningEl) { warningEl.classList.add('d-none'); warningEl.textContent = ''; }
 
-    const base = new Date();
-    const startMin = timeToMinutes(timeVal);
+    // Base time: now
+    const now = new Date();
+    const startMin = (now.getHours() * 60) + now.getMinutes();
+
+    // Determine direction from settings
+    const forward = !(settings.bidirectional_enabled && (settings.display_direction === 'backward'));
+    const ordered = forward ? route.slice().sort((a,b)=>a.sequence-b.sequence) : route.slice().sort((a,b)=>b.sequence-a.sequence);
+
+    // Resolve start index from display_base_stop_sequence if provided
+    let mappedStartIdx = 0;
+    if (settings.display_base_stop_sequence) {
+      const seq = settings.display_base_stop_sequence;
+      const idx = ordered.findIndex(s => s.sequence === seq);
+      if (idx >= 0) mappedStartIdx = idx;
+    }
 
     // Constrain to today's active slot (optional)
     let activeRange = null;
@@ -134,30 +123,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         warningEl.textContent = "La navette est hors service à cette heure (hors des créneaux du jour).";
         warningEl.classList.remove('d-none');
         etaTableBody.innerHTML = '';
-        return; // stop calculation
+        return;
       }
     }
 
-    // Determine order and starting index depending on direction
-    const forward = !(settings.bidirectional_enabled && dirSelect && dirSelect.value === 'backward');
-    const ordered = forward ? route.slice() : route.slice().reverse();
-    const mappedStartIdx = forward ? startIdx : (route.length - 1 - startIdx);
-
-    // Build list of N stops to display
     const N = ordered.length;
     etaTableBody.innerHTML = '';
     let currentMin = startMin;
     for (let k = 0; k < N; k++) {
       const idx = settings.loop_enabled ? ((mappedStartIdx + k) % N) : (mappedStartIdx + k);
       if (!settings.loop_enabled && idx >= N) break;
-      if (k > 0) {
-        currentMin += (settings.mean_leg_minutes || 5);
-      }
-      // dwell
+      if (k > 0) currentMin += (settings.mean_leg_minutes || 5);
       const stop = ordered[idx];
       currentMin += (stop.dwell_minutes || 0);
 
-      // If constrained to slot, stop if we exceed the slot end
       if (activeRange && currentMin > activeRange[1]) {
         if (warningEl) {
           warningEl.textContent = "Calcul limité à la fin du créneau en cours.";
@@ -167,8 +146,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${stop.name}</td><td>${formatTime(minutesToDate(base, currentMin))}</td>`;
+      tr.innerHTML = `<td>${stop.name}</td><td>${formatTime(minutesToDate(now, currentMin))}</td>`;
       etaTableBody.appendChild(tr);
     }
-  });
+  }
+
+  // Clock and auto-refresh
+  function updateClock() {
+    if (clockEl) {
+      const now = new Date();
+      clockEl.textContent = formatTime(now);
+    }
+  }
+  updateClock();
+  computeAndRenderBoard();
+  setInterval(updateClock, 1000);
+  setInterval(computeAndRenderBoard, 30000);
 });

@@ -21,6 +21,17 @@
       {{ form.constrain_to_today_slots(class="form-check-input", id="constrainToToday") }}
       <label class="form-check-label" for="constrainToToday">{{ form.constrain_to_today_slots.label.text }}</label>
     </div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        {{ form.display_direction.label(class="form-label") }}
+        {{ form.display_direction(class="form-select") }}
+      </div>
+      <div class="col-md-6">
+        {{ form.display_base_stop_sequence.label(class="form-label") }}
+        {{ form.display_base_stop_sequence(class="form-control", placeholder="ex: 1") }}
+        <div class="form-text">Laisser vide pour utiliser le premier arrêt du parcours.</div>
+      </div>
+    </div>
     <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
   </form>
 </div>

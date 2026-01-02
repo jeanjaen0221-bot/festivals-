@@ -171,6 +171,8 @@ def shuttle_settings():
         settings.loop_enabled = bool(form.loop_enabled.data)
         settings.bidirectional_enabled = bool(form.bidirectional_enabled.data)
         settings.constrain_to_today_slots = bool(form.constrain_to_today_slots.data)
+        settings.display_direction = (form.display_direction.data or 'forward')
+        settings.display_base_stop_sequence = form.display_base_stop_sequence.data if form.display_base_stop_sequence.data else None
         db.session.commit()
         flash('Réglages navette enregistrés.', 'success')
         return redirect(url_for('admin_shuttle.shuttle_settings'))

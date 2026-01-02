@@ -140,6 +140,8 @@ class ShuttleSettings(db.Model):
     loop_enabled = db.Column(db.Boolean, nullable=False, default=False)
     bidirectional_enabled = db.Column(db.Boolean, nullable=False, default=False)
     constrain_to_today_slots = db.Column(db.Boolean, nullable=False, default=False)
+    display_direction = db.Column(db.String(10), nullable=False, default='forward')  # 'forward'|'backward'
+    display_base_stop_sequence = db.Column(db.Integer, nullable=True)  # sequence du stop de départ
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     def __repr__(self):

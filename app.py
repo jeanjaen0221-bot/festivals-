@@ -140,6 +140,22 @@ with app.app_context():
                 if result.fetchone() is None:
                     conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN constrain_to_today_slots BOOLEAN NOT NULL DEFAULT FALSE;"))
                     conn.execute(sqlalchemy.text("COMMIT;"))
+                # display_direction
+                result = conn.execute(sqlalchemy.text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name='shuttle_settings' AND column_name='display_direction'
+                """))
+                if result.fetchone() is None:
+                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN display_direction VARCHAR(10) NOT NULL DEFAULT 'forward';"))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
+                # display_base_stop_sequence
+                result = conn.execute(sqlalchemy.text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name='shuttle_settings' AND column_name='display_base_stop_sequence'
+                """))
+                if result.fetchone() is None:
+                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN display_base_stop_sequence INTEGER NULL;"))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
             except Exception as e2:
                 print(f"[WARN] Impossible d'ajouter les colonnes shuttle_settings: {e2}", file=sys.stderr)
     except Exception as e:

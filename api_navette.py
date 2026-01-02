@@ -50,6 +50,8 @@ def navette_settings():
         'loop_enabled': bool(getattr(settings, 'loop_enabled', False)),
         'bidirectional_enabled': bool(getattr(settings, 'bidirectional_enabled', False)),
         'constrain_to_today_slots': bool(getattr(settings, 'constrain_to_today_slots', False)),
+        'display_direction': getattr(settings, 'display_direction', 'forward'),
+        'display_base_stop_sequence': getattr(settings, 'display_base_stop_sequence', None),
     })
 
 @api_navette_bp.route('/api/navette/today')

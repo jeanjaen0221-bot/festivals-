@@ -21,30 +21,12 @@
     </div>
     <div class="col-lg-6">
       <div class="card shadow-sm">
-        <div class="card-header bg-light">Calculateur d'arrivée (approx.)</div>
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+          <span>Tableau d'arrivée (approx.)</span>
+          <small id="shuttle-clock" class="text-muted"></small>
+        </div>
         <div class="card-body">
-          <form id="shuttle-eta-form" class="row g-3">
-            <div class="col-12">
-              <label for="shuttle-current-stop" class="form-label">La navette se trouve à</label>
-              <select id="shuttle-current-stop" class="form-select"></select>
-            </div>
-            <div class="col-12" id="shuttle-direction-group" style="display:none;">
-              <label for="shuttle-direction" class="form-label">Direction</label>
-              <select id="shuttle-direction" class="form-select">
-                <option value="forward">Aller</option>
-                <option value="backward">Retour</option>
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label for="shuttle-start-time" class="form-label">Heure de départ</label>
-              <input type="time" id="shuttle-start-time" class="form-control">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label d-block"> </label>
-              <button type="submit" class="btn btn-primary w-100">Calculer</button>
-            </div>
-          </form>
-          <div class="table-responsive mt-3">
+          <div class="table-responsive mt-1">
             <table class="table table-striped" id="shuttle-eta-table">
               <thead>
                 <tr><th>Arrêt</th><th>Arrivée estimée</th></tr>

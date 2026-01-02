@@ -247,4 +247,6 @@ class ShuttleSettingsForm(FlaskForm):
     loop_enabled = BooleanField('Activer le mode boucle (repart de l\'arrêt final vers le premier)')
     bidirectional_enabled = BooleanField('Activer le sens bidirectionnel (aller/retour)')
     constrain_to_today_slots = BooleanField('Limiter le calcul aux créneaux du jour')
+    display_direction = SelectField('Direction d\'affichage', choices=[('forward', 'Aller'), ('backward', 'Retour')])
+    display_base_stop_sequence = IntegerField('Séquence de l\'arrêt de départ pour l\'affichage', validators=[Optional()])
     submit = SubmitField('Enregistrer les réglages')
