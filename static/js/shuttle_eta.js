@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const etaTableBody = document.querySelector('#shuttle-eta-table tbody');
   const paramsEl = document.getElementById('shuttle-params');
   const clockEl = document.getElementById('shuttle-clock');
+  const serviceBadgeEl = document.getElementById('shuttle-service-badge');
 
   let route = [];
   let settings = { mean_leg_minutes: 5, loop_enabled: false, bidirectional_enabled: false, constrain_to_today_slots: false };
@@ -62,17 +63,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         const now = new Date();
         const nowMin = (now.getHours() * 60) + now.getMinutes();
         const activeRange = findActiveSlotMinuteRange(today.slots, nowMin);
+        // Update service badge for volunteers
+        try {
+          if (serviceBadgeEl) {
+            serviceBadgeEl.className = 'badge rounded-pill ms-2';
+            if (activeRange) {
+              serviceBadgeEl.classList.add('bg-success');
+              serviceBadgeEl.textContent = 'En service';
+            } else {
+              // Find next start
+              let nextStart = null;
+              (today.slots || []).forEach(s => {
+                const sMin = timeToMinutes(s.start_time);
+                if (sMin > nowMin && (nextStart === null || sMin < nextStart)) nextStart = sMin;
+              });
+              if (nextStart !== null) {
+                serviceBadgeEl.classList.add('bg-warning', 'text-dark');
+                serviceBadgeEl.textContent = `Reprise à ${formatTime(minutesToDate(now, nextStart))}`;
+              } else {
+                serviceBadgeEl.classList.add('bg-secondary');
+                serviceBadgeEl.textContent = 'Hors service';
+              }
+            }
+          }
+        } catch (e3) {}
         if (activeRange) {
           header += ` — Service en cours: ${formatTime(minutesToDate(now, activeRange[0]))} - ${formatTime(minutesToDate(now, activeRange[1]))}`;
         }
       } catch (e2) {}
       todayInfoEl.textContent = header;
       todaySlotsEl.innerHTML = '';
+      // Determine next slot for concise badge
+      const now2 = new Date();
+      const nowMin2 = (now2.getHours() * 60) + now2.getMinutes();
+      let nextStartMin = null;
+      (today.slots || []).forEach(s => {
+        const sMin = timeToMinutes(s.start_time);
+        if (sMin > nowMin2 && (nextStartMin === null || sMin < nextStartMin)) nextStartMin = sMin;
+      });
       (today.slots || []).forEach(slot => {
         const li = document.createElement('li');
         li.className = 'list-group-item';
         const note = slot.note ? `<span class="badge bg-info ms-2">${slot.note}</span>` : '';
-        li.innerHTML = `<strong>${slot.start_time} - ${slot.end_time}</strong> · ${slot.from_location} ⇄ ${slot.to_location} ${note}`;
+        const sMin = timeToMinutes(slot.start_time);
+        const eMin = timeToMinutes(slot.end_time);
+        let statusBadge = '';
+        if (sMin <= nowMin2 && nowMin2 <= eMin) {
+          statusBadge = ' <span class="badge bg-success ms-2">En cours</span>';
+        } else if (nextStartMin !== null && sMin === nextStartMin) {
+          statusBadge = ' <span class="badge bg-warning text-dark ms-2">À venir</span>';
+        }
+        li.innerHTML = `<strong>${slot.start_time} - ${slot.end_time}</strong> · ${slot.from_location} ⇄ ${slot.to_location}${statusBadge} ${note}`;
         todaySlotsEl.appendChild(li);
       });
     }
