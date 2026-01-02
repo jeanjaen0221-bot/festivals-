@@ -120,11 +120,8 @@ class ItemForm(FlaskForm):
                 self.location_other.errors.append('Merci de préciser le lieu de perte.')
                 return False
         elif self._prefix == 'found':
-            # found_location obligatoire
-            if not self.found_location.data:
-                self.found_location.errors.append('Merci de préciser le lieu de découverte.')
-                return False
-            if self.found_location.data == 'autre' and (not self.found_location_other.data or not self.found_location_other.data.strip()):
+            # Désormais, lieu de découverte saisi en texte libre
+            if not self.found_location_other.data or not self.found_location_other.data.strip():
                 self.found_location_other.errors.append('Merci de préciser le lieu de découverte.')
                 return False
             # storage_location obligatoire

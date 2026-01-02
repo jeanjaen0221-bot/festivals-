@@ -372,7 +372,7 @@ def report_item():
             status=Status.FOUND,
             title=found_form.title.data,
             comments=found_form.comments.data,
-            found_location=found_form.found_location_other.data.strip() if found_form.found_location.data == 'autre' else (dict(found_form.found_location.choices).get(found_form.found_location.data) if found_form.found_location.data else ''),
+            found_location=(found_form.found_location_other.data.strip() if found_form.found_location_other.data else ''),
             storage_location=found_form.storage_location_other.data.strip() if found_form.storage_location.data == 'autre' else (dict(found_form.storage_location.choices).get(found_form.storage_location.data) if found_form.storage_location.data else ''),
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
@@ -709,6 +709,8 @@ def edit_item(item_id):
         form.reporter_name.data = item.reporter_name
         form.reporter_email.data = item.reporter_email
         form.reporter_phone.data = item.reporter_phone
+        if item.status.name == 'FOUND':
+            form.found_location_other.data = item.found_location or ''
 
     if form.validate_on_submit():
         item.title = form.title.data
@@ -720,7 +722,7 @@ def edit_item(item_id):
         item.reporter_phone = form.reporter_phone.data
         # Correction : lieux stockage/découverte
         if item.status.name == 'FOUND':
-            item.found_location = form.found_location_other.data.strip() if form.found_location.data == 'autre' else (dict(form.found_location.choices).get(form.found_location.data) if form.found_location.data else '')
+            item.found_location = form.found_location_other.data.strip() if form.found_location_other.data else ''
             item.storage_location = form.storage_location_other.data.strip() if form.storage_location.data == 'autre' else (dict(form.storage_location.choices).get(form.storage_location.data) if form.storage_location.data else '')
         db.session.commit()
         # Suppression des photos cochées

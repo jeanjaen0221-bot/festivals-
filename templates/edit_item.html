@@ -22,11 +22,7 @@
     </div>
     {% if item.status.name == 'FOUND' %}
       <div class="mb-3">
-        <label class="form-label"><i class="bi bi-geo-alt"></i> {{ form.found_location.label.text }}</label>
-        {{ form.found_location(class="form-select") }}
-      </div>
-      <div class="mb-3">
-        <label class="form-label"><i class="bi bi-pencil"></i> {{ form.found_location_other.label.text }}</label>
+        <label class="form-label"><i class="bi bi-geo-alt"></i> {{ form.found_location_other.label.text }}</label>
         {{ form.found_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
       </div>
       <div class="mb-3">

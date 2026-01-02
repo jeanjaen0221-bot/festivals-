@@ -52,13 +52,8 @@
   <!-- SECTION LIEU DE DÉCOUVERTE -->
   <div class="mb-3">
     <label class="form-label"><i class="bi bi-geo-alt text-info"></i> <strong>Où l’objet a-t-il été trouvé&nbsp;?</strong></label>
-    {{ form.found_location(class="form-select", id=prefix ~ 'found-location-select') }}
-    <div class="form-text text-info small">Exemple&nbsp;: “Camping Festivalier”, “Entrée Nord”, “Zone concerts”, etc.<br><b>Demandez au festivalier ou indiquez ce que vous savez.</b></div>
-  </div>
-  <div class="mb-3" id="{{ prefix }}found-location-other-group" style="display: none;">
-    <label class="form-label"><i class="bi bi-pencil"></i> Précisez le lieu de découverte</label>
     {{ form.found_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
-    <div class="form-text small">Soyez aussi précis que possible.</div>
+    <div class="form-text text-info small">Saisissez librement l'endroit précis où l'objet a été trouvé.</div>
   </div>
   <!-- SECTION LIEU DE STOCKAGE -->
   <div class="mb-3">
