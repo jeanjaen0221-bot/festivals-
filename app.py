@@ -7,9 +7,12 @@ import sqlalchemy
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
-app.config['SQLALCHEMY_DATABASE_URI'] = (
-    (os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_PUBLIC_URL') or '').strip()
-)
+raw_url = (os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_PUBLIC_URL') or '').strip()
+if raw_url.startswith('postgres://'):
+    raw_url = 'postgresql://' + raw_url[len('postgres://'):]
+if raw_url.startswith('postgresql://') and '+psycopg' not in raw_url and '+psycopg2' not in raw_url:
+    raw_url = 'postgresql+psycopg://' + raw_url[len('postgresql://'):]
+app.config['SQLALCHEMY_DATABASE_URI'] = raw_url
 print("DATABASE_URL utilisé :", app.config['SQLALCHEMY_DATABASE_URI'])
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
