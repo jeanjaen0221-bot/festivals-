@@ -114,6 +114,34 @@ with app.app_context():
             if result.fetchone() is None:
                 conn.execute(sqlalchemy.text("ALTER TABLE headphone_loans ADD COLUMN previous_status VARCHAR(20);"))
                 conn.execute(sqlalchemy.text("COMMIT;"))
+            # --- Ensure shuttle_settings columns exist ---
+            try:
+                # loop_enabled
+                result = conn.execute(sqlalchemy.text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name='shuttle_settings' AND column_name='loop_enabled'
+                """))
+                if result.fetchone() is None:
+                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN loop_enabled BOOLEAN NOT NULL DEFAULT FALSE;"))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
+                # bidirectional_enabled
+                result = conn.execute(sqlalchemy.text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name='shuttle_settings' AND column_name='bidirectional_enabled'
+                """))
+                if result.fetchone() is None:
+                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN bidirectional_enabled BOOLEAN NOT NULL DEFAULT FALSE;"))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
+                # constrain_to_today_slots
+                result = conn.execute(sqlalchemy.text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name='shuttle_settings' AND column_name='constrain_to_today_slots'
+                """))
+                if result.fetchone() is None:
+                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN constrain_to_today_slots BOOLEAN NOT NULL DEFAULT FALSE;"))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
+            except Exception as e2:
+                print(f"[WARN] Impossible d'ajouter les colonnes shuttle_settings: {e2}", file=sys.stderr)
     except Exception as e:
         import sys
         print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)
@@ -136,6 +164,8 @@ app.register_blueprint(admin.bp_admin)
 
 from api_navette import api_navette_bp
 app.register_blueprint(api_navette_bp)
+import admin_shuttle
+app.register_blueprint(admin_shuttle.bp)
 
 print("DEBUG: ROUTES FLASK:")
 for rule in app.url_map.iter_rules():

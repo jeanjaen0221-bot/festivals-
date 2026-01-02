@@ -234,3 +234,17 @@ class ShuttleScheduleSlotForm(FlaskForm):
     to_location = StringField('Lieu d\'arrivée', validators=[DataRequired(), Length(max=100)])
     note = StringField('Note (optionnelle)', validators=[Optional(), Length(max=200)])
     submit = SubmitField('Enregistrer le créneau')
+
+class ShuttleRouteStopForm(FlaskForm):
+    name = StringField('Nom de l\'arrêt', validators=[DataRequired(), Length(max=120)])
+    sequence = IntegerField('Ordre sur le parcours', validators=[DataRequired()])
+    dwell_minutes = IntegerField('Temps d\'arrêt (minutes)', default=0, validators=[DataRequired()])
+    note = StringField('Note (optionnelle)', validators=[Optional(), Length(max=200)])
+    submit = SubmitField('Enregistrer l\'arrêt')
+
+class ShuttleSettingsForm(FlaskForm):
+    mean_leg_minutes = IntegerField('Temps moyen entre 2 arrêts (minutes)', validators=[DataRequired()])
+    loop_enabled = BooleanField('Activer le mode boucle (repart de l\'arrêt final vers le premier)')
+    bidirectional_enabled = BooleanField('Activer le sens bidirectionnel (aller/retour)')
+    constrain_to_today_slots = BooleanField('Limiter le calcul aux créneaux du jour')
+    submit = SubmitField('Enregistrer les réglages')

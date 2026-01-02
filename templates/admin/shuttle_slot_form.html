@@ -1,8 +1,8 @@
 
-{% block title %}{{ title or 'Créneau navette' }}{% endblock %}
-{% block content %}
-<div class="container mt-4">
-  <h2 class="mb-4">{{ title or 'Créneau navette' }}</h2>
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<div class="container mt-2">
+  <h2 class="mb-3"><i class="bi bi-clock"></i> {{ title or 'Créneau navette' }}</h2>
   <form method="post">
     {{ form.hidden_tag() }}
     <div class="mb-3">

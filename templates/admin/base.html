@@ -40,6 +40,22 @@
             </a>
           </li>
 
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin_shuttle.shuttle_schedule')) %}active{% endif %}" href="{{ url_for('admin_shuttle.shuttle_schedule') }}">
+              <i class="bi bi-bus-front"></i> Navette – Planning
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin_shuttle.shuttle_route')) %}active{% endif %}" href="{{ url_for('admin_shuttle.shuttle_route') }}">
+              <i class="bi bi-signpost"></i> Navette – Parcours
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin_shuttle.shuttle_settings')) %}active{% endif %}" href="{{ url_for('admin_shuttle.shuttle_settings') }}">
+              <i class="bi bi-gear"></i> Navette – Réglages
+            </a>
+          </li>
+
           <li class="nav-item mt-3">
             <a class="nav-link text-success fw-bold" href="https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS" target="_blank" rel="noopener"><i class="bi bi-whatsapp"></i> Contact WhatsApp</a>
           </li>

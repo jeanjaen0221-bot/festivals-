@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Navette Esperanzah{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="mb-4"><i class="bi bi-bus-front"></i> Navette Esperanzah</h1>
+  <div class="row g-4">
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header bg-light">Parcours</div>
+        <div class="card-body">
+          <ol id="shuttle-route" class="list-group list-group-numbered"></ol>
+        </div>
+      </div>
+      <div class="card shadow-sm mt-3">
+        <div class="card-header bg-light">Planning d'aujourd'hui</div>
+        <div class="card-body">
+          <div id="shuttle-today" class="small text-muted"></div>
+          <ul id="shuttle-today-slots" class="list-group mt-2"></ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header bg-light">Calculateur d'arrivée (approx.)</div>
+        <div class="card-body">
+          <form id="shuttle-eta-form" class="row g-3">
+            <div class="col-12">
+              <label for="shuttle-current-stop" class="form-label">La navette se trouve à</label>
+              <select id="shuttle-current-stop" class="form-select"></select>
+            </div>
+            <div class="col-12" id="shuttle-direction-group" style="display:none;">
+              <label for="shuttle-direction" class="form-label">Direction</label>
+              <select id="shuttle-direction" class="form-select">
+                <option value="forward">Aller</option>
+                <option value="backward">Retour</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="shuttle-start-time" class="form-label">Heure de départ</label>
+              <input type="time" id="shuttle-start-time" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label d-block"> </label>
+              <button type="submit" class="btn btn-primary w-100">Calculer</button>
+            </div>
+          </form>
+          <div class="table-responsive mt-3">
+            <table class="table table-striped" id="shuttle-eta-table">
+              <thead>
+                <tr><th>Arrêt</th><th>Arrivée estimée</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="alert alert-warning mt-2 d-none" id="shuttle-eta-warning"></div>
+          <div class="text-muted small" id="shuttle-params"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/shuttle_eta.js') }}"></script>
+{% endblock %}

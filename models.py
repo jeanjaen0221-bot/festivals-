@@ -121,6 +121,30 @@ class ShuttleScheduleSlot(db.Model):
     def __repr__(self):
         return f'<ShuttleScheduleSlot {self.from_location} → {self.to_location}>'
 
+# --- Navette: parcours & réglages ---
+class ShuttleRouteStop(db.Model):
+    __tablename__ = 'shuttle_route_stops'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    sequence = db.Column(db.Integer, nullable=False, index=True)  # ordre sur le parcours
+    dwell_minutes = db.Column(db.Integer, nullable=False, default=0)  # arrêt moyen au stop
+    note = db.Column(db.String(200), nullable=True)
+
+    def __repr__(self):
+        return f'<ShuttleRouteStop {self.sequence} - {self.name}>'
+
+class ShuttleSettings(db.Model):
+    __tablename__ = 'shuttle_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    mean_leg_minutes = db.Column(db.Integer, nullable=False, default=5)  # temps moyen entre deux arrêts
+    loop_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    bidirectional_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    constrain_to_today_slots = db.Column(db.Boolean, nullable=False, default=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f'<ShuttleSettings mean_leg_minutes={self.mean_leg_minutes}>'
+
 class Status(enum.Enum):
     LOST = 'lost'
     FOUND = 'found'

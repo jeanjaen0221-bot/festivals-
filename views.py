@@ -987,6 +987,10 @@ def headphone_loans():
 def train_schedule():
     return render_template('shuttle_train.html')
 
+@bp.route('/shuttle')
+def shuttle_page():
+    return render_template('shuttle.html')
+
 @bp.route('/api/trains/liveboard')
 def api_trains_liveboard():
     station = request.args.get('station')

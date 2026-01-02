@@ -1,8 +1,8 @@
 
-{% block title %}Planning Navettes{% endblock %}
-{% block content %}
-<div class="container mt-4">
-  <h2 class="mb-4">Planning des navettes</h2>
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<div class="container mt-2">
+  <h2 class="mb-3"><i class="bi bi-bus-front"></i> Planning des navettes</h2>
   <a href="{{ url_for('admin_shuttle.add_shuttle_day') }}" class="btn btn-primary mb-3">Ajouter un jour</a>
   <table class="table table-bordered table-hover bg-white">
     <thead class="table-light">

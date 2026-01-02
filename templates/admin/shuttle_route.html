@@ -1,0 +1,46 @@
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<div class="container mt-2">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="bi bi-signpost"></i> Parcours de la navette</h2>
+    <a href="{{ url_for('admin_shuttle.add_route_stop') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Ajouter un arrêt</a>
+  </div>
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Arrêt</th>
+              <th>Temps d'arrêt (min)</th>
+              <th>Note</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for stop in stops %}
+            <tr>
+              <td><span class="badge bg-secondary">{{ stop.sequence }}</span></td>
+              <td><strong>{{ stop.name }}</strong></td>
+              <td>{{ stop.dwell_minutes }}</td>
+              <td>{{ stop.note or '' }}</td>
+              <td>
+                <a href="{{ url_for('admin_shuttle.edit_route_stop', stop_id=stop.id) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
+                <a href="{{ url_for('admin_shuttle.delete_route_stop', stop_id=stop.id) }}" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Supprimer cet arrêt ?')">Supprimer</a>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">
+                <i class="bi bi-info-circle"></i> Aucun arrêt défini. Ajoutez un arrêt pour commencer.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

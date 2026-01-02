@@ -1,0 +1,27 @@
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<div class="container mt-2">
+  <h2 class="mb-3"><i class="bi bi-gear"></i> Réglages navette</h2>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+      {{ form.mean_leg_minutes.label(class="form-label") }}
+      {{ form.mean_leg_minutes(class="form-control") }}
+      {% for error in form.mean_leg_minutes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="form-check mb-2">
+      {{ form.loop_enabled(class="form-check-input", id="loopEnabled") }}
+      <label class="form-check-label" for="loopEnabled">{{ form.loop_enabled.label.text }}</label>
+    </div>
+    <div class="form-check mb-2">
+      {{ form.bidirectional_enabled(class="form-check-input", id="bidirectionalEnabled") }}
+      <label class="form-check-label" for="bidirectionalEnabled">{{ form.bidirectional_enabled.label.text }}</label>
+    </div>
+    <div class="form-check mb-3">
+      {{ form.constrain_to_today_slots(class="form-check-input", id="constrainToToday") }}
+      <label class="form-check-label" for="constrainToToday">{{ form.constrain_to_today_slots.label.text }}</label>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
+  </form>
+</div>
+{% endblock %}
