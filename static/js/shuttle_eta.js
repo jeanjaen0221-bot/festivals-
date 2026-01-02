@@ -6,10 +6,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const paramsEl = document.getElementById('shuttle-params');
   const clockEl = document.getElementById('shuttle-clock');
   const serviceBadgeEl = document.getElementById('shuttle-service-badge');
+  const lineStopsEl = document.getElementById('shuttle-stops');
+  const ledEl = document.querySelector('.shuttle-led');
+  const trackEl = document.querySelector('.shuttle-line-track');
 
   let route = [];
   let settings = { mean_leg_minutes: 5, loop_enabled: false, bidirectional_enabled: false, constrain_to_today_slots: false };
   let today = { slots: [] };
+  let lastRenderKey = '';
+  let lastOrdered = [];
+  let lastMappedStartIdx = 0;
 
   try {
     const [routeResp, settingsResp, todayResp] = await Promise.all([
@@ -22,6 +28,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     today = await todayResp.json();
   } catch (e) {
     // fail silently
+  }
+
+  function renderShuttleLineStops(ordered, mappedStartIdx = 0) {
+    if (!lineStopsEl) return;
+    lineStopsEl.innerHTML = '';
+    const forward = !(settings.bidirectional_enabled && (settings.display_direction === 'backward'));
+    const arr = forward ? ordered : ordered.slice().reverse();
+    arr.forEach((s) => {
+      const stop = document.createElement('div');
+      stop.className = 'shuttle-stop';
+      const dot = document.createElement('div');
+      dot.className = 'dot';
+      const label = document.createElement('div');
+      label.className = 'label';
+      const isBase = !!(settings && settings.display_base_stop_sequence && s.sequence === settings.display_base_stop_sequence);
+      label.innerHTML = `${s.name}${isBase ? ' <span class="badge bg-primary">Départ</span>' : ''}`;
+      stop.appendChild(dot);
+      stop.appendChild(label);
+      lineStopsEl.appendChild(stop);
+    });
+  }
+
+  function updateLEDPosition(ordered, mappedStartIdx) {
+    if (!ledEl || !trackEl || !(ordered && ordered.length)) return;
+    const now = new Date();
+    const nowMin = (now.getHours() * 60) + now.getMinutes();
+    if (settings.constrain_to_today_slots && today && Array.isArray(today.slots)) {
+      const activeRange = findActiveSlotMinuteRange(today.slots, nowMin);
+      if (!activeRange) { ledEl.style.opacity = '0'; return; } else { ledEl.style.opacity = '1'; }
+    }
+    const trackWidth = trackEl.getBoundingClientRect().width;
+    let frac = 0;
+    if (settings.loop_enabled) {
+      const leg = (settings.mean_leg_minutes || 5);
+      const N = ordered.length;
+      const segments = [];
+      for (let k = 0; k < N; k++) {
+        const s = ordered[(mappedStartIdx + k) % N];
+        const dwell = (s.dwell_minutes || 0);
+        if (dwell > 0) segments.push({len: dwell});
+        segments.push({len: leg});
+      }
+      const cycle = segments.reduce((a,b)=>a + (b.len||0), 0) || 1;
+      const t = ((now.getHours() * 60) + now.getMinutes()) % cycle;
+      let acc = 0; let done = false;
+      for (const seg of segments) {
+        if (t <= acc + seg.len) { frac = (acc + (t - acc)) / cycle; done = true; break; }
+        acc += seg.len;
+      }
+      if (!done) frac = 0;
+    } else {
+      frac = 0;
+    }
+    const x = Math.max(0, Math.min(trackWidth, frac * trackWidth));
+    ledEl.style.transform = `translateX(${x}px)`;
   }
 
   // Render route list
@@ -50,6 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       li.appendChild(right);
       routeEl.appendChild(li);
     });
+    try { renderShuttleLineStops(route.slice().sort((a,b)=>a.sequence-b.sequence)); } catch (e) {}
   } else {
     routeEl.innerHTML = '<li class="list-group-item text-muted">Aucun arrêt configuré.</li>';
   }
@@ -193,6 +255,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (idx >= 0) mappedStartIdx = idx;
     }
 
+    try {
+      const key = JSON.stringify({dir: forward ? 'f' : 'b', seqs: ordered.map(s=>s.sequence)});
+      if (key !== lastRenderKey) { renderShuttleLineStops(ordered, mappedStartIdx); lastRenderKey = key; }
+    } catch (e) {}
+    lastOrdered = ordered; lastMappedStartIdx = mappedStartIdx;
+    try { updateLEDPosition(ordered, mappedStartIdx); } catch (e) {}
+
     // Constrain to today's active slot (optional)
     let activeRange = null;
     if (settings.constrain_to_today_slots && today && Array.isArray(today.slots)) {
@@ -236,6 +305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const now = new Date();
       clockEl.textContent = formatTime(now);
     }
+    try { if (lastOrdered && lastOrdered.length) updateLEDPosition(lastOrdered, lastMappedStartIdx); } catch (e) {}
   }
   updateClock();
   computeAndRenderBoard();

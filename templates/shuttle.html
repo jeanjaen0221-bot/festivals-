@@ -12,7 +12,12 @@
             data-bs-content="Liste des arrêts dans l'ordre. Le badge +X min indique le temps d'arrêt moyen. Le badge ‘Départ’ marque le point de départ affiché."><i class="bi bi-question-circle"></i></button>
         </div>
         <div class="card-body">
-          <ol id="shuttle-route" class="list-group list-group-numbered"></ol>
+          <div id="shuttle-line" class="shuttle-line mb-2">
+            <div class="shuttle-line-track"></div>
+            <div class="shuttle-led" title="Position approximative"></div>
+            <div id="shuttle-stops" class="shuttle-stops"></div>
+          </div>
+          <ol id="shuttle-route" class="list-group list-group-numbered mt-2"></ol>
         </div>
       </div>
       <div class="card shadow rounded-3 border-0 mt-3">
@@ -67,6 +72,20 @@
   #shuttle-route .list-group-item { padding-top: .5rem; padding-bottom: .5rem; }
   #shuttle-today-slots .list-group-item { padding-top: .5rem; padding-bottom: .5rem; }
   #shuttle-route + .small, #shuttle-today + .small { color: #6c757d; }
+  /* Visual shuttle line */
+  .shuttle-line { position: relative; padding: 18px 28px 32px 28px; }
+  .shuttle-line-track { position: absolute; left: 48px; right: 48px; top: 32px; height: 8px; background: linear-gradient(90deg,#e9ecef,#dee2e6); border-radius: 999px; box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
+  .shuttle-stops { position: relative; display: flex; justify-content: space-between; align-items: flex-start; }
+  .shuttle-stop { position: relative; text-align: center; flex: 1 1 0; min-width: 0; }
+  .shuttle-stop .dot { width: 16px; height: 16px; border-radius: 999px; background: #adb5bd; border: 2px solid #fff; box-shadow: 0 0 0 2px #adb5bd; margin: 0 auto; position: relative; top: 24px; }
+  .shuttle-stop .label { margin-top: 36px; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; margin-left: auto; margin-right: auto; }
+  .shuttle-stop .badge { margin-left: 6px; vertical-align: middle; }
+  .shuttle-led { position: absolute; top: 28px; left: 48px; width: 16px; height: 16px; border-radius: 999px; background: #0dcaf0; box-shadow: 0 0 0 4px rgba(13,202,240,.25), 0 0 12px rgba(13,202,240,.6); transform: translateX(0); transition: transform .6s ease; }
+  @media (max-width: 576px) {
+    .shuttle-stop .label { max-width: 88px; font-size: .8rem; }
+    .shuttle-line-track { left: 32px; right: 32px; }
+    .shuttle-led { left: 32px; }
+  }
 </style>
 <script>
   document.addEventListener('DOMContentLoaded', function(){
