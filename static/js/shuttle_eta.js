@@ -183,6 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const tr = document.createElement('tr');
+      if (k === 0) { tr.classList.add('table-primary'); }
       tr.innerHTML = `<td>${stop.name}</td><td>${formatTime(minutesToDate(now, currentMin))}</td>`;
       etaTableBody.appendChild(tr);
     }

@@ -6,13 +6,13 @@
   <div class="row g-4">
     <div class="col-lg-6">
       <div class="card shadow-sm">
-        <div class="card-header bg-light">Parcours</div>
+        <div class="card-header bg-white fw-semibold border-bottom"><i class="bi bi-signpost"></i> Parcours</div>
         <div class="card-body">
           <ol id="shuttle-route" class="list-group list-group-numbered"></ol>
         </div>
       </div>
       <div class="card shadow-sm mt-3">
-        <div class="card-header bg-light">Planning d'aujourd'hui</div>
+        <div class="card-header bg-white fw-semibold border-bottom"><i class="bi bi-calendar-event"></i> Planning d'aujourd'hui</div>
         <div class="card-body">
           <div id="shuttle-today" class="small text-muted"></div>
           <ul id="shuttle-today-slots" class="list-group mt-2"></ul>
@@ -21,13 +21,13 @@
     </div>
     <div class="col-lg-6">
       <div class="card shadow-sm">
-        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center">
           <span>Tableau d'arrivée (approx.)</span>
           <small id="shuttle-clock" class="text-muted"></small>
         </div>
         <div class="card-body">
           <div class="table-responsive mt-1">
-            <table class="table table-striped" id="shuttle-eta-table">
+            <table class="table table-striped table-hover table-sm align-middle mb-0" id="shuttle-eta-table">
               <thead>
                 <tr><th>Arrêt</th><th>Arrivée estimée</th></tr>
               </thead>
@@ -36,10 +36,20 @@
           </div>
           <div class="alert alert-warning mt-2 d-none" id="shuttle-eta-warning"></div>
           <div class="text-muted small" id="shuttle-params"></div>
+          <div class="text-muted small mt-1">Actualisation automatique toutes les 30 secondes</div>
         </div>
       </div>
     </div>
   </div>
 </div>
+<style>
+  #shuttle-eta-table thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+  #shuttle-eta-table tbody tr td:first-child { width: 60%; }
+  #shuttle-eta-table tbody tr td:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #shuttle-today-slots .list-group-item strong { font-variant-numeric: tabular-nums; }
+  #shuttle-route .badge { font-variant-numeric: tabular-nums; }
+  #shuttle-route .list-group-item { padding-top: .5rem; padding-bottom: .5rem; }
+  #shuttle-today-slots .list-group-item { padding-top: .5rem; padding-bottom: .5rem; }
+</style>
 <script src="{{ url_for('static', filename='js/shuttle_eta.js') }}"></script>
 {% endblock %}
