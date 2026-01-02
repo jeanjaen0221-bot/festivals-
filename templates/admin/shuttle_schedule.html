@@ -25,7 +25,16 @@
             {% for slot in day.slots %}
             <li>
               <strong>{{ slot.start_time.strftime('%H:%M') }} - {{ slot.end_time.strftime('%H:%M') }}</strong>
-              : <span class="text-muted">{{ slot.from_location }}</span> ⇄ <span class="text-muted">{{ slot.to_location }}</span>
+              :
+              <span class="text-muted">{{ slot.from_location }}</span>
+              {% if stop_names is defined and (slot.from_location not in stop_names) %}
+                <span class="badge bg-warning text-dark ms-1" title="Cet arrêt n'existe pas dans le parcours">Hors parcours</span>
+              {% endif %}
+               ⇄ 
+              <span class="text-muted">{{ slot.to_location }}</span>
+              {% if stop_names is defined and (slot.to_location not in stop_names) %}
+                <span class="badge bg-warning text-dark ms-1" title="Cet arrêt n'existe pas dans le parcours">Hors parcours</span>
+              {% endif %}
               {% if slot.note %}<span class="badge bg-info ms-2">{{ slot.note }}</span>{% endif %}
               <a href="{{ url_for('admin_shuttle.edit_shuttle_slot', slot_id=slot.id) }}" class="btn btn-sm btn-outline-primary ms-2">Modifier</a>
               <a href="{{ url_for('admin_shuttle.delete_shuttle_slot', slot_id=slot.id) }}" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Supprimer ce créneau ?')">Supprimer</a>

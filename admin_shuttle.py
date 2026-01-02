@@ -13,7 +13,9 @@ bp = Blueprint('admin_shuttle', __name__, url_prefix='/admin/shuttle')
 @admin_required
 def shuttle_schedule():
     days = ShuttleScheduleDay.query.order_by(ShuttleScheduleDay.date.asc()).all()
-    return render_template('admin/shuttle_schedule.html', days=days)
+    stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
+    stop_names = [s.name for s in stops]
+    return render_template('admin/shuttle_schedule.html', days=days, stop_names=stop_names)
 
 # Days
 @bp.route('/days/add', methods=['GET', 'POST'])
@@ -74,7 +76,8 @@ def add_shuttle_slot(day_id):
         db.session.commit()
         flash('Créneau ajouté.', 'success')
         return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    return render_template('admin/shuttle_slot_form.html', form=form, title='Ajouter un créneau')
+    stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
+    return render_template('admin/shuttle_slot_form.html', form=form, title='Ajouter un créneau', stops=stops)
 
 @bp.route('/slots/<int:slot_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -91,7 +94,8 @@ def edit_shuttle_slot(slot_id):
         db.session.commit()
         flash('Créneau mis à jour.', 'success')
         return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    return render_template('admin/shuttle_slot_form.html', form=form, title='Modifier le créneau')
+    stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
+    return render_template('admin/shuttle_slot_form.html', form=form, title='Modifier le créneau', stops=stops)
 
 @bp.route('/slots/<int:slot_id>/delete')
 @login_required

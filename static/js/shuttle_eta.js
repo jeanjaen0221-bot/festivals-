@@ -27,10 +27,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (Array.isArray(route) && route.length) {
     route.sort((a,b) => (a.sequence||0) - (b.sequence||0));
     routeEl.innerHTML = '';
-    route.forEach((s, idx) => {
+    route.forEach((s) => {
       const li = document.createElement('li');
       li.className = 'list-group-item d-flex justify-content-between align-items-center';
-      li.innerHTML = `<span>${s.name}</span><span class="badge bg-secondary">+${s.dwell_minutes || 0} min</span>`;
+      const isBase = !!(settings && settings.display_base_stop_sequence && s.sequence === settings.display_base_stop_sequence);
+      const left = document.createElement('div');
+      left.className = 'd-flex flex-column';
+      const title = document.createElement('div');
+      title.innerHTML = `${s.name}${isBase ? ' <span class="badge bg-primary ms-2">Départ</span>' : ''}`;
+      left.appendChild(title);
+      if (s.note) {
+        const note = document.createElement('small');
+        note.className = 'text-muted';
+        note.textContent = s.note;
+        left.appendChild(note);
+      }
+      const right = document.createElement('span');
+      right.className = 'badge bg-secondary';
+      right.textContent = `+${s.dwell_minutes || 0} min`;
+      li.appendChild(left);
+      li.appendChild(right);
       routeEl.appendChild(li);
     });
   } else {
@@ -41,7 +57,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     if (today && today.date) {
       const label = today.label || new Date(today.date).toLocaleDateString();
-      todayInfoEl.textContent = `${label}${today.note ? ' — ' + today.note : ''}`;
+      let header = `${label}${today.note ? ' — ' + today.note : ''}`;
+      try {
+        const now = new Date();
+        const nowMin = (now.getHours() * 60) + now.getMinutes();
+        const activeRange = findActiveSlotMinuteRange(today.slots, nowMin);
+        if (activeRange) {
+          header += ` — Service en cours: ${formatTime(minutesToDate(now, activeRange[0]))} - ${formatTime(minutesToDate(now, activeRange[1]))}`;
+        }
+      } catch (e2) {}
+      todayInfoEl.textContent = header;
       todaySlotsEl.innerHTML = '';
       (today.slots || []).forEach(slot => {
         const li = document.createElement('li');
