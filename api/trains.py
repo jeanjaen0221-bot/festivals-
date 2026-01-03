@@ -116,6 +116,32 @@ def get_liveboard():
         if not departures and fast == 'true':
             # Retry without fast optimization to broaden results
             departures = fetch_once('false')
+        if not departures:
+            # Final fallback: use departures endpoint
+            p2 = {
+                'station': station,
+                'format': 'json',
+                'lang': 'fr',
+            }
+            if time_param: p2['time'] = time_param
+            if date_param: p2['date'] = date_param
+            try:
+                r2 = requests.get('https://api.irail.be/departures/', params=p2, timeout=6)
+                r2.raise_for_status()
+                js2 = r2.json() if r2.headers.get('Content-Type','').startswith('application/json') else {}
+                items2 = []
+                for dep in js2.get('departures', {}).get('departure', []) or []:
+                    items2.append({
+                        'time': dep.get('time'),
+                        'delay': int(dep.get('delay', 0) or 0),
+                        'vehicle': dep.get('vehicle', ''),
+                        'platform': dep.get('platform', ''),
+                        'destination': dep.get('station', ''),
+                        'canceled': str(dep.get('canceled', '0')) == '1'
+                    })
+                departures = items2
+            except Exception:
+                pass
         return jsonify({'departures': departures})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

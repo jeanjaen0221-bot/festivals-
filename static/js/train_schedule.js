@@ -81,7 +81,7 @@ async function loadLiveboard(station, resultsDiv) {
     const raw = data.departures;
     let list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.departure) ? raw.departure : []);
     if (!list.length) {
-      // Fallback: retry with fast=false and show only next 3 departures
+      // Fallback 1: retry with fast=false
       const resp2 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}&fast=false`);
       const data2 = await resp2.json();
       if (!data2.error) {
@@ -91,6 +91,24 @@ async function loadLiveboard(station, resultsDiv) {
           renderFlapBoard(resultsDiv, station, list2.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs.");
           return;
         }
+      }
+      // Fallback 2: probe next hours (+1h .. +6h) with fast=false using epoch time
+      const now = Math.floor(Date.now() / 1000);
+      for (let h = 1; h <= 6; h++) {
+        const t = now + h * 3600;
+        try {
+          const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}&fast=false&time=${t}`);
+          const dj = await rp.json();
+          if (!dj.error) {
+            const rw = dj.departures;
+            const lst = Array.isArray(rw) ? rw : (rw && Array.isArray(rw.departure) ? rw.departure : []);
+            if (lst && lst.length) {
+              const when = new Date(t * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+              renderFlapBoard(resultsDiv, station, lst.slice(0,3), `Aucun train à l'heure demandée — prochains départs vers ${when}.`);
+              return;
+            }
+          }
+        } catch (e) {}
       }
       resultsDiv.innerHTML = '<div class="alert alert-warning">Aucun départ trouvé pour cette gare.</div>';
       return;
