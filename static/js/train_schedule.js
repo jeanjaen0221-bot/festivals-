@@ -42,6 +42,14 @@ function fmtTime(tsSec) {
   return new Date(tsSec * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 }
 
+function fmtDateDDMMYYFromEpoch(tsSec){
+  const d = new Date(tsSec * 1000);
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}${mm}${yy}`;
+}
+
 function renderFlapBoard(container, stationName, departures, bannerText) {
   let html = `
     <div class='flap-board'>
@@ -63,10 +71,11 @@ function renderFlapBoard(container, stationName, departures, bannerText) {
     const platform = dep.platform || '-';
     const type = (dep.vehicle || '').replace('BE.NMBS.', '');
     const delay = dep.delay ? '+' + Math.round(dep.delay/60) + ' min' : '';
+    const dest = dep.destination || dep.station || '';
     html += `
       <div class='flap-row'>
         <div class='flap-cell center flip'>${time}</div>
-        <div class='flap-cell flip'>${dep.station}</div>
+        <div class='flap-cell flip'>${dest}</div>
         <div class='flap-cell center flip'>${platform}</div>
         <div class='flap-cell center flip'>${type}</div>
         <div class='flap-cell center flip ${delay ? 'delay' : ''}'>${delay}</div>
@@ -97,12 +106,29 @@ async function loadLiveboard(station, resultsDiv) {
           return;
         }
       }
+      // Fallback 1b: resolve station id using backend stations search, then retry fast=false
+      try {
+        const typed = (document.getElementById('station-input')?.value || '').trim();
+        if (typed) {
+          const rs = await fetch(`/api/trains/stations?lang=fr&only_be=1&q=${encodeURIComponent(typed)}`);
+          const ds = await rs.json();
+          const best = Array.isArray(ds.stations) && ds.stations.length ? ds.stations[0] : null;
+          if (best && best.id) {
+            const r3 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(best.id)}&fast=false`);
+            const d3 = await r3.json();
+            const rw3 = d3.departures;
+            const l3 = Array.isArray(rw3) ? rw3 : (rw3 && Array.isArray(rw3.departure) ? rw3.departure : []);
+            if (l3 && l3.length) { renderFlapBoard(resultsDiv, best.name || typed, l3.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs."); return; }
+          }
+        }
+      } catch(e) {}
       // Fallback 2: probe next hours (+1h .. +6h) with fast=false using epoch time
       const now = Math.floor(Date.now() / 1000);
       for (let h = 1; h <= 6; h++) {
         const t = now + h * 3600;
         try {
-          const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}&fast=false&time=${t}`);
+          const date = fmtDateDDMMYYFromEpoch(t);
+          const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}&fast=false&time=${t}&date=${date}`);
           const dj = await rp.json();
           if (!dj.error) {
             const rw = dj.departures;
