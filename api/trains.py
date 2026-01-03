@@ -1,3 +1,11 @@
+from flask import Blueprint, jsonify, request
+import requests
+from datetime import datetime
+import time
+import unicodedata
+
+bp = Blueprint('trains', __name__, url_prefix='/api/trains')
+
 STATIONS_CACHE = {
     'data': None,
     'ts': 0,
@@ -68,13 +76,7 @@ def stations_endpoint():
         return jsonify({'stations': [{'id': s['id'], 'name': s['name']} for s in res]})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-from flask import Blueprint, jsonify, request
-import requests
-from datetime import datetime
-import time
-import unicodedata
-
-bp = Blueprint('trains', __name__, url_prefix='/api/trains')
+ 
 
 # CORS pour API Railway
 @bp.after_request
