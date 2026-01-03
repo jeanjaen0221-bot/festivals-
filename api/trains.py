@@ -15,6 +15,11 @@ STATIONS_CACHE = {
 # Simple in-memory cache for liveboard/departures responses to avoid hammering iRail
 LIVEBOARD_CACHE = {}
 
+# As recommended by iRail docs, set a descriptive User-Agent to facilitate communication
+IRAIL_HEADERS = {
+    'User-Agent': 'FestivalsNavette/1.0 (https://example.org; contact@example.org)'
+}
+
 def _cache_get(key: str):
     try:
         item = LIVEBOARD_CACHE.get(key)
@@ -50,7 +55,7 @@ def get_stations(lang: str = 'fr'):
         return STATIONS_CACHE['data']
     url = 'https://api.irail.be/stations/'
     params = {'format': 'json', 'lang': lang}
-    r = requests.get(url, params=params, timeout=10)
+    r = requests.get(url, params=params, headers=IRAIL_HEADERS, timeout=10)
     r.raise_for_status()
     js = r.json()
     stations = []
@@ -127,7 +132,7 @@ def get_departures():
                 'timesel': 'departure',  # conforme à la doc
                 'lang': 'fr',
             }
-            response = requests.get('https://api.irail.be/connections/', params=params, timeout=6)
+            response = requests.get('https://api.irail.be/connections/', params=params, headers=IRAIL_HEADERS, timeout=6)
             response.raise_for_status()
             data = response.json() if response.headers.get('Content-Type','').startswith('application/json') else {}
             if data.get('connection'):
@@ -218,7 +223,7 @@ def get_liveboard():
             if cached is not None:
                 return cached
             try:
-                r = requests.get('https://api.irail.be/liveboard/', params=p, timeout=6)
+                r = requests.get('https://api.irail.be/liveboard/', params=p, headers=IRAIL_HEADERS, timeout=6)
                 if r.status_code == 429:
                     # bubble up a rate-limit signal
                     return {'_rate_limited': True, 'retry_after': int(r.headers.get('Retry-After', '30') or 30)}
@@ -255,7 +260,7 @@ def get_liveboard():
             if cached is not None:
                 return cached
             try:
-                r2 = requests.get('https://api.irail.be/departures/', params=p2, timeout=6)
+                r2 = requests.get('https://api.irail.be/departures/', params=p2, headers=IRAIL_HEADERS, timeout=6)
                 if r2.status_code == 429:
                     return {'_rate_limited': True, 'retry_after': int(r2.headers.get('Retry-After', '30') or 30)}
                 r2.raise_for_status()
