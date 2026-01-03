@@ -2,14 +2,39 @@
 {% block title %}Navette Esperanzah{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <h1 class="mb-4"><i class="bi bi-bus-front"></i> Navette Esperanzah</h1>
+  <h1 class="mb-3"><i class="bi bi-bus-front"></i> Navette Esperanzah</h1>
+  <div class="alert alert-info py-2 small" role="alert">
+    <span class="me-3"><i class="bi bi-lightbulb"></i> LED bleue = position approximative</span>
+    <span class="me-3"><i class="bi bi-arrow-right-circle"></i> Ligne surlignée = prochain arrêt</span>
+    <span class="me-3"><span class="badge bg-success">En service</span> / <span class="badge bg-warning text-dark">Reprise à HH:MM</span> / <span class="badge bg-secondary">Hors service</span></span>
+  </div>
+  <div class="d-flex justify-content-end mb-2">
+    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#volunteerGuide" aria-expanded="false" aria-controls="volunteerGuide">
+      <i class="bi bi-mortarboard"></i> Guide bénévoles
+    </button>
+  </div>
+  <div class="collapse" id="volunteerGuide">
+    <div class="card card-body small mb-3">
+      <div class="row g-2">
+        <div class="col-md-6">
+          <div><i class="bi bi-traffic-light text-success"></i> État du service : badge en haut du planning.</div>
+          <div><i class="bi bi-dot"></i> LED bleue sur la ligne = position approximative.</div>
+          <div><i class="bi bi-calendar-event"></i> Créneaux : <span class="badge bg-success">En cours</span> ou <span class="badge bg-warning text-dark">À venir</span>.</div>
+        </div>
+        <div class="col-md-6">
+          <div><i class="bi bi-list-check"></i> Tableau : ligne bleue = prochain arrêt; heures estimées.</div>
+          <div><i class="bi bi-arrow-clockwise"></i> Rafraîchissement auto toutes les 30 s.</div>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="row g-4">
     <div class="col-lg-6">
       <div class="card shadow rounded-3 border-0">
         <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center">
           <span><i class="bi bi-signpost"></i> Parcours</span>
           <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="popover" data-bs-placement="bottom" title="Parcours"
-            data-bs-content="Liste des arrêts dans l'ordre. Le badge +X min indique le temps d'arrêt moyen. Le badge ‘Départ’ marque le point de départ affiché."><i class="bi bi-question-circle"></i></button>
+            data-bs-content="Ligne des arrêts du parcours. LED bleue : position approximative. ‘Départ’ : point de départ affiché."><i class="bi bi-question-circle"></i></button>
         </div>
         <div class="card-body">
           <div id="shuttle-line" class="shuttle-line mb-2">
@@ -17,7 +42,7 @@
             <div class="shuttle-led" title="Position approximative"></div>
             <div id="shuttle-stops" class="shuttle-stops"></div>
           </div>
-          <ol id="shuttle-route" class="list-group list-group-numbered mt-2"></ol>
+          <div class="text-muted small">LED bleue : position approximative · Les points : arrêts</div>
         </div>
       </div>
       <div class="card shadow rounded-3 border-0 mt-3">
@@ -56,7 +81,6 @@
             </table>
           </div>
           <div class="alert alert-warning mt-2 d-none" id="shuttle-eta-warning"></div>
-          <div class="text-muted small" id="shuttle-params"></div>
           <div class="text-muted small mt-1">Ligne surlignée: prochain arrêt. Horaires estimés. Actualisation toutes les 30 s.</div>
         </div>
       </div>
@@ -95,5 +119,5 @@
     }
   });
 </script>
-<script src="{{ url_for('static', filename='js/shuttle_eta.js') }}?v=20260103-2"></script>
+<script src="{{ url_for('static', filename='js/shuttle_eta.js') }}?v=20260103-3"></script>
 {% endblock %}

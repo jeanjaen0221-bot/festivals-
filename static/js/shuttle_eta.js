@@ -85,35 +85,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     ledEl.style.transform = `translateX(${x}px)`;
   }
 
-  // Render route list
+  // Render route list (optional: only if list element exists)
   if (Array.isArray(route) && route.length) {
     route.sort((a,b) => (a.sequence||0) - (b.sequence||0));
-    routeEl.innerHTML = '';
-    route.forEach((s) => {
-      const li = document.createElement('li');
-      li.className = 'list-group-item d-flex justify-content-between align-items-center';
-      const isBase = !!(settings && settings.display_base_stop_sequence && s.sequence === settings.display_base_stop_sequence);
-      const left = document.createElement('div');
-      left.className = 'd-flex flex-column';
-      const title = document.createElement('div');
-      title.innerHTML = `${s.name}${isBase ? ' <span class="badge bg-primary ms-2">Départ</span>' : ''}`;
-      left.appendChild(title);
-      if (s.note) {
-        const note = document.createElement('small');
-        note.className = 'text-muted';
-        note.textContent = s.note;
-        left.appendChild(note);
-      }
-      const right = document.createElement('span');
-      right.className = 'badge bg-secondary';
-      right.textContent = `+${s.dwell_minutes || 0} min`;
-      li.appendChild(left);
-      li.appendChild(right);
-      routeEl.appendChild(li);
-    });
+    if (routeEl) {
+      routeEl.innerHTML = '';
+      route.forEach((s) => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        const isBase = !!(settings && settings.display_base_stop_sequence && s.sequence === settings.display_base_stop_sequence);
+        const left = document.createElement('div');
+        left.className = 'd-flex flex-column';
+        const title = document.createElement('div');
+        title.innerHTML = `${s.name}${isBase ? ' <span class="badge bg-primary ms-2">Départ</span>' : ''}`;
+        left.appendChild(title);
+        if (s.note) {
+          const note = document.createElement('small');
+          note.className = 'text-muted';
+          note.textContent = s.note;
+          left.appendChild(note);
+        }
+        const right = document.createElement('span');
+        right.className = 'badge bg-secondary';
+        right.textContent = `+${s.dwell_minutes || 0} min`;
+        li.appendChild(left);
+        li.appendChild(right);
+        routeEl.appendChild(li);
+      });
+    }
     try { renderShuttleLineStops(route.slice().sort((a,b)=>a.sequence-b.sequence)); } catch (e) {}
   } else {
-    routeEl.innerHTML = '<li class="list-group-item text-muted">Aucun arrêt configuré.</li>';
+    if (routeEl) routeEl.innerHTML = '<li class="list-group-item text-muted">Aucun arrêt configuré.</li>';
   }
 
   // Render today schedule
@@ -181,24 +183,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   } catch (e) {}
 
-  try {
-    const parts = [];
-    parts.push(`~${settings.mean_leg_minutes || 5} min entre arrêts`);
-    parts.push(`temps d'arrêt selon parcours`);
-    parts.push(settings.loop_enabled ? 'mode boucle activé' : 'mode non bouclé');
-    parts.push(settings.bidirectional_enabled ? 'bidirectionnel' : 'sens unique');
-    if (settings.bidirectional_enabled) {
-      const dirLabel = (settings.display_direction === 'backward' ? 'Retour' : 'Aller');
-      parts.push(`affichage: ${dirLabel}`);
-    }
-    if (settings.display_base_stop_sequence) {
-      parts.push(`départ séquence ${settings.display_base_stop_sequence}`);
-    }
-    if (settings.constrain_to_today_slots) {
-      parts.push('limité aux créneaux du jour');
-    }
-    paramsEl.textContent = `Paramètres: ${parts.join(', ')}`;
-  } catch (e) {}
+  if (paramsEl) {
+    try { paramsEl.textContent = ''; } catch (e) {}
+  }
 
   function addMinutes(base, minutes) {
     const d = new Date(base.getTime());
