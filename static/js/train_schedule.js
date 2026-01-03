@@ -52,7 +52,8 @@ function fmtDateDDMMYYFromEpoch(tsSec){
   return `${dd}${mm}${yy}`;
 }
 
-function renderFlapBoard(container, stationName, departures, bannerText) {
+function renderFlapBoard(container, stationName, departures, bannerText, opts={}) {
+  const animate = opts.animate !== undefined ? opts.animate : true;
   let html = `
     <div class='flap-board'>
       <div class='d-flex justify-content-between align-items-center px-1 pb-2'>
@@ -76,20 +77,28 @@ function renderFlapBoard(container, stationName, departures, bannerText) {
     const dest = dep.destination || dep.station || '';
     html += `
       <div class='flap-row'>
-        <div class='flap-cell center flip'>${time}</div>
-        <div class='flap-cell flip'>${dest}</div>
-        <div class='flap-cell center flip'>${platform}</div>
-        <div class='flap-cell center flip'>${type}</div>
-        <div class='flap-cell center flip ${delay ? 'delay' : ''}'>${delay}</div>
+        <div class='flap-cell center ${animate ? 'flip' : ''}'>${time}</div>
+        <div class='flap-cell ${animate ? 'flip' : ''}'>${dest}</div>
+        <div class='flap-cell center ${animate ? 'flip' : ''}'>${platform}</div>
+        <div class='flap-cell center ${animate ? 'flip' : ''}'>${type}</div>
+        <div class='flap-cell center ${animate ? 'flip' : ''} ${delay ? 'delay' : ''}'>${delay}</div>
       </div>
     `;
   });
   html += `</div>`;
-  container.innerHTML = html;
+  // Avoid unnecessary DOM work if nothing changed
+  const prev = container.getAttribute('data-flap-html');
+  if (prev !== html) {
+    container.innerHTML = html;
+    container.setAttribute('data-flap-html', html);
+  }
 }
 
-async function loadLiveboard(stationParam, resultsDiv, displayName) {
-  resultsDiv.innerHTML = '<div class="text-center py-4"><div class="spinner-border" role="status"></div> Chargement...</div>';
+async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) {
+  const showSpinner = options.showSpinner !== undefined ? options.showSpinner : true;
+  if (showSpinner) {
+    resultsDiv.innerHTML = '<div class="text-center py-4"><div class="spinner-border" role="status"></div> Chargement...</div>';
+  }
   try {
     const resp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}`);
     if (resp.status === 429) {
@@ -122,7 +131,7 @@ async function loadLiveboard(stationParam, resultsDiv, displayName) {
         const raw2 = data2.departures;
         const list2 = Array.isArray(raw2) ? raw2 : (raw2 && Array.isArray(raw2.departure) ? raw2.departure : []);
         if (list2 && list2.length) {
-          renderFlapBoard(resultsDiv, displayName || stationParam, list2.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs.");
+          renderFlapBoard(resultsDiv, displayName || stationParam, list2.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs.", { animate: true });
           return;
         }
       }
@@ -173,16 +182,61 @@ async function loadLiveboard(stationParam, resultsDiv, displayName) {
             const lst = Array.isArray(rw) ? rw : (rw && Array.isArray(rw.departure) ? rw.departure : []);
             if (lst && lst.length) {
               const when = new Date(t * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-              renderFlapBoard(resultsDiv, displayName || stationParam, lst.slice(0,3), `Aucun train à l'heure demandée — prochains départs vers ${when}.`);
+              renderFlapBoard(resultsDiv, displayName || stationParam, lst.slice(0,3), `Aucun train à l'heure demandée — prochains départs vers ${when}.`, { animate: true });
               return;
             }
           }
         } catch (e) {}
       }
+      // Fallback 3: probe anchor hours 06:00, 07:00, 08:00 (today if upcoming, else tomorrow)
+      try {
+        const nowD = new Date();
+        const anchors = [6,7,8];
+        const candidates = [];
+        const today = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate());
+        anchors.forEach(hh => {
+          const dt = new Date(today.getTime());
+          dt.setHours(hh, 0, 0, 0);
+          if (dt.getTime() / 1000 > now) candidates.push(dt);
+        });
+        if (!candidates.length) {
+          const tomorrow = new Date(today.getTime() + 24*3600*1000);
+          anchors.forEach(hh => {
+            const dt2 = new Date(tomorrow.getTime());
+            dt2.setHours(hh, 0, 0, 0);
+            candidates.push(dt2);
+          });
+        }
+        for (const dt of candidates) {
+          const t = Math.floor(dt.getTime()/1000);
+          const date = fmtDateDDMMYYFromEpoch(t);
+          const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}&fast=false&time=${t}&date=${date}`);
+          if (rp.status === 429) {
+            const dj2 = await rp.json().catch(()=>({}));
+            const ra4 = Number(dj2.retry_after || 30);
+            resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra4}s…</div>`;
+            if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
+            if (rateRetryId) clearTimeout(rateRetryId);
+            rateRetryId = setTimeout(() => { loadLiveboard(stationParam, resultsDiv, displayName); }, ra4 * 1000);
+            return;
+          }
+          const dj = await rp.json();
+          if (!dj.error) {
+            const rw = dj.departures;
+            const lst = Array.isArray(rw) ? rw : (rw && Array.isArray(rw.departure) ? rw.departure : []);
+            if (lst && lst.length) {
+              const when = dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+              renderFlapBoard(resultsDiv, displayName || stationParam, lst.slice(0,3), `Aucun train à l'heure demandée — prochains départs vers ${when}.`, { animate: true });
+              return;
+            }
+          }
+        }
+      } catch(e) {}
       resultsDiv.innerHTML = '<div class="alert alert-warning">Aucun départ trouvé pour cette gare.</div>';
       return;
     }
-    renderFlapBoard(resultsDiv, displayName || stationParam, list.slice(0, 12));
+    // On normal load, animate on first render (when spinner visible), else no animation
+    renderFlapBoard(resultsDiv, displayName || stationParam, list.slice(0, 12), null, { animate: showSpinner });
   } catch (err) {
     // Handle backend explicit rate_limited JSON errors (e.g., 200 with error string)
     if (String(err.message).includes('rate_limited')) {
@@ -255,9 +309,9 @@ document.addEventListener('DOMContentLoaded', () => {
     currentStation = best.id || best.name || typed;
     currentStationName = best.name || typed;
     if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
-    await loadLiveboard(currentStation, resultsDiv, currentStationName);
+    await loadLiveboard(currentStation, resultsDiv, currentStationName, { showSpinner: true });
     autoRefreshId = setInterval(() => {
-      if (currentStation) loadLiveboard(currentStation, resultsDiv, currentStationName);
+      if (currentStation) loadLiveboard(currentStation, resultsDiv, currentStationName, { showSpinner: false });
     }, 30000);
   });
 });
