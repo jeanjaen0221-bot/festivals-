@@ -2,6 +2,8 @@
 let suggestionsTimeout = null;
 let autoRefreshId = null;
 let currentStation = null;
+let allStations = [];
+let selectedStationId = null;
 
 function showSuggestions(list) {
   const suggDiv = document.getElementById('station-suggestions');
@@ -14,6 +16,7 @@ function showSuggestions(list) {
     el.textContent = station.name;
     el.onclick = () => {
       document.getElementById('station-input').value = station.name;
+      selectedStationId = station.id || null;
       suggDiv.innerHTML = '';
       suggDiv.style.display = 'none';
     };
@@ -22,15 +25,17 @@ function showSuggestions(list) {
   suggDiv.style.display = 'block';
 }
 
-async function fetchStationSuggestions(query) {
+function normalizeStr(s){
+  if (!s) return '';
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[’'\-]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function localStationSuggestions(query){
   if (!query) return [];
-  const url = `https://api.irail.be/stations/?format=json&lang=fr&query=${encodeURIComponent(query)}`;
-  try {
-    const resp = await fetch(url);
-    const data = await resp.json();
-    if (data.station) return data.station.slice(0, 8);
-  } catch (e) {}
-  return [];
+  const nq = normalizeStr(query);
+  const starts = allStations.filter(s => normalizeStr(s.name).startsWith(nq));
+  const contains = allStations.filter(s => !normalizeStr(s.name).startsWith(nq) && normalizeStr(s.name).includes(nq));
+  return [...starts, ...contains].slice(0, 12);
 }
 
 function fmtTime(tsSec) {
@@ -125,12 +130,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const resultsDiv = document.getElementById('train-results');
   const suggDiv = document.getElementById('station-suggestions');
 
+  // Preload stations list (FR, only Belgian stations)
+  (async () => {
+    try {
+      const r = await fetch('/api/trains/stations?lang=fr&only_be=1');
+      const d = await r.json();
+      if (Array.isArray(d.stations)) allStations = d.stations;
+    } catch (e) {}
+  })();
+
   input.addEventListener('input', async e => {
     const val = input.value.trim();
     clearTimeout(suggestionsTimeout);
     if (val.length < 2) { suggDiv.innerHTML=''; suggDiv.style.display='none'; return; }
     suggestionsTimeout = setTimeout(async () => {
-      const suggestions = await fetchStationSuggestions(val);
+      const suggestions = localStationSuggestions(val);
       showSuggestions(suggestions);
     }, 250);
   });
@@ -144,9 +158,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
-    const station = input.value.trim();
-    if (!station) return;
-    currentStation = station;
+    const typed = input.value.trim();
+    if (!typed) return;
+    // if no explicit selection, try to match starts-with suggestion to set id
+    if (!selectedStationId) {
+      const first = localStationSuggestions(typed)[0];
+      if (first) selectedStationId = first.id;
+    }
+    currentStation = selectedStationId || typed;
     if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
     await loadLiveboard(currentStation, resultsDiv);
     autoRefreshId = setInterval(() => {

@@ -1,6 +1,78 @@
-from flask import Blueprint, jsonify
+STATIONS_CACHE = {
+    'data': None,
+    'ts': 0,
+    'lang': None,
+}
+
+def _normalize(s: str) -> str:
+    if not s:
+        return ''
+    s2 = unicodedata.normalize('NFD', s)
+    s2 = ''.join(c for c in s2 if unicodedata.category(c) != 'Mn')
+    s2 = s2.lower().replace("'", ' ').replace('-', ' ').replace('’', ' ')
+    s2 = ' '.join(s2.split())
+    return s2
+
+def get_stations(lang: str = 'fr'):
+    now = time.time()
+    if STATIONS_CACHE['data'] is not None and (now - STATIONS_CACHE['ts'] < 6*3600) and STATIONS_CACHE['lang'] == lang:
+        return STATIONS_CACHE['data']
+    url = 'https://api.irail.be/stations/'
+    params = {'format': 'json', 'lang': lang}
+    r = requests.get(url, params=params, timeout=10)
+    r.raise_for_status()
+    js = r.json()
+    stations = []
+    for st in js.get('station', []) or []:
+        # iRail typically returns { name, id, locationX, locationY, ... }
+        x = st.get('locationX'); y = st.get('locationY')
+        try:
+            x = float(x) if x is not None else None
+            y = float(y) if y is not None else None
+        except Exception:
+            x = None; y = None
+        stations.append({
+            'id': st.get('id') or st.get('@id') or st.get('uri') or st.get('code') or '',
+            'name': st.get('name') or '',
+            'standardname': st.get('standardname') or st.get('name') or '',
+            'x': x,
+            'y': y,
+        })
+    # enrich with normalized name
+    for st in stations:
+        st['norm'] = _normalize(st['name'] or st['standardname'])
+        # Belgian bounding box approx: lon 2.5..6.5, lat 49.3..51.6
+        if st['x'] is not None and st['y'] is not None:
+            st['is_be'] = (2.2 <= st['x'] <= 6.6) and (49.2 <= st['y'] <= 51.7)
+        else:
+            st['is_be'] = False
+    STATIONS_CACHE.update({'data': stations, 'ts': now, 'lang': lang})
+    return stations
+
+@bp.route('/stations')
+def stations_endpoint():
+    try:
+        lang = request.args.get('lang', 'fr')
+        q = request.args.get('q', '')
+        stations = get_stations(lang)
+        only_be = request.args.get('only_be') in ('1','true','yes','on')
+        if q:
+            nq = _normalize(q)
+            base = [s for s in stations if (s['is_be'] or not only_be)]
+            starts = [s for s in base if s['norm'].startswith(nq)]
+            contains = [s for s in base if (nq in s['norm'] and not s['norm'].startswith(nq))]
+            res = starts + contains
+        else:
+            res = [s for s in stations if (s['is_be'] or not only_be)]
+        # Return lean payload
+        return jsonify({'stations': [{'id': s['id'], 'name': s['name']} for s in res]})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+from flask import Blueprint, jsonify, request
 import requests
 from datetime import datetime
+import time
+import unicodedata
 
 bp = Blueprint('trains', __name__, url_prefix='/api/trains')
 
@@ -82,12 +154,25 @@ def get_departures():
 
 @bp.route('/liveboard')
 def get_liveboard():
-    from flask import request
     station = request.args.get('station', 'Wavre')
     fast = request.args.get('fast', 'true')
     time_param = request.args.get('time')
     date_param = request.args.get('date')
     try:
+        # If station looks like a plain name (no NMBS id), try to resolve to id for robustness
+        if station and ('irail.be/stations' not in station and 'NMBS' not in station and not station.isdigit()):
+            try:
+                # language default fr for name resolution
+                sts = get_stations('fr')
+                n = _normalize(station)
+                # Prefer startswith then contains
+                match = next((s for s in sts if s['norm'].startswith(n)), None)
+                if not match:
+                    match = next((s for s in sts if n in s['norm']), None)
+                if match and match.get('id'):
+                    station = match['id']
+            except Exception:
+                pass
         def fetch_once(use_fast: str):
             p = {
                 'station': station,
