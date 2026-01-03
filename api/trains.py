@@ -12,6 +12,29 @@ STATIONS_CACHE = {
     'lang': None,
 }
 
+# Simple in-memory cache for liveboard/departures responses to avoid hammering iRail
+LIVEBOARD_CACHE = {}
+
+def _cache_get(key: str):
+    try:
+        item = LIVEBOARD_CACHE.get(key)
+        if not item:
+            return None
+        ts, ttl, data = item
+        if (time.time() - ts) <= ttl:
+            return data
+        else:
+            LIVEBOARD_CACHE.pop(key, None)
+    except Exception:
+        pass
+    return None
+
+def _cache_set(key: str, data, ttl: int):
+    try:
+        LIVEBOARD_CACHE[key] = (time.time(), ttl, data)
+    except Exception:
+        pass
+
 def _normalize(s: str) -> str:
     if not s:
         return ''
@@ -190,8 +213,20 @@ def get_liveboard():
             p.update(_build_station_params(station))
             if time_param: p['time'] = time_param
             if date_param: p['date'] = date_param
-            r = requests.get('https://api.irail.be/liveboard/', params=p, timeout=6)
-            r.raise_for_status()
+            cache_key = f"lb|{use_fast}|{p.get('id') or p.get('station')}|{p.get('time','now')}|{p.get('date','')}"
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                return cached
+            try:
+                r = requests.get('https://api.irail.be/liveboard/', params=p, timeout=6)
+                if r.status_code == 429:
+                    # bubble up a rate-limit signal
+                    return {'_rate_limited': True, 'retry_after': int(r.headers.get('Retry-After', '30') or 30)}
+                r.raise_for_status()
+            except requests.exceptions.HTTPError as he:
+                if getattr(he, 'response', None) is not None and he.response.status_code == 429:
+                    return {'_rate_limited': True, 'retry_after': int(he.response.headers.get('Retry-After', '30') or 30)}
+                raise
             js = r.json() if r.headers.get('Content-Type','').startswith('application/json') else {}
             items = []
             for dep in js.get('departures', {}).get('departure', []) or []:
@@ -203,6 +238,8 @@ def get_liveboard():
                     'destination': dep.get('station', ''),
                     'canceled': str(dep.get('canceled', '0')) == '1'
                 })
+            # Cache: 'now' ttl ~ 20s; historical queries ttl longer
+            _cache_set(cache_key, items, 20 if not time_param else 60)
             return items
 
         def fetch_departures_api():
@@ -213,8 +250,19 @@ def get_liveboard():
             p2.update(_build_station_params(station))
             if time_param: p2['time'] = time_param
             if date_param: p2['date'] = date_param
-            r2 = requests.get('https://api.irail.be/departures/', params=p2, timeout=6)
-            r2.raise_for_status()
+            cache_key = f"dep|{p2.get('id') or p2.get('station')}|{p2.get('time','now')}|{p2.get('date','')}"
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                return cached
+            try:
+                r2 = requests.get('https://api.irail.be/departures/', params=p2, timeout=6)
+                if r2.status_code == 429:
+                    return {'_rate_limited': True, 'retry_after': int(r2.headers.get('Retry-After', '30') or 30)}
+                r2.raise_for_status()
+            except requests.exceptions.HTTPError as he:
+                if getattr(he, 'response', None) is not None and he.response.status_code == 429:
+                    return {'_rate_limited': True, 'retry_after': int(he.response.headers.get('Retry-After', '30') or 30)}
+                raise
             js2 = r2.json() if r2.headers.get('Content-Type','').startswith('application/json') else {}
             items2 = []
             for dep in js2.get('departures', {}).get('departure', []) or []:
@@ -226,23 +274,30 @@ def get_liveboard():
                     'destination': dep.get('station', ''),
                     'canceled': str(dep.get('canceled', '0')) == '1'
                 })
+            _cache_set(cache_key, items2, 20 if not time_param else 60)
             return items2
 
         # Prefer departures API first (it returns next trains)
         departures = []
         try:
             departures = fetch_departures_api()
+            if isinstance(departures, dict) and departures.get('_rate_limited'):
+                return jsonify({'error': 'rate_limited', 'retry_after': departures.get('retry_after', 30)}), 429
         except Exception:
             departures = []
         # Fallback to liveboard fast/false
         if not departures:
             try:
                 departures = fetch_liveboard_once(fast)
+                if isinstance(departures, dict) and departures.get('_rate_limited'):
+                    return jsonify({'error': 'rate_limited', 'retry_after': departures.get('retry_after', 30)}), 429
             except Exception:
                 departures = []
         if not departures and fast == 'true':
             try:
                 departures = fetch_liveboard_once('false')
+                if isinstance(departures, dict) and departures.get('_rate_limited'):
+                    return jsonify({'error': 'rate_limited', 'retry_after': departures.get('retry_after', 30)}), 429
             except Exception:
                 departures = []
         # Final fallback: departures again without time/date
