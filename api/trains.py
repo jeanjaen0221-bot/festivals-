@@ -84,26 +84,38 @@ def get_departures():
 def get_liveboard():
     from flask import request
     station = request.args.get('station', 'Wavre')
+    fast = request.args.get('fast', 'true')
+    time_param = request.args.get('time')
+    date_param = request.args.get('date')
     try:
-        params = {
-            'station': station,
-            'format': 'json',
-            'lang': 'fr',
-            'fast': 'true',  # recommandé par iRail pour les liveboards
-        }
-        resp = requests.get('https://api.irail.be/liveboard/', params=params, timeout=6)
-        resp.raise_for_status()
-        data = resp.json() if resp.headers.get('Content-Type','').startswith('application/json') else {}
-        departures = []
-        for dep in data.get('departures', {}).get('departure', []) or []:
-            departures.append({
-                'time': dep.get('time'),
-                'delay': int(dep.get('delay', 0) or 0),
-                'vehicle': dep.get('vehicle', ''),
-                'platform': dep.get('platform', ''),
-                'destination': dep.get('station', ''),
-                'canceled': str(dep.get('canceled', '0')) == '1'
-            })
+        def fetch_once(use_fast: str):
+            p = {
+                'station': station,
+                'format': 'json',
+                'lang': 'fr',
+                'fast': use_fast,
+            }
+            if time_param: p['time'] = time_param
+            if date_param: p['date'] = date_param
+            r = requests.get('https://api.irail.be/liveboard/', params=p, timeout=6)
+            r.raise_for_status()
+            js = r.json() if r.headers.get('Content-Type','').startswith('application/json') else {}
+            items = []
+            for dep in js.get('departures', {}).get('departure', []) or []:
+                items.append({
+                    'time': dep.get('time'),
+                    'delay': int(dep.get('delay', 0) or 0),
+                    'vehicle': dep.get('vehicle', ''),
+                    'platform': dep.get('platform', ''),
+                    'destination': dep.get('station', ''),
+                    'canceled': str(dep.get('canceled', '0')) == '1'
+                })
+            return items
+
+        departures = fetch_once(fast)
+        if not departures and fast == 'true':
+            # Retry without fast optimization to broaden results
+            departures = fetch_once('false')
         return jsonify({'departures': departures})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

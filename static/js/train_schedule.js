@@ -37,13 +37,14 @@ function fmtTime(tsSec) {
   return new Date(tsSec * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 }
 
-function renderFlapBoard(container, stationName, departures) {
+function renderFlapBoard(container, stationName, departures, bannerText) {
   let html = `
     <div class='flap-board'>
       <div class='d-flex justify-content-between align-items-center px-1 pb-2'>
         <h2 class='mb-0 station-title'><i class='bi bi-clock-history'></i> Prochains départs de <b>${stationName}</b></h2>
         <div class='train-autorefresh'>MAJ auto 30 s</div>
       </div>
+      ${bannerText ? `<div class='px-1 pb-2 text-warning small'>${bannerText}</div>` : ''}
       <div class='flap-header'>
         <div class='flap-cell center muted'>Heure</div>
         <div class='flap-cell muted'>Destination</div>
@@ -77,12 +78,24 @@ async function loadLiveboard(station, resultsDiv) {
     const resp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}`);
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
-    const list = (data.departures && data.departures.departure) ? data.departures.departure : [];
+    const raw = data.departures;
+    let list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.departure) ? raw.departure : []);
     if (!list.length) {
+      // Fallback: retry with fast=false and show only next 3 departures
+      const resp2 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}&fast=false`);
+      const data2 = await resp2.json();
+      if (!data2.error) {
+        const raw2 = data2.departures;
+        const list2 = Array.isArray(raw2) ? raw2 : (raw2 && Array.isArray(raw2.departure) ? raw2.departure : []);
+        if (list2 && list2.length) {
+          renderFlapBoard(resultsDiv, station, list2.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs.");
+          return;
+        }
+      }
       resultsDiv.innerHTML = '<div class="alert alert-warning">Aucun départ trouvé pour cette gare.</div>';
       return;
     }
-    renderFlapBoard(resultsDiv, data.station, list.slice(0, 12));
+    renderFlapBoard(resultsDiv, station, list.slice(0, 12));
   } catch (err) {
     resultsDiv.innerHTML = `<div class='alert alert-danger'>Erreur : ${err.message || 'Impossible de récupérer les horaires.'}</div>`;
   }
