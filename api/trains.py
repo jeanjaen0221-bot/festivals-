@@ -175,13 +175,19 @@ def get_liveboard():
                     station = match['id']
             except Exception:
                 pass
-        def fetch_once(use_fast: str):
+        def _build_station_params(st_value: str):
+            # iRail supports either 'station' (name) or 'id' (NMBS id/URI)
+            if st_value and (st_value.startswith('BE.NMBS.') or 'irail.be/stations' in st_value):
+                return {'id': st_value}
+            return {'station': st_value}
+
+        def fetch_liveboard_once(use_fast: str):
             p = {
-                'station': station,
                 'format': 'json',
                 'lang': 'fr',
                 'fast': use_fast,
             }
+            p.update(_build_station_params(station))
             if time_param: p['time'] = time_param
             if date_param: p['date'] = date_param
             r = requests.get('https://api.irail.be/liveboard/', params=p, timeout=6)
@@ -199,34 +205,52 @@ def get_liveboard():
                 })
             return items
 
-        departures = fetch_once(fast)
-        if not departures and fast == 'true':
-            # Retry without fast optimization to broaden results
-            departures = fetch_once('false')
-        if not departures:
-            # Final fallback: use departures endpoint
+        def fetch_departures_api():
             p2 = {
-                'station': station,
                 'format': 'json',
                 'lang': 'fr',
             }
+            p2.update(_build_station_params(station))
             if time_param: p2['time'] = time_param
             if date_param: p2['date'] = date_param
+            r2 = requests.get('https://api.irail.be/departures/', params=p2, timeout=6)
+            r2.raise_for_status()
+            js2 = r2.json() if r2.headers.get('Content-Type','').startswith('application/json') else {}
+            items2 = []
+            for dep in js2.get('departures', {}).get('departure', []) or []:
+                items2.append({
+                    'time': dep.get('time'),
+                    'delay': int(dep.get('delay', 0) or 0),
+                    'vehicle': dep.get('vehicle', ''),
+                    'platform': dep.get('platform', ''),
+                    'destination': dep.get('station', ''),
+                    'canceled': str(dep.get('canceled', '0')) == '1'
+                })
+            return items2
+
+        # Prefer departures API first (it returns next trains)
+        departures = []
+        try:
+            departures = fetch_departures_api()
+        except Exception:
+            departures = []
+        # Fallback to liveboard fast/false
+        if not departures:
             try:
-                r2 = requests.get('https://api.irail.be/departures/', params=p2, timeout=6)
-                r2.raise_for_status()
-                js2 = r2.json() if r2.headers.get('Content-Type','').startswith('application/json') else {}
-                items2 = []
-                for dep in js2.get('departures', {}).get('departure', []) or []:
-                    items2.append({
-                        'time': dep.get('time'),
-                        'delay': int(dep.get('delay', 0) or 0),
-                        'vehicle': dep.get('vehicle', ''),
-                        'platform': dep.get('platform', ''),
-                        'destination': dep.get('station', ''),
-                        'canceled': str(dep.get('canceled', '0')) == '1'
-                    })
-                departures = items2
+                departures = fetch_liveboard_once(fast)
+            except Exception:
+                departures = []
+        if not departures and fast == 'true':
+            try:
+                departures = fetch_liveboard_once('false')
+            except Exception:
+                departures = []
+        # Final fallback: departures again without time/date
+        if not departures and (time_param or date_param):
+            try:
+                # Clear time/date to get "now" board
+                time_param = None; date_param = None
+                departures = fetch_departures_api()
             except Exception:
                 pass
         return jsonify({'departures': departures})
