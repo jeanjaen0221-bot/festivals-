@@ -1,7 +1,10 @@
 // JS moderne pour la page horaires de train (iRail) avec affichage split-flap (aéroport)
 let suggestionsTimeout = null;
 let autoRefreshId = null;
-let currentStation = null;
+let currentStationId = null;
+let currentStationName = null;
+let stationsAll = [];
+let selectedStation = null;
 
 function showSuggestions(list) {
   const suggDiv = document.getElementById('station-suggestions');
@@ -14,6 +17,7 @@ function showSuggestions(list) {
     el.textContent = station.name;
     el.onclick = () => {
       document.getElementById('station-input').value = station.name;
+      selectedStation = station;
       suggDiv.innerHTML = '';
       suggDiv.style.display = 'none';
     };
@@ -22,15 +26,26 @@ function showSuggestions(list) {
   suggDiv.style.display = 'block';
 }
 
-async function fetchStationSuggestions(query) {
-  if (!query) return [];
-  const url = `https://api.irail.be/stations/?format=json&lang=fr&query=${encodeURIComponent(query)}`;
+function normalizeName(s) {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function fetchAllStations() {
   try {
+    const url = `https://api.irail.be/stations/?format=json&lang=fr`;
     const resp = await fetch(url);
     const data = await resp.json();
-    if (data.station) return data.station.slice(0, 8);
-  } catch (e) {}
-  return [];
+    const raw = data.station || [];
+    stationsAll = raw
+      .filter(s => s.name && s.id)
+      .map(s => ({ name: s.name, id: s.id, norm: normalizeName(s.name) }))
+      .sort((a,b) => a.name.localeCompare(b.name, 'fr'));
+  } catch (e) { stationsAll = []; }
 }
 
 function fmtTime(tsSec) {
@@ -72,23 +87,23 @@ function renderFlapBoard(container, stationName, departures, bannerText) {
   container.innerHTML = html;
 }
 
-async function loadLiveboard(station, resultsDiv) {
+async function loadLiveboard(stationIdOrName, resultsDiv, displayName) {
   resultsDiv.innerHTML = '<div class="text-center py-4"><div class="spinner-border" role="status"></div> Chargement...</div>';
   try {
-    const resp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}`);
+    const resp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationIdOrName)}`);
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
     const raw = data.departures;
     let list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.departure) ? raw.departure : []);
     if (!list.length) {
       // Fallback 1: retry with fast=false
-      const resp2 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}&fast=false`);
+      const resp2 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationIdOrName)}&fast=false`);
       const data2 = await resp2.json();
       if (!data2.error) {
         const raw2 = data2.departures;
         const list2 = Array.isArray(raw2) ? raw2 : (raw2 && Array.isArray(raw2.departure) ? raw2.departure : []);
         if (list2 && list2.length) {
-          renderFlapBoard(resultsDiv, station, list2.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs.");
+          renderFlapBoard(resultsDiv, displayName || stationIdOrName, list2.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs.");
           return;
         }
       }
@@ -97,14 +112,14 @@ async function loadLiveboard(station, resultsDiv) {
       for (let h = 1; h <= 6; h++) {
         const t = now + h * 3600;
         try {
-          const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(station)}&fast=false&time=${t}`);
+          const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationIdOrName)}&fast=false&time=${t}`);
           const dj = await rp.json();
           if (!dj.error) {
             const rw = dj.departures;
             const lst = Array.isArray(rw) ? rw : (rw && Array.isArray(rw.departure) ? rw.departure : []);
             if (lst && lst.length) {
               const when = new Date(t * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-              renderFlapBoard(resultsDiv, station, lst.slice(0,3), `Aucun train à l'heure demandée — prochains départs vers ${when}.`);
+              renderFlapBoard(resultsDiv, displayName || stationIdOrName, lst.slice(0,3), `Aucun train à l'heure demandée — prochains départs vers ${when}.`);
               return;
             }
           }
@@ -113,26 +128,31 @@ async function loadLiveboard(station, resultsDiv) {
       resultsDiv.innerHTML = '<div class="alert alert-warning">Aucun départ trouvé pour cette gare.</div>';
       return;
     }
-    renderFlapBoard(resultsDiv, station, list.slice(0, 12));
+    renderFlapBoard(resultsDiv, displayName || stationIdOrName, list.slice(0, 12));
   } catch (err) {
     resultsDiv.innerHTML = `<div class='alert alert-danger'>Erreur : ${err.message || 'Impossible de récupérer les horaires.'}</div>`;
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const input = document.getElementById('station-input');
   const form = document.getElementById('station-search-form');
   const resultsDiv = document.getElementById('train-results');
   const suggDiv = document.getElementById('station-suggestions');
 
+  // Load full list of Belgian stations once
+  await fetchAllStations();
+
   input.addEventListener('input', async e => {
     const val = input.value.trim();
+    selectedStation = null;
     clearTimeout(suggestionsTimeout);
-    if (val.length < 2) { suggDiv.innerHTML=''; suggDiv.style.display='none'; return; }
-    suggestionsTimeout = setTimeout(async () => {
-      const suggestions = await fetchStationSuggestions(val);
+    if (val.length < 1) { suggDiv.innerHTML=''; suggDiv.style.display='none'; return; }
+    suggestionsTimeout = setTimeout(() => {
+      const norm = normalizeName(val);
+      const suggestions = stationsAll.filter(s => s.norm.startsWith(norm)).slice(0, 20);
       showSuggestions(suggestions);
-    }, 250);
+    }, 120);
   });
 
   document.addEventListener('click', (e) => {
@@ -144,13 +164,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
-    const station = input.value.trim();
-    if (!station) return;
-    currentStation = station;
+    const typed = input.value.trim();
+    if (!typed) return;
+    // Resolve selected station -> prefer explicit selection, else best match
+    let st = selectedStation;
+    if (!st || st.name !== typed) {
+      const norm = normalizeName(typed);
+      st = stationsAll.find(s => s.norm === norm) || stationsAll.find(s => s.norm.startsWith(norm));
+    }
+    if (!st) { resultsDiv.innerHTML = '<div class="alert alert-warning">Gare introuvable. Tapez les premières lettres (ex: "Namur").</div>'; return; }
+    currentStationId = st.id;
+    currentStationName = st.name;
     if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
-    await loadLiveboard(currentStation, resultsDiv);
+    await loadLiveboard(currentStationId, resultsDiv, currentStationName);
     autoRefreshId = setInterval(() => {
-      if (currentStation) loadLiveboard(currentStation, resultsDiv);
+      if (currentStationId) loadLiveboard(currentStationId, resultsDiv, currentStationName);
     }, 30000);
   });
 });
