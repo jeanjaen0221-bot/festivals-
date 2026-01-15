@@ -12,7 +12,17 @@ if raw_url.startswith('postgres://'):
     raw_url = 'postgresql://' + raw_url[len('postgres://'):]
 if raw_url.startswith('postgresql://') and '+psycopg' not in raw_url and '+psycopg2' not in raw_url:
     raw_url = 'postgresql+psycopg://' + raw_url[len('postgresql://'):]
+if 'sslmode=' not in raw_url:
+    raw_url = f"{raw_url}{'&' if '?' in raw_url else '?'}sslmode=require"
 app.config['SQLALCHEMY_DATABASE_URI'] = raw_url
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': int(os.environ.get('DB_POOL_RECYCLE', '300')),
+    'pool_size': int(os.environ.get('DB_POOL_SIZE', '5')),
+    'max_overflow': int(os.environ.get('DB_MAX_OVERFLOW', '5')),
+    'pool_timeout': int(os.environ.get('DB_POOL_TIMEOUT', '30')),
+    'connect_args': {'sslmode': 'require'},
+}
 print("DATABASE_URL utilisé :", app.config['SQLALCHEMY_DATABASE_URI'])
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
