@@ -30,10 +30,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // fail silently
   }
 
-  function renderShuttleLineStops(ordered, mappedStartIdx = 0) {
+  function renderShuttleLineStops(ordered, forward, baseSeq) {
     if (!lineStopsEl) return;
     lineStopsEl.innerHTML = '';
-    const forward = !(settings.bidirectional_enabled && (settings.display_direction === 'backward'));
     const arr = forward ? ordered : ordered.slice().reverse();
     arr.forEach((s) => {
       const stop = document.createElement('div');
@@ -42,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       dot.className = 'dot';
       const label = document.createElement('div');
       label.className = 'label';
-      const isBase = !!(settings && settings.display_base_stop_sequence && s.sequence === settings.display_base_stop_sequence);
+      const isBase = !!(baseSeq && s.sequence === baseSeq);
       label.innerHTML = `${s.name}${isBase ? ' <span class="badge bg-primary">Départ</span>' : ''}`;
       stop.appendChild(dot);
       stop.appendChild(label);
@@ -113,7 +112,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         routeEl.appendChild(li);
       });
     }
-    try { renderShuttleLineStops(route.slice().sort((a,b)=>a.sequence-b.sequence)); } catch (e) {}
+    try {
+      const eff0 = getEffectiveDirectionAndBase();
+      renderShuttleLineStops(route.slice().sort((a,b)=>a.sequence-b.sequence), eff0.forward, eff0.baseSeq);
+    } catch (e) {}
   } else {
     if (routeEl) routeEl.innerHTML = '<li class="list-group-item text-muted">Aucun arrêt configuré.</li>';
   }
@@ -220,6 +222,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     return null;
   }
 
+  function getEffectiveDirectionAndBase() {
+    let forward = !(settings.bidirectional_enabled && (settings.display_direction === 'backward'));
+    let baseSeq = settings.display_base_stop_sequence || null;
+
+    try {
+      const now = new Date();
+      const nowMin = (now.getHours() * 60) + now.getMinutes();
+      const activeRange = findActiveSlotMinuteRange((today && today.slots) || [], nowMin);
+      if (settings && settings.constrain_to_today_slots && activeRange) {
+        let activeSlot = null;
+        for (const s of (today.slots || [])) {
+          const sMin = timeToMinutes(s.start_time);
+          const eMin = timeToMinutes(s.end_time);
+          if (sMin <= nowMin && nowMin <= eMin) { activeSlot = s; break; }
+        }
+        if (activeSlot && Array.isArray(route) && route.length) {
+          const asc = route.slice().sort((a,b)=> (a.sequence||0) - (b.sequence||0));
+          const idxFrom = asc.findIndex(st => st.name === activeSlot.from_location);
+          const idxTo = asc.findIndex(st => st.name === activeSlot.to_location);
+          if (idxFrom >= 0) { baseSeq = asc[idxFrom].sequence; }
+          if (settings && settings.bidirectional_enabled && idxFrom >= 0 && idxTo >= 0 && idxFrom !== idxTo) {
+            forward = (idxTo > idxFrom);
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    return { forward, baseSeq };
+  }
+
 
   function computeAndRenderBoard() {
     if (!route || !route.length) return;
@@ -231,20 +263,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const startMin = (now.getHours() * 60) + now.getMinutes();
 
     // Determine direction from settings
-    const forward = !(settings.bidirectional_enabled && (settings.display_direction === 'backward'));
+    const eff = getEffectiveDirectionAndBase();
+    const forward = eff.forward;
+    const baseSeqEff = eff.baseSeq;
     const ordered = forward ? route.slice().sort((a,b)=>a.sequence-b.sequence) : route.slice().sort((a,b)=>b.sequence-a.sequence);
 
     // Resolve start index from display_base_stop_sequence if provided
     let mappedStartIdx = 0;
-    if (settings.display_base_stop_sequence) {
-      const seq = settings.display_base_stop_sequence;
+    if (baseSeqEff) {
+      const seq = baseSeqEff;
       const idx = ordered.findIndex(s => s.sequence === seq);
       if (idx >= 0) mappedStartIdx = idx;
     }
 
     try {
-      const key = JSON.stringify({dir: forward ? 'f' : 'b', seqs: ordered.map(s=>s.sequence)});
-      if (key !== lastRenderKey) { renderShuttleLineStops(ordered, mappedStartIdx); lastRenderKey = key; }
+      const key = JSON.stringify({dir: forward ? 'f' : 'b', base: baseSeqEff || null, seqs: ordered.map(s=>s.sequence)});
+      if (key !== lastRenderKey) { renderShuttleLineStops(ordered, forward, baseSeqEff); lastRenderKey = key; }
     } catch (e) {}
     lastOrdered = ordered; lastMappedStartIdx = mappedStartIdx;
     try { updateLEDPosition(ordered, mappedStartIdx); } catch (e) {}

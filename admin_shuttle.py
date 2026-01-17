@@ -64,12 +64,25 @@ def add_shuttle_slot(day_id):
     day = ShuttleScheduleDay.query.get_or_404(day_id)
     form = ShuttleScheduleSlotForm()
     if form.validate_on_submit():
+        stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
+        stop_names = {s.name for s in stops}
+        valid = True
+        from_loc = form.from_location.data.strip()
+        to_loc = form.to_location.data.strip()
+        if from_loc not in stop_names:
+            form.from_location.errors.append("Cet arrêt n'existe pas dans le parcours")
+            valid = False
+        if to_loc not in stop_names:
+            form.to_location.errors.append("Cet arrêt n'existe pas dans le parcours")
+            valid = False
+        if not valid:
+            return render_template('admin/shuttle_slot_form.html', form=form, title='Ajouter un créneau', stops=stops)
         slot = ShuttleScheduleSlot(
             day=day,
             start_time=form.start_time.data,
             end_time=form.end_time.data,
-            from_location=form.from_location.data.strip(),
-            to_location=form.to_location.data.strip(),
+            from_location=from_loc,
+            to_location=to_loc,
             note=form.note.data or None,
         )
         db.session.add(slot)
@@ -86,10 +99,23 @@ def edit_shuttle_slot(slot_id):
     slot = ShuttleScheduleSlot.query.get_or_404(slot_id)
     form = ShuttleScheduleSlotForm(obj=slot)
     if form.validate_on_submit():
+        stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
+        stop_names = {s.name for s in stops}
+        valid = True
+        from_loc = form.from_location.data.strip()
+        to_loc = form.to_location.data.strip()
+        if from_loc not in stop_names:
+            form.from_location.errors.append("Cet arrêt n'existe pas dans le parcours")
+            valid = False
+        if to_loc not in stop_names:
+            form.to_location.errors.append("Cet arrêt n'existe pas dans le parcours")
+            valid = False
+        if not valid:
+            return render_template('admin/shuttle_slot_form.html', form=form, title='Modifier le créneau', stops=stops)
         slot.start_time = form.start_time.data
         slot.end_time = form.end_time.data
-        slot.from_location = form.from_location.data.strip()
-        slot.to_location = form.to_location.data.strip()
+        slot.from_location = from_loc
+        slot.to_location = to_loc
         slot.note = form.note.data or None
         db.session.commit()
         flash('Créneau mis à jour.', 'success')
@@ -171,12 +197,18 @@ def shuttle_settings():
         db.session.commit()
     form = ShuttleSettingsForm(obj=settings)
     if form.validate_on_submit():
+        seq = form.display_base_stop_sequence.data if form.display_base_stop_sequence.data else None
+        if seq:
+            exists = ShuttleRouteStop.query.filter_by(sequence=seq).first() is not None
+            if not exists:
+                flash("Séquence de départ invalide : aucun arrêt du parcours avec cette séquence.", 'danger')
+                return render_template('admin/shuttle_settings.html', form=form)
         settings.mean_leg_minutes = form.mean_leg_minutes.data
         settings.loop_enabled = bool(form.loop_enabled.data)
         settings.bidirectional_enabled = bool(form.bidirectional_enabled.data)
         settings.constrain_to_today_slots = bool(form.constrain_to_today_slots.data)
         settings.display_direction = (form.display_direction.data or 'forward')
-        settings.display_base_stop_sequence = form.display_base_stop_sequence.data if form.display_base_stop_sequence.data else None
+        settings.display_base_stop_sequence = seq
         db.session.commit()
         flash('Réglages navette enregistrés.', 'success')
         return redirect(url_for('admin_shuttle.shuttle_settings'))
