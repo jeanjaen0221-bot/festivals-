@@ -125,13 +125,9 @@
       <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
         <div class="d-flex align-items-center gap-3">
           <span class="fs-4 fw-bold text-primary"><i class="bi bi-shield-lock-fill me-2"></i>Administration</span>
-          <span class="badge bg-primary d-none d-md-inline">LostFound Festival</span>
         </div>
         <div class="d-flex align-items-center gap-2">
           <span class="text-muted small">{{ current_user.first_name }} {{ current_user.last_name }}</span>
-          <span class="bg-secondary-subtle rounded-circle d-inline-flex align-items-center justify-content-center" style="width:36px;height:36px;">
-            <i class="bi bi-person-circle fs-4 text-secondary"></i>
-          </span>
         </div>
       </div>
       {% with messages = get_flashed_messages(with_categories=true) %}
