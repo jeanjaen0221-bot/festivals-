@@ -614,6 +614,10 @@ def goodies_products():
         db.session.commit()
         flash('Article ajouté.', 'success')
         return redirect(url_for('admin.goodies_products'))
+    # GET (or invalid POST): render the products list with form
+    products = Product.query.order_by(Product.active.desc(), Product.name).all()
+    csrf_form = SimpleCsrfForm()
+    return render_template('admin/products_goodies.html', form=form, products=products, csrf_form=csrf_form)
 
 @bp_admin.route('/goodies/products/<int:pid>/edit', methods=['GET','POST'])
 @login_required
