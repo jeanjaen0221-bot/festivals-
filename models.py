@@ -223,3 +223,60 @@ class ActionLog(db.Model):
     action_type = db.Column(db.String(50), nullable=False)
     details = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+# --- Goodies sales (Belgium-ready TVA) ---
+class PaymentMethod(enum.Enum):
+    CASH = 'cash'
+    CARD = 'card'
+
+class Product(db.Model):
+    __tablename__ = 'products'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    price = db.Column(db.Numeric(10, 2), nullable=False)  # prix TTC par unité
+    vat_rate = db.Column(db.Integer, nullable=False, default=21)  # taux TVA en % (0,6,12,21)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f'<Product {self.name} {self.price}€ TVA {self.vat_rate}%>'
+
+class Sale(db.Model):
+    __tablename__ = 'sales'
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    payment_method = db.Column(db.Enum(PaymentMethod), nullable=False)
+    total_amount = db.Column(db.Numeric(10, 2), nullable=False)  # total TTC avant arrondi cash
+    total_vat_amount = db.Column(db.Numeric(10, 2), nullable=False)  # somme des TVA lignes
+    rounded_total_amount = db.Column(db.Numeric(10, 2), nullable=True)  # total TTC arrondi (cash, règle 0.05)
+    rounding_adjustment = db.Column(db.Numeric(10, 2), nullable=True)  # ajustement arrondi (cash)
+    items = db.relationship('SaleItem', backref='sale', cascade='all, delete-orphan', lazy=True)
+
+    def __repr__(self):
+        return f'<Sale {self.id} {self.payment_method.value} {self.total_amount}€>'
+
+class SaleItem(db.Model):
+    __tablename__ = 'sale_items'
+    id = db.Column(db.Integer, primary_key=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sales.id'), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, index=True)
+    product = db.relationship('Product')
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+    unit_price = db.Column(db.Numeric(10, 2), nullable=False)  # prix TTC
+    vat_rate = db.Column(db.Integer, nullable=False)  # taux % au moment de la vente
+    line_total = db.Column(db.Numeric(10, 2), nullable=False)  # TTC
+    vat_amount = db.Column(db.Numeric(10, 2), nullable=False)  # TVA incluse
+
+    def __repr__(self):
+        return f'<SaleItem sale={self.sale_id} product={self.product_id} qty={self.quantity}>'
+
+class ZClosure(db.Model):
+    __tablename__ = 'z_closures'
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    from_ts = db.Column(db.DateTime, nullable=True)
+    to_ts = db.Column(db.DateTime, nullable=False)
+
+    def __repr__(self):
+        return f'<ZClosure #{self.id} {self.from_ts}→{self.to_ts}>'

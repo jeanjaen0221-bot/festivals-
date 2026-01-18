@@ -1,0 +1,52 @@
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<h3 class="mb-3">Rapport Z (depuis dernière clôture)</h3>
+<div class="row g-4">
+  <div class="col-12 col-xl-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="mb-2"><span class="text-muted">Depuis:</span> <strong>{% if from_ts %}{{ from_ts.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}Début{% endif %}</strong></div>
+        <div class="mb-2"><span class="text-muted">Nombre de ventes:</span> <strong>{{ sales_count }}</strong></div>
+        <h5 class="mt-3">Total par moyen de paiement</h5>
+        <ul class="list-group">
+          <li class="list-group-item d-flex justify-content-between"><span>Carte</span><span class="fw-bold">{{ '%.2f'|format(totals_by_payment['card']) }} €</span></li>
+          <li class="list-group-item d-flex justify-content-between"><span>Cash</span><span class="fw-bold">{{ '%.2f'|format(totals_by_payment['cash']) }} €</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-xl-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5>Répartition TVA</h5>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>TVA</th>
+                <th class="text-end">Net (€)</th>
+                <th class="text-end">TVA (€)</th>
+                <th class="text-end">TTC (€)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for rate, agg in totals_by_vat.items()|sort %}
+              <tr>
+                <td>{{ rate }}%</td>
+                <td class="text-end">{{ '%.2f'|format(agg.net) }}</td>
+                <td class="text-end">{{ '%.2f'|format(agg.vat) }}</td>
+                <td class="text-end">{{ '%.2f'|format(agg.ttc) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <form method="post" action="{{ url_for('admin.goodies_z_close') }}" class="mt-3" onsubmit="return confirm('Confirmer la clôture Z ?');">
+          {{ csrf_form.csrf_token }}
+          <button class="btn btn-danger"><i class="bi bi-archive"></i> Effectuer la clôture Z</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

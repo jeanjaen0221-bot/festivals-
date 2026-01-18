@@ -247,3 +247,10 @@ class ShuttleSettingsForm(FlaskForm):
     display_direction = SelectField('Direction d\'affichage', choices=[('forward', 'Aller'), ('backward', 'Retour')])
     display_base_stop_sequence = IntegerField('Séquence de l\'arrêt de départ pour l\'affichage', validators=[Optional()])
     submit = SubmitField('Enregistrer les réglages')
+
+class ProductForm(FlaskForm):
+    name = StringField('Nom de l\'article', validators=[DataRequired(), Length(max=120)])
+    price = DecimalField('Prix TTC (€)', places=2, validators=[DataRequired()])
+    vat_rate = SelectField('TVA (%)', choices=[('21', '21%'), ('12', '12%'), ('6', '6%'), ('0', '0%')], validators=[DataRequired()])
+    active = BooleanField('Actif', default=True)
+    submit = SubmitField('Enregistrer')

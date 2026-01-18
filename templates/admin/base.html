@@ -56,6 +56,31 @@
             </a>
           </li>
 
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path == url_for('main.list_matches') %}active{% endif %}" href="{{ url_for('main.list_matches') }}">
+              <i class="bi bi-link-45deg"></i> Correspondances
+            </a>
+          </li>
+
+          <li class="nav-item mt-2">
+            <span class="nav-link text-white-50 small">Goodies</span>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_pos')) %}active{% endif %}" href="{{ url_for('admin.goodies_pos') }}">
+              <i class="bi bi-cash-coin"></i> Ventes Goodies
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_products')) %}active{% endif %}" href="{{ url_for('admin.goodies_products') }}">
+              <i class="bi bi-box-seam"></i> Articles Goodies
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_z')) %}active{% endif %}" href="{{ url_for('admin.goodies_z') }}">
+              <i class="bi bi-receipt"></i> Rapport Z
+            </a>
+          </li>
+
           <li class="nav-item mt-3">
             <a class="nav-link text-success fw-bold" href="https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS" target="_blank" rel="noopener"><i class="bi bi-whatsapp"></i> Contact WhatsApp</a>
           </li>

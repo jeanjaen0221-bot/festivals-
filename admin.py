@@ -3,6 +3,7 @@ import os
 import sys
 import traceback
 from werkzeug.utils import secure_filename
+from decimal import Decimal, ROUND_HALF_UP
 
 ALLOWED_ICON_EXTENSIONS = {"svg", "png", "jpg", "jpeg"}
 ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
@@ -10,8 +11,8 @@ ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 # Ancien système d'icônes supprimé - plus besoin d'importer fetch_category_icons
 from flask_login import login_required, current_user
 from app import db
-from models import User, ActionLog, Item, Status, HeadphoneLoan
-from forms import SimpleCsrfForm, HeadphoneLoanForm
+from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure
+from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm
 from datetime import datetime, timedelta
 
 def admin_required(f):
@@ -181,8 +182,6 @@ def admin_dashboard():
         nb_deletions=nb_deletions,
         csrf_form=csrf_form
     )
-
-from forms import SimpleCsrfForm, HeadphoneLoanForm
 
 @bp_admin.route('/deletion-requests')
 @login_required
@@ -466,3 +465,199 @@ def delete_log(log_id):
             'success': False,
             'message': f'Erreur lors de la suppression du log: {str(e)}'
         }), 500
+
+# --- Goodies sales module ---
+from decimal import Decimal, ROUND_HALF_UP
+from forms import ProductForm
+from models import Product, Sale, SaleItem, PaymentMethod, ZClosure
+
+def _quantize(amount: Decimal) -> Decimal:
+    return amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+def _round_cash_to_0_05(amount: Decimal) -> Decimal:
+    # Rounding to nearest 0.05 as applied in Belgium for cash transactions
+    cents = (amount * 20)  # 1/0.05 = 20
+    return (cents.quantize(Decimal('1'), rounding=ROUND_HALF_UP) / Decimal(20)).quantize(Decimal('0.01'))
+
+@bp_admin.route('/goodies/pos', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def goodies_pos():
+    csrf_form = SimpleCsrfForm()
+    products = Product.query.filter_by(active=True).order_by(Product.name).all()
+    if request.method == 'POST':
+        if not csrf_form.validate_on_submit():
+            flash('Erreur CSRF.', 'danger')
+            return redirect(url_for('admin.goodies_pos'))
+        import json
+        try:
+            cart_json = request.form.get('cart_json', '[]')
+            cart = json.loads(cart_json)
+            payment = request.form.get('payment_method')
+            if payment not in ('cash', 'card'):
+                raise ValueError('Méthode de paiement invalide')
+        except Exception as e:
+            flash(f'Panier invalide: {e}', 'danger')
+            return redirect(url_for('admin.goodies_pos'))
+
+        total = Decimal('0.00')
+        total_vat = Decimal('0.00')
+        items_data = []
+        for entry in cart:
+            pid = int(entry.get('product_id'))
+            qty = int(entry.get('quantity', 1))
+            if qty <= 0:
+                continue
+            p = Product.query.get(pid)
+            if not p or not p.active:
+                flash(f"Article invalide ou inactif (ID {pid}).", 'danger')
+                return redirect(url_for('admin.goodies_pos'))
+            unit = Decimal(str(p.price))
+            line_total = _quantize(unit * qty)
+            rate = int(p.vat_rate or 21)
+            # VAT included in price: vat = TTC - (TTC / (1 + r))
+            divisor = Decimal('1') + (Decimal(rate) / Decimal('100'))
+            net = (line_total / divisor)
+            vat = _quantize(line_total - net)
+            total += line_total
+            total_vat += vat
+            items_data.append({
+                'product': p,
+                'quantity': qty,
+                'unit_price': unit,
+                'vat_rate': rate,
+                'line_total': line_total,
+                'vat_amount': vat,
+            })
+
+        sale = Sale(
+            payment_method=PaymentMethod.CASH if payment == 'cash' else PaymentMethod.CARD,
+            total_amount=_quantize(total),
+            total_vat_amount=_quantize(total_vat),
+        )
+        if payment == 'cash':
+            rounded = _round_cash_to_0_05(total)
+            sale.rounded_total_amount = _quantize(rounded)
+            sale.rounding_adjustment = _quantize(rounded - total)
+        db.session.add(sale)
+        db.session.flush()
+        for d in items_data:
+            si = SaleItem(
+                sale_id=sale.id,
+                product_id=d['product'].id,
+                quantity=d['quantity'],
+                unit_price=_quantize(d['unit_price']),
+                vat_rate=d['vat_rate'],
+                line_total=_quantize(d['line_total']),
+                vat_amount=_quantize(d['vat_amount']),
+            )
+            db.session.add(si)
+        db.session.commit()
+        ActionLog.query.session.add(ActionLog(user_id=current_user.id, action_type='sale_goodies', details=f'Sale #{sale.id} {sale.payment_method.value} total {sale.total_amount}'))
+        db.session.commit()
+        flash(f'Vente enregistrée (#{sale.id}).', 'success')
+        return redirect(url_for('admin.goodies_pos'))
+
+    return render_template('admin/pos_goodies.html', products=products, csrf_form=csrf_form)
+
+@bp_admin.route('/goodies/products', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def goodies_products():
+    form = ProductForm()
+    if form.validate_on_submit():
+        p = Product(
+            name=form.name.data.strip(),
+            price=_quantize(Decimal(str(form.price.data))),
+            vat_rate=int(form.vat_rate.data),
+            active=bool(form.active.data)
+        )
+        db.session.add(p)
+        db.session.commit()
+        flash('Article ajouté.', 'success')
+        return redirect(url_for('admin.goodies_products'))
+    products = Product.query.order_by(Product.active.desc(), Product.name).all()
+    csrf_form = SimpleCsrfForm()
+    return render_template('admin/products_goodies.html', form=form, products=products, csrf_form=csrf_form)
+
+@bp_admin.route('/goodies/products/<int:pid>/toggle', methods=['POST'])
+@login_required
+@admin_required
+def goodies_products_toggle(pid):
+    csrf_form = SimpleCsrfForm()
+    if not csrf_form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin.goodies_products'))
+    p = Product.query.get_or_404(pid)
+    p.active = not p.active
+    db.session.commit()
+    flash('Statut modifié.', 'success')
+    return redirect(url_for('admin.goodies_products'))
+
+@bp_admin.route('/goodies/products/<int:pid>/delete', methods=['POST'])
+@login_required
+@admin_required
+def goodies_products_delete(pid):
+    csrf_form = SimpleCsrfForm()
+    if not csrf_form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin.goodies_products'))
+    p = Product.query.get_or_404(pid)
+    db.session.delete(p)
+    db.session.commit()
+    flash('Article supprimé.', 'success')
+    return redirect(url_for('admin.goodies_products'))
+
+@bp_admin.route('/goodies/z', methods=['GET'])
+@login_required
+@admin_required
+def goodies_z():
+    last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+    from_ts = last.to_ts if last else None
+    query = Sale.query
+    if from_ts:
+        query = query.filter(Sale.created_at > from_ts)
+    sales = query.order_by(Sale.created_at.asc()).all()
+
+    totals_by_payment = {'cash': Decimal('0.00'), 'card': Decimal('0.00')}
+    totals_by_vat = {}  # rate -> {'ttc': Decimal, 'vat': Decimal, 'net': Decimal}
+    count_sales = 0
+    for s in sales:
+        count_sales += 1
+        if s.payment_method == PaymentMethod.CASH:
+            amount = Decimal(str(s.rounded_total_amount or s.total_amount))
+            totals_by_payment['cash'] += amount
+        else:
+            totals_by_payment['card'] += Decimal(str(s.total_amount))
+        for it in s.items:
+            rate = int(it.vat_rate)
+            entry = totals_by_vat.setdefault(rate, {'ttc': Decimal('0.00'), 'vat': Decimal('0.00'), 'net': Decimal('0.00')})
+            entry['ttc'] += Decimal(str(it.line_total))
+            entry['vat'] += Decimal(str(it.vat_amount))
+            entry['net'] = entry['ttc'] - entry['vat']
+
+    # Quantize
+    totals_by_payment = {k: _quantize(v) for k, v in totals_by_payment.items()}
+    for rate, e in totals_by_vat.items():
+        e['ttc'] = _quantize(e['ttc'])
+        e['vat'] = _quantize(e['vat'])
+        e['net'] = _quantize(e['net'])
+
+    csrf_form = SimpleCsrfForm()
+    return render_template('admin/z_report.html', from_ts=from_ts, sales_count=count_sales, totals_by_payment=totals_by_payment, totals_by_vat=totals_by_vat, csrf_form=csrf_form)
+
+@bp_admin.route('/goodies/z/close', methods=['POST'])
+@login_required
+@admin_required
+def goodies_z_close():
+    csrf_form = SimpleCsrfForm()
+    if not csrf_form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin.goodies_z'))
+    last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+    from_ts = last.to_ts if last else None
+    z = ZClosure(from_ts=from_ts, to_ts=datetime.utcnow())
+    db.session.add(z)
+    db.session.commit()
+    flash(f'Clôture Z #{z.id} effectuée.', 'success')
+    return redirect(url_for('admin.goodies_z'))

@@ -13,6 +13,7 @@ from app import app, db
 from models import Item, Category, Status, ItemPhoto
 from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm
 from flask_login import login_user, logout_user, login_required, current_user
+from functools import wraps
 from models import User, ActionLog, HeadphoneLoan, DepositType
 from forms import HeadphoneLoanForm
 from flask import jsonify
@@ -1081,8 +1082,18 @@ def get_all_candidate_pairs(seuil=60):
                 pairs.append((lost, found, score, explanation))
     return pairs
 
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not getattr(current_user, 'is_admin', False):
+            flash("Accès réservé à l'administrateur.", "danger")
+            return redirect(url_for('main.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 @bp.route('/matches')
 @login_required
+@admin_required
 def list_matches():
     try:
         seuil = int(request.args.get('threshold', 60))
@@ -1111,6 +1122,7 @@ def list_matches():
 
 @bp.route('/matches/confirm', methods=['POST'])
 @login_required
+@admin_required
 def confirm_match():
     from models import Match
     try:
