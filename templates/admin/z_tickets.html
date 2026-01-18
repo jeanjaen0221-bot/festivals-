@@ -1,0 +1,36 @@
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<h3 class="mb-3">Tickets Z (PDF)</h3>
+<div class="card shadow-sm">
+  <div class="card-body">
+    {% if files and files|length > 0 %}
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Fichier</th>
+            <th>Taille</th>
+            <th>Modifié</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in files %}
+          <tr>
+            <td>{{ f.name }}</td>
+            <td>{{ f.size_kb }} KB</td>
+            <td>{{ f.mtime.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.goodies_z_ticket_download', filename=f.name) }}" target="_blank"><i class="bi bi-filetype-pdf"></i> Ouvrir</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="text-muted">Aucun ticket Z pour l'instant. Générez une clôture Z pour créer un PDF.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

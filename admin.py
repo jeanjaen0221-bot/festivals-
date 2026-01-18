@@ -14,6 +14,12 @@ from app import db
 from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, LoanStatus
 from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm
 from datetime import datetime, timedelta
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from zoneinfo import ZoneInfo
+
+# Directory to store Z ticket PDFs
+Z_TICKETS_DIR = os.path.join(os.path.dirname(__file__), 'z_tickets')
 
 def admin_required(f):
     from functools import wraps
@@ -46,10 +52,12 @@ def admin_counters_ctx():
         pass
     counts['deletions_total'] = counts['deletions_items'] + counts['deletions_loans']
     try:
-        today = datetime.utcnow().date()
-        from_dt = datetime(today.year, today.month, today.day)
-        to_dt = from_dt + timedelta(days=1)
-        counts['sales_today_count'] = Sale.query.filter(Sale.created_at >= from_dt, Sale.created_at < to_dt).count()
+        # Sales since last Z-closure (reset after Z)
+        last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+        if last and last.to_ts:
+            counts['sales_today_count'] = Sale.query.filter(Sale.created_at > last.to_ts).count()
+        else:
+            counts['sales_today_count'] = Sale.query.count()
     except Exception:
         pass
     return {'admin_counts': counts}
@@ -584,7 +592,10 @@ def goodies_pos():
         flash(f'Vente enregistrée (#{sale.id}).', 'success')
         return redirect(url_for('admin.goodies_pos'))
 
-    return render_template('admin/pos_goodies.html', products=products, csrf_form=csrf_form)
+    # Last Z timestamp for potential client-side behaviors
+    last_z = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+    last_z_iso = last_z.to_ts.isoformat() if last_z and last_z.to_ts else ''
+    return render_template('admin/pos_goodies.html', products=products, csrf_form=csrf_form, last_z_iso=last_z_iso)
 
 @bp_admin.route('/goodies/products', methods=['GET', 'POST'])
 @login_required
@@ -743,8 +754,142 @@ def goodies_z_close():
         return redirect(url_for('admin.goodies_z'))
     last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
     from_ts = last.to_ts if last else None
-    z = ZClosure(from_ts=from_ts, to_ts=datetime.utcnow())
+    to_ts = datetime.utcnow()
+    z = ZClosure(from_ts=from_ts, to_ts=to_ts)
     db.session.add(z)
     db.session.commit()
-    flash(f'Clôture Z #{z.id} effectuée.', 'success')
+    # Build per-day tickets for the closed period
+    query = Sale.query
+    if from_ts:
+        query = query.filter(Sale.created_at > from_ts)
+    sales = query.filter(Sale.created_at <= to_ts).order_by(Sale.created_at.asc()).all()
+
+    # Group sales by calendar day in Europe/Brussels
+    from collections import defaultdict
+    tz_utc = ZoneInfo("UTC")
+    tz_brussels = ZoneInfo("Europe/Brussels")
+    by_day = defaultdict(list)
+    for s in sales:
+        dt = s.created_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz_utc)
+        day = dt.astimezone(tz_brussels).date()
+        by_day[day].append(s)
+
+    # Ensure directory exists
+    try:
+        os.makedirs(Z_TICKETS_DIR, exist_ok=True)
+    except Exception:
+        pass
+
+    generated = 0
+    errors = 0
+    for day, day_sales in sorted(by_day.items()):
+        totals_by_payment = {'cash': Decimal('0.00'), 'card': Decimal('0.00')}
+        totals_by_vat = {}
+        count_sales = 0
+        for s in day_sales:
+            count_sales += 1
+            if s.payment_method == PaymentMethod.CASH:
+                amount = Decimal(str(s.rounded_total_amount or s.total_amount))
+                totals_by_payment['cash'] += amount
+            else:
+                totals_by_payment['card'] += Decimal(str(s.total_amount))
+            for it in s.items:
+                rate = int(it.vat_rate)
+                entry = totals_by_vat.setdefault(rate, {'ttc': Decimal('0.00'), 'vat': Decimal('0.00'), 'net': Decimal('0.00')})
+                entry['ttc'] += Decimal(str(it.line_total))
+                entry['vat'] += Decimal(str(it.vat_amount))
+                entry['net'] = entry['ttc'] - entry['vat']
+        # Quantize totals
+        totals_by_payment = {k: _quantize(v) for k, v in totals_by_payment.items()}
+        for rate, e in totals_by_vat.items():
+            e['ttc'] = _quantize(e['ttc'])
+            e['vat'] = _quantize(e['vat'])
+            e['net'] = _quantize(e['net'])
+        # Generate per-day PDF
+        try:
+            day_str = day.strftime('%Y-%m-%d')
+            filename = f"z_ticket_{day_str}.pdf"
+            # If file exists, add time suffix to avoid overwrite
+            pdf_path = os.path.join(Z_TICKETS_DIR, filename)
+            if os.path.exists(pdf_path):
+                filename = f"z_ticket_{day_str}_{to_ts.strftime('%H%M%S')}.pdf"
+                pdf_path = os.path.join(Z_TICKETS_DIR, filename)
+            c = canvas.Canvas(pdf_path, pagesize=A4)
+            width, height = A4
+            x, y = 40, height - 40
+            def line(text, inc=18):
+                nonlocal y
+                c.drawString(x, y, text)
+                y -= inc
+            c.setTitle(f"Rapport Z {day_str}")
+            c.setFont("Helvetica-Bold", 16)
+            line(f"Rapport Z — {day_str}")
+            c.setFont("Helvetica", 11)
+            line(f"Ventes du {day_str}")
+            line("")
+            line(f"Nombre de ventes: {count_sales}")
+            line(f"Total CARTE: {totals_by_payment['card']} €")
+            line(f"Total CASH: {totals_by_payment['cash']} €")
+            line("")
+            line("Totaux par TVA:")
+            for rate in sorted(totals_by_vat.keys()):
+                e = totals_by_vat[rate]
+                line(f"  TVA {rate}% → TTC: {e['ttc']} € | VAT: {e['vat']} € | NET: {e['net']} €")
+            c.showPage()
+            c.save()
+            generated += 1
+        except Exception:
+            errors += 1
+            continue
+    if generated and not errors:
+        flash(f'Clôture Z #{z.id} effectuée. {generated} ticket(s) PDF généré(s).', 'success')
+    elif generated and errors:
+        flash(f'Clôture Z #{z.id} effectuée. {generated} ticket(s) généré(s), {errors} en erreur.', 'warning')
+    else:
+        flash(f'Clôture Z #{z.id} effectuée. Aucune vente à inclure.', 'info')
     return redirect(url_for('admin.goodies_z'))
+
+@bp_admin.route('/goodies/z/tickets', methods=['GET'])
+@login_required
+@admin_required
+def goodies_z_tickets_list():
+    files = []
+    try:
+        os.makedirs(Z_TICKETS_DIR, exist_ok=True)
+        for name in os.listdir(Z_TICKETS_DIR):
+            if name.lower().endswith('.pdf'):
+                path = os.path.join(Z_TICKETS_DIR, name)
+                stat = os.stat(path)
+                files.append({
+                    'name': name,
+                    'size_kb': round(stat.st_size/1024.0, 1),
+                    'mtime': datetime.fromtimestamp(stat.st_mtime)
+                })
+        files.sort(key=lambda f: f['mtime'], reverse=True)
+    except Exception:
+        pass
+    csrf_form = SimpleCsrfForm()
+    return render_template('admin/z_tickets.html', files=files, csrf_form=csrf_form)
+
+@bp_admin.route('/goodies/z/tickets/<path:filename>', methods=['GET'])
+@login_required
+@admin_required
+def goodies_z_ticket_download(filename):
+    # basic safety: no traversal outside directory
+    if '..' in filename or filename.startswith('/'):
+        flash('Nom de fichier invalide.', 'danger')
+        return redirect(url_for('admin.goodies_z_tickets_list'))
+    try:
+        return send_from_directory(Z_TICKETS_DIR, filename, as_attachment=False)
+    except Exception:
+        flash('Fichier introuvable.', 'danger')
+        return redirect(url_for('admin.goodies_z_tickets_list'))
+
+@bp_admin.route('/goodies/last_z', methods=['GET'])
+@login_required
+def goodies_last_z():
+    last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+    iso = last.to_ts.isoformat() if last and last.to_ts else ''
+    return jsonify({'last_z_iso': iso})

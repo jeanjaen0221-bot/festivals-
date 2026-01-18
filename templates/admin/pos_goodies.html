@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="row g-3">
+<div class="row g-3" id="posRoot" data-last-z="{{ last_z_iso }}">
   <div class="col-12 d-flex justify-content-between align-items-center">
     <h3 class="mb-3">Ventes Goodies</h3>
     {% if current_user.is_admin %}
     <a class="btn btn-outline-secondary" href="{{ url_for('admin.goodies_products') }}"><i class="bi bi-box-seam"></i> Gérer les articles</a>
     {% endif %}
-  </div>
+    <div id="zEndpoints" data-last-z-url="{{ url_for('admin.goodies_last_z') }}" class="d-none"></div>
+</div>
   <div class="col-12 col-lg-8">
     <div class="row g-2">
       {% for p in products %}
@@ -63,6 +64,12 @@
   const q2 = n=> Number((Math.round(n*100)/100).toFixed(2));
   const round005 = n=> { const r = Math.round(n*20)/20; return q2(r); };
   const cart = new Map();
+  // Last Z timestamp and endpoint provided via data-attributes
+  const posRoot = document.getElementById('posRoot');
+  let lastZ = (posRoot && posRoot.dataset.lastZ) ? String(posRoot.dataset.lastZ) : '';
+  const zEndpointsEl = document.getElementById('zEndpoints');
+  const lastZUrl = zEndpointsEl ? zEndpointsEl.dataset.lastZUrl : '';
+  function clearCart(){ cart.clear(); render(); }
   function add(p){
     const id = String(p.id);
     const prev = cart.get(id) || {id, name:p.name, price: Number(p.price), vat: Number(p.vat), qty:0};
@@ -107,6 +114,23 @@
     document.getElementById('payment_method').value = document.getElementById('pay_cash').checked ? 'cash' : 'card';
   });
   render();
+
+  // Poll server for last Z; when it changes, auto-clear cart
+  async function checkLastZ(){
+    try {
+      if(!lastZUrl) return;
+      const res = await fetch(lastZUrl, {headers: {'Accept':'application/json'}});
+      if(!res.ok) return;
+      const data = await res.json();
+      if (data && typeof data.last_z_iso === 'string'){
+        if (lastZ !== data.last_z_iso) {
+          lastZ = data.last_z_iso;
+          clearCart();
+        }
+      }
+    } catch(e) { /* ignore network errors */ }
+  }
+  setInterval(checkLastZ, 60000); // every 60s
 })();
 </script>
 {% endblock %}

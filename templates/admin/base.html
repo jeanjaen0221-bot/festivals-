@@ -102,6 +102,11 @@
                     <i class="bi bi-receipt"></i> Rapport Z
                   </a>
                 </li>
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_z_tickets_list')) %}active{% endif %}" href="{{ url_for('admin.goodies_z_tickets_list') }}">
+                    <i class="bi bi-filetype-pdf"></i> Tickets Z
+                  </a>
+                </li>
               </ul>
             </div>
           </li>
