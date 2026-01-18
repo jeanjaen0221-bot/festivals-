@@ -11,7 +11,7 @@ ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 # Ancien système d'icônes supprimé - plus besoin d'importer fetch_category_icons
 from flask_login import login_required, current_user
 from app import db
-from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure
+from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, LoanStatus
 from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm
 from datetime import datetime, timedelta
 
@@ -26,6 +26,33 @@ def admin_required(f):
     return decorated_function
 
 bp_admin = Blueprint('admin', __name__, url_prefix='/admin')
+
+# --- Admin counters context (badges) ---
+@bp_admin.app_context_processor
+def admin_counters_ctx():
+    counts = {
+        'deletions_items': 0,
+        'deletions_loans': 0,
+        'deletions_total': 0,
+        'sales_today_count': 0,
+    }
+    try:
+        counts['deletions_items'] = Item.query.filter_by(status=Status.PENDING_DELETION).count()
+    except Exception:
+        pass
+    try:
+        counts['deletions_loans'] = HeadphoneLoan.query.filter_by(status=LoanStatus.PENDING_DELETION).count()
+    except Exception:
+        pass
+    counts['deletions_total'] = counts['deletions_items'] + counts['deletions_loans']
+    try:
+        today = datetime.utcnow().date()
+        from_dt = datetime(today.year, today.month, today.day)
+        to_dt = from_dt + timedelta(days=1)
+        counts['sales_today_count'] = Sale.query.filter(Sale.created_at >= from_dt, Sale.created_at < to_dt).count()
+    except Exception:
+        pass
+    return {'admin_counts': counts}
 
 # Fonction fetch_icons supprimée - plus nécessaire avec Bootstrap Icons
 
@@ -587,9 +614,46 @@ def goodies_products():
         db.session.commit()
         flash('Article ajouté.', 'success')
         return redirect(url_for('admin.goodies_products'))
-    products = Product.query.order_by(Product.active.desc(), Product.name).all()
+
+@bp_admin.route('/goodies/products/<int:pid>/edit', methods=['GET','POST'])
+@login_required
+@admin_required
+def goodies_product_edit(pid):
+    p = Product.query.get_or_404(pid)
+    form = ProductForm()
+    if request.method == 'GET':
+        form.name.data = p.name
+        form.price.data = float(p.price)
+        form.vat_rate.data = str(int(p.vat_rate or 21))
+        form.active.data = bool(p.active)
+    if form.validate_on_submit():
+        p.name = form.name.data.strip()
+        p.price = _quantize(Decimal(str(form.price.data)))
+        p.vat_rate = int(form.vat_rate.data)
+        p.active = bool(form.active.data)
+        file = form.image.data
+        if file and getattr(file, 'filename', ''):
+            # remove old file
+            try:
+                if p.image_filename:
+                    old_path = os.path.join(current_app.config['UPLOAD_FOLDER'], p.image_filename)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+            except Exception:
+                pass
+            # save new file
+            import uuid
+            ext = os.path.splitext(file.filename)[1].lower()
+            fname = f"prod_{uuid.uuid4().hex}{ext}"
+            safe = secure_filename(fname)
+            dest = os.path.join(current_app.config['UPLOAD_FOLDER'], safe)
+            file.save(dest)
+            p.image_filename = safe
+        db.session.commit()
+        flash('Article modifié.', 'success')
+        return redirect(url_for('admin.goodies_products'))
     csrf_form = SimpleCsrfForm()
-    return render_template('admin/products_goodies.html', form=form, products=products, csrf_form=csrf_form)
+    return render_template('admin/product_edit.html', form=form, product=p, csrf_form=csrf_form)
 
 @bp_admin.route('/goodies/products/<int:pid>/toggle', methods=['POST'])
 @login_required

@@ -34,7 +34,7 @@
   <span><i class="bi bi-search-heart"></i></span> Lost & Found
 </a>
 
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+    <button class="navbar-toggler d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasNav" aria-controls="offcanvasNav" aria-label="Ouvrir le menu">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="navbarNav">
@@ -123,6 +123,57 @@
     </div>
   </div>
 </nav>
+<!-- Offcanvas Mobile Nav -->
+<div class="offcanvas offcanvas-start d-lg-none" tabindex="-1" id="offcanvasNav" aria-labelledby="offcanvasNavLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="offcanvasNavLabel"><i class="bi bi-search-heart"></i> Lost & Found</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
+  </div>
+  <div class="offcanvas-body d-flex flex-column gap-2">
+    {% if current_user.is_authenticated %}
+      <a class="btn btn-light text-start d-flex align-items-center gap-2" href="/report">
+        <i class="bi bi-flag"></i> Signaler
+      </a>
+      <div class="card">
+        <div class="card-body py-2">
+          <div class="text-muted small mb-2">Listes</div>
+          <div class="d-grid gap-2">
+            <a class="btn btn-outline-secondary d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='lost') }}"><i class="bi bi-bag-x"></i> Objets perdus</a>
+            <a class="btn btn-outline-secondary d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='found') }}"><i class="bi bi-bag-check"></i> Objets trouvés</a>
+            <a class="btn btn-outline-secondary d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='returned') }}"><i class="bi bi-arrow-repeat"></i> Objets rendus</a>
+          </div>
+        </div>
+      </div>
+      <a class="btn btn-light text-start d-flex align-items-center gap-2" href="{{ url_for('main.train_schedule') }}">
+        <i class="bi bi-train-front"></i> Horaires trains
+      </a>
+      <a class="btn btn-light text-start d-flex align-items-center gap-2" href="{{ url_for('main.shuttle_page') }}">
+        <i class="bi bi-bus-front"></i> Navette
+      </a>
+      <a class="btn btn-light text-start d-flex align-items-center gap-2" href="{{ url_for('main.headphone_loans') }}">
+        <i class="bi bi-headphones"></i> Prêts de casques
+      </a>
+      {% if current_user.is_admin %}
+      <a class="btn btn-light text-start d-flex align-items-center gap-2" href="{{ url_for('admin.goodies_pos') }}">
+        <i class="bi bi-cash-coin"></i> Ventes goodies
+      </a>
+      <a class="btn btn-danger text-start d-flex align-items-center gap-2" href="{{ url_for('admin.admin_dashboard') }}">
+        <i class="bi bi-shield-lock"></i> Admin
+      </a>
+      {% endif %}
+      <a class="btn btn-success d-flex align-items-center justify-content-center gap-2" href="https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS" target="_blank" rel="noopener">
+        <i class="bi bi-whatsapp fs-5"></i> Contact WhatsApp
+      </a>
+      <div class="mt-3 small text-muted">Connecté: {{ current_user.email }}</div>
+      <a class="btn btn-outline-secondary" href="{{ url_for('main.logout') }}">Déconnexion</a>
+    {% else %}
+      <a class="btn btn-primary" href="{{ url_for('main.auth') }}">Authentification</a>
+    {% endif %}
+  </div>
+  <style>
+    .offcanvas .btn { border-radius: .75rem; }
+  </style>
+</div>
 <style>
   .navbar-nav .nav-link {
     border-radius: 1.5rem;

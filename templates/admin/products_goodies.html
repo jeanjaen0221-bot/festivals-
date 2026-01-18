@@ -73,6 +73,7 @@
                 <td>{{ p.vat_rate }}%</td>
                 <td>{% if p.active %}<span class="badge bg-success">Oui</span>{% else %}<span class="badge bg-secondary">Non</span>{% endif %}</td>
                 <td class="text-end">
+                  <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('admin.goodies_product_edit', pid=p.id) }}" title="Modifier"><i class="bi bi-pencil"></i></a>
                   <form method="post" action="{{ url_for('admin.goodies_products_toggle', pid=p.id) }}" class="d-inline">
                     {{ csrf_form.csrf_token }}
                     <button class="btn btn-sm btn-outline-warning" title="Activer/désactiver"><i class="bi bi-power"></i></button>

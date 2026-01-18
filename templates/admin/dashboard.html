@@ -36,6 +36,22 @@
     </div>
   </div>
 </div>
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <h5 class="mb-0"><i class="bi bi-lightning-charge"></i> Actions rapides</h5>
+          <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('admin.goodies_pos') }}" class="btn btn-primary"><i class="bi bi-cash-coin"></i> Caisse</a>
+            <a href="{{ url_for('admin.goodies_products') }}" class="btn btn-outline-primary"><i class="bi bi-box-seam"></i> Articles</a>
+            <a href="{{ url_for('admin.goodies_z') }}" class="btn btn-outline-primary"><i class="bi bi-receipt"></i> Rapport Z</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="row">
   <div class="col-12 mb-3">
     <a href="{{ url_for('admin.category_icons') }}" class="btn btn-outline-primary">
