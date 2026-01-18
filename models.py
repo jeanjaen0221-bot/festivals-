@@ -236,6 +236,7 @@ class Product(db.Model):
     price = db.Column(db.Numeric(10, 2), nullable=False)  # prix TTC par unité
     vat_rate = db.Column(db.Integer, nullable=False, default=21)  # taux TVA en % (0,6,12,21)
     active = db.Column(db.Boolean, nullable=False, default=True)
+    image_filename = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

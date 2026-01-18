@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_from_directory
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_from_directory, current_app
 import os
 import sys
 import traceback
@@ -572,6 +572,17 @@ def goodies_products():
             vat_rate=int(form.vat_rate.data),
             active=bool(form.active.data)
         )
+        # Handle optional image upload
+        file = form.image.data
+        if file and getattr(file, 'filename', ''):
+            from werkzeug.utils import secure_filename
+            import uuid, os
+            ext = os.path.splitext(file.filename)[1].lower()
+            fname = f"prod_{uuid.uuid4().hex}{ext}"
+            safe = secure_filename(fname)
+            dest = os.path.join(current_app.config['UPLOAD_FOLDER'], safe)
+            file.save(dest)
+            p.image_filename = safe
         db.session.add(p)
         db.session.commit()
         flash('Article ajouté.', 'success')
@@ -603,6 +614,15 @@ def goodies_products_delete(pid):
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin.goodies_products'))
     p = Product.query.get_or_404(pid)
+    # Delete image file if present
+    try:
+        if p.image_filename:
+            import os
+            path = os.path.join(current_app.config['UPLOAD_FOLDER'], p.image_filename)
+            if os.path.exists(path):
+                os.remove(path)
+    except Exception:
+        pass
     db.session.delete(p)
     db.session.commit()
     flash('Article supprimé.', 'success')

@@ -6,7 +6,7 @@
     <div class="card shadow-sm">
       <div class="card-body">
         <h5 class="card-title">Ajouter un article</h5>
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
           {{ form.csrf_token }}
           <div class="mb-3">
             {{ form.name.label(class='form-label') }}
@@ -24,6 +24,12 @@
               {{ form.vat_rate(class='form-select') }}
               {% for e in form.vat_rate.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
+          </div>
+          <div class="mt-3">
+            {{ form.image.label(class='form-label') }}
+            {{ form.image(class='form-control') }}
+            <div class="form-text">Formats acceptés: JPG, PNG.</div>
+            {% for e in form.image.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
           </div>
           <div class="form-check mt-3">
             {{ form.active(class='form-check-input') }}
@@ -44,6 +50,7 @@
           <table class="table align-middle">
             <thead>
               <tr>
+                <th>Image</th>
                 <th>Nom</th>
                 <th class="text-end">Prix TTC (€)</th>
                 <th>TVA</th>
@@ -54,6 +61,13 @@
             <tbody>
               {% for p in products %}
               <tr class="{% if not p.active %}table-secondary{% endif %}">
+                <td style="width:64px;">
+                  {% if p.image_filename %}
+                    <img src="{{ url_for('main.uploaded_file', filename=p.image_filename) }}" alt="{{ p.name }}" class="img-thumbnail" style="width:56px; height:56px; object-fit:cover;">
+                  {% else %}
+                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width:56px; height:56px; border-radius:0.375rem;">—</div>
+                  {% endif %}
+                </td>
                 <td>{{ p.name }}</td>
                 <td class="text-end">{{ '%.2f'|format(p.price) }}</td>
                 <td>{{ p.vat_rate }}%</td>

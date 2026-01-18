@@ -253,4 +253,5 @@ class ProductForm(FlaskForm):
     price = DecimalField('Prix TTC (€)', places=2, validators=[DataRequired()])
     vat_rate = SelectField('TVA (%)', choices=[('21', '21%'), ('12', '12%'), ('6', '6%'), ('0', '0%')], validators=[DataRequired()])
     active = BooleanField('Actif', default=True)
+    image = FileField('Image (jpg/png)', validators=[Optional(), FileAllowed(['jpg','jpeg','png'], 'Images uniquement')])
     submit = SubmitField('Enregistrer')
