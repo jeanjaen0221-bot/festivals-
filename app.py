@@ -168,6 +168,17 @@ with app.app_context():
                     conn.execute(sqlalchemy.text("COMMIT;"))
             except Exception as e2:
                 print(f"[WARN] Impossible d'ajouter les colonnes shuttle_settings: {e2}", file=sys.stderr)
+            # --- Ensure products.image_filename exists (Goodies images) ---
+            try:
+                result = conn.execute(sqlalchemy.text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name='products' AND column_name='image_filename'
+                """))
+                if result.fetchone() is None:
+                    conn.execute(sqlalchemy.text("ALTER TABLE products ADD COLUMN image_filename VARCHAR(200);"))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
+            except Exception as e3:
+                print(f"[WARN] Impossible d'ajouter la colonne products.image_filename: {e3}", file=sys.stderr)
     except Exception as e:
         import sys
         print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)
