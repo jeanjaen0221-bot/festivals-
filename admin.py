@@ -508,7 +508,6 @@ def _round_cash_to_0_05(amount: Decimal) -> Decimal:
 
 @bp_admin.route('/goodies/pos', methods=['GET', 'POST'])
 @login_required
-@admin_required
 def goodies_pos():
     csrf_form = SimpleCsrfForm()
     products = Product.query.filter_by(active=True).order_by(Product.name).all()
