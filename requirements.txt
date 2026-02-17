@@ -15,4 +15,4 @@ Flask-Login==0.6.3
 google-cloud-vision==3.7.2
 beautifulsoup4
 reportlab==3.6.13
-
+setuptools>=65
