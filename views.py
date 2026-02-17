@@ -23,6 +23,7 @@ from sqlalchemy import or_
 from types import SimpleNamespace
 import matching
 import image_text_matcher as itm
+import tempfile
 
 bp = Blueprint('main', __name__)
 
@@ -59,6 +60,66 @@ def ocr_id_card():
 def allowed_file(filename):
     allowed_ext = {'png', 'jpg', 'jpeg'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_ext
+
+
+def _guess_mime_from_ext(filename: str) -> str | None:
+    try:
+        ext = os.path.splitext(filename or '')[1].lower()
+    except Exception:
+        ext = ''
+    if ext in ('.jpg', '.jpeg'):
+        return 'image/jpeg'
+    if ext == '.png':
+        return 'image/png'
+    return None
+
+
+def _db_image_bytes_by_filename(filename: str):
+    """Return (bytes, mime_type) for a known filename stored in DB, else (None, None)."""
+    if not filename:
+        return None, None
+    try:
+        from models import Product, ItemPhoto, Item
+        p = Product.query.filter_by(image_filename=filename).first()
+        if p and p.image_data:
+            return bytes(p.image_data), (p.image_mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
+        ip = ItemPhoto.query.filter_by(filename=filename).first()
+        if ip and ip.data:
+            return bytes(ip.data), (ip.mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
+        it = Item.query.filter_by(photo_filename=filename).first()
+        if it and it.photo_data:
+            return bytes(it.photo_data), (it.photo_mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
+        it2 = Item.query.filter_by(return_photo_filename=filename).first()
+        if it2 and it2.return_photo_data:
+            return bytes(it2.return_photo_data), (it2.return_photo_mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
+    except Exception:
+        return None, None
+    return None, None
+
+
+def _ensure_image_on_disk_for_matching(filename: str) -> str | None:
+    """Return a readable file path for matching. Uses UPLOAD_FOLDER if present, otherwise writes a temp file from DB bytes."""
+    if not filename:
+        return None
+    try:
+        path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+        if os.path.exists(path):
+            return path
+    except Exception:
+        path = None
+
+    data, _mime = _db_image_bytes_by_filename(filename)
+    if not data:
+        return None
+    try:
+        suffix = os.path.splitext(filename)[1].lower() if filename else ''
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        tmp.write(data)
+        tmp.flush()
+        tmp.close()
+        return tmp.name
+    except Exception:
+        return None
 
 def find_similar_items(titre, category_id, seuil=70):
     """Retourne des objets similaires (même catégorie) triés par score descendant.
@@ -500,9 +561,10 @@ def detail_item(item_id):
         if f:
             ext = os.path.splitext(f.filename)[1].lower()
             filename = f"rest_{item.id}_{uuid.uuid4().hex}{ext}"
-            chemin = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-            f.save(chemin)
-            item.return_photo_filename = filename
+            item.return_photo_filename = secure_filename(filename)
+            item.return_photo_data = f.read()
+            item.return_photo_original_filename = f.filename
+            item.return_photo_mime_type = getattr(f, 'mimetype', None) or _guess_mime_from_ext(item.return_photo_filename)
         item.status = Status.RETURNED
         item.return_date = datetime.utcnow()
         item.return_comment = confirm_return_form.return_comment.data
@@ -555,14 +617,18 @@ def detail_item(item_id):
                     # Texte courant vs image du candidat FOUND
                     img_file = primary_photo_filename(c)
                     if img_file:
-                        image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], img_file)
+                        image_path = _ensure_image_on_disk_for_matching(img_file)
+                        if not image_path:
+                            raise RuntimeError('Image introuvable')
                         img_sim = itm.text_image_similarity(f"{current_matchable.title}. {current_matchable.comments}", image_path)
                         img_sim_pct = round(100.0 * float(img_sim), 2)
                 elif item.status == Status.FOUND:
                     # Texte du candidat LOST vs image de l'item FOUND
                     img_file = primary_photo_filename(item)
                     if img_file:
-                        image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], img_file)
+                        image_path = _ensure_image_on_disk_for_matching(img_file)
+                        if not image_path:
+                            raise RuntimeError('Image introuvable')
                         img_sim = itm.text_image_similarity(f"{m.title}. {m.comments}", image_path)
                         img_sim_pct = round(100.0 * float(img_sim), 2)
             except Exception:
@@ -652,9 +718,15 @@ def detail_item(item_id):
                 if isinstance(f, FileStorage) and f and allowed_file(f.filename):
                     ext = os.path.splitext(f.filename)[1].lower()
                     filename = f"{uuid.uuid4().hex}{ext}"
-                    chemin = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-                    f.save(chemin)
-                    photo = ItemPhoto(item=item, filename=filename)
+                    safe_name = secure_filename(filename)
+                    data = f.read()
+                    photo = ItemPhoto(
+                        item=item,
+                        filename=safe_name,
+                        data=data,
+                        mime_type=getattr(f, 'mimetype', None) or _guess_mime_from_ext(safe_name),
+                        original_filename=f.filename,
+                    )
                     db.session.add(photo)
         db.session.commit()
         # Synchronisation automatique : si l’objet est lié, on marque aussi l’autre comme rendu
@@ -733,13 +805,6 @@ def edit_item(item_id):
             for pid in photo_ids_to_delete:
                 photo = ItemPhoto.query.filter_by(id=pid, item_id=item.id).first()
                 if photo:
-                    # Supprimer le fichier du disque
-                    try:
-                        chemin = os.path.join(current_app.config['UPLOAD_FOLDER'], photo.filename)
-                        if os.path.exists(chemin):
-                            os.remove(chemin)
-                    except Exception:
-                        pass
                     db.session.delete(photo)
             db.session.commit()
         log_action(current_user.id, 'edit_item', f'Modification objet ID:{item.id}')
@@ -798,33 +863,38 @@ def export_items(status):
     items = Item.query.filter_by(status=st).filter(Item.status != Status.PENDING_DELETION).order_by(Item.date_reported.desc()).all()
     items_export = []
     for item in items:
-        photo_data = None
+        photo_b64 = None
         photo_filename = None
+        mime = ''
+
         # Si plusieurs photos (relation), prendre la première sinon utiliser photo_filename
         if hasattr(item, 'photos') and item.photos and len(item.photos) > 0:
-            photo_filename = item.photos[0].filename
+            p0 = item.photos[0]
+            photo_filename = p0.filename
+            if getattr(p0, 'data', None):
+                photo_b64 = base64.b64encode(bytes(p0.data)).decode('utf-8')
+                mime = p0.mime_type or _guess_mime_from_ext(photo_filename) or ''
         elif item.photo_filename:
             photo_filename = item.photo_filename
-        if photo_filename:
+            if getattr(item, 'photo_data', None):
+                photo_b64 = base64.b64encode(bytes(item.photo_data)).decode('utf-8')
+                mime = item.photo_mime_type or _guess_mime_from_ext(photo_filename) or ''
+
+        # Fallback disque (anciennes images)
+        if photo_filename and not photo_b64:
             try:
                 chemin = os.path.join(current_app.config['UPLOAD_FOLDER'], photo_filename)
                 with open(chemin, 'rb') as img_file:
-                    photo_data = base64.b64encode(img_file.read()).decode('utf-8')
-            except Exception as e:
-                photo_data = None
-        # Ajoute l'image encodée et le mimetype (jpeg/png)
-        ext = os.path.splitext(photo_filename)[1].lower() if photo_filename else ''
-        if ext in ['.jpg', '.jpeg']:
-            mime = 'image/jpeg'
-        elif ext == '.png':
-            mime = 'image/png'
-        else:
-            mime = ''
+                    photo_b64 = base64.b64encode(img_file.read()).decode('utf-8')
+                mime = _guess_mime_from_ext(photo_filename) or ''
+            except Exception:
+                photo_b64 = None
+                mime = ''
         items_export.append({
             **item.__dict__,
             'category': item.category,
             'photo_filename': photo_filename,
-            'photo_base64': photo_data,
+            'photo_base64': photo_b64,
             'photo_mime': mime
         })
     html = render_template('export_template.html', items=items_export, status=st.value)
@@ -836,7 +906,17 @@ def export_items(status):
 
 @bp.route('/uploads/<filename>')
 def uploaded_file(filename):
-    return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
+    try:
+        return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
+    except Exception:
+        pass
+    data, mime = _db_image_bytes_by_filename(filename)
+    if data:
+        resp = make_response(data)
+        resp.headers['Content-Type'] = mime or 'application/octet-stream'
+        resp.headers['Cache-Control'] = 'public, max-age=31536000'
+        return resp
+    return '', 404
 
 @bp.route('/api/check_similar', methods=['POST'])
 def api_check_similar():
@@ -918,13 +998,17 @@ def api_match_explain():
             if i1.status == Status.LOST and i2.status == Status.FOUND:
                 img_file = primary_photo_filename(i2)
                 if img_file:
-                    image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], img_file)
+                    image_path = _ensure_image_on_disk_for_matching(img_file)
+                    if not image_path:
+                        raise RuntimeError('Image introuvable')
                     sim = itm.text_image_similarity(f"{m1.title}. {m1.comments}", image_path)
                     img_sim_pct = round(100.0 * float(sim), 2)
             elif i1.status == Status.FOUND and i2.status == Status.LOST:
                 img_file = primary_photo_filename(i1)
                 if img_file:
-                    image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], img_file)
+                    image_path = _ensure_image_on_disk_for_matching(img_file)
+                    if not image_path:
+                        raise RuntimeError('Image introuvable')
                     sim = itm.text_image_similarity(f"{m2.title}. {m2.comments}", image_path)
                     img_sim_pct = round(100.0 * float(sim), 2)
         except Exception:

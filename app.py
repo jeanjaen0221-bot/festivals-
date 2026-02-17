@@ -179,6 +179,60 @@ with app.app_context():
                     conn.execute(sqlalchemy.text("COMMIT;"))
             except Exception as e3:
                 print(f"[WARN] Impossible d'ajouter la colonne products.image_filename: {e3}", file=sys.stderr)
+
+            # --- Ensure products image columns exist (DB-backed images) ---
+            try:
+                for col, ddl in [
+                    ('image_data', 'ALTER TABLE products ADD COLUMN image_data BYTEA;'),
+                    ('image_mime_type', 'ALTER TABLE products ADD COLUMN image_mime_type VARCHAR(100);'),
+                    ('image_original_filename', 'ALTER TABLE products ADD COLUMN image_original_filename VARCHAR(200);'),
+                ]:
+                    result = conn.execute(sqlalchemy.text(f"""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name='products' AND column_name='{col}'
+                    """))
+                    if result.fetchone() is None:
+                        conn.execute(sqlalchemy.text(ddl))
+                        conn.execute(sqlalchemy.text("COMMIT;"))
+            except Exception as e4:
+                print(f"[WARN] Impossible d'ajouter les colonnes image_* sur products: {e4}", file=sys.stderr)
+
+            # --- Ensure items photo columns exist (DB-backed images) ---
+            try:
+                for col, ddl in [
+                    ('photo_data', 'ALTER TABLE items ADD COLUMN photo_data BYTEA;'),
+                    ('photo_mime_type', 'ALTER TABLE items ADD COLUMN photo_mime_type VARCHAR(100);'),
+                    ('photo_original_filename', 'ALTER TABLE items ADD COLUMN photo_original_filename VARCHAR(200);'),
+                    ('return_photo_data', 'ALTER TABLE items ADD COLUMN return_photo_data BYTEA;'),
+                    ('return_photo_mime_type', 'ALTER TABLE items ADD COLUMN return_photo_mime_type VARCHAR(100);'),
+                    ('return_photo_original_filename', 'ALTER TABLE items ADD COLUMN return_photo_original_filename VARCHAR(200);'),
+                ]:
+                    result = conn.execute(sqlalchemy.text(f"""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name='items' AND column_name='{col}'
+                    """))
+                    if result.fetchone() is None:
+                        conn.execute(sqlalchemy.text(ddl))
+                        conn.execute(sqlalchemy.text("COMMIT;"))
+            except Exception as e5:
+                print(f"[WARN] Impossible d'ajouter les colonnes photo_* sur items: {e5}", file=sys.stderr)
+
+            # --- Ensure item_photos data columns exist (DB-backed images) ---
+            try:
+                for col, ddl in [
+                    ('data', 'ALTER TABLE item_photos ADD COLUMN data BYTEA;'),
+                    ('mime_type', 'ALTER TABLE item_photos ADD COLUMN mime_type VARCHAR(100);'),
+                    ('original_filename', 'ALTER TABLE item_photos ADD COLUMN original_filename VARCHAR(200);'),
+                ]:
+                    result = conn.execute(sqlalchemy.text(f"""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name='item_photos' AND column_name='{col}'
+                    """))
+                    if result.fetchone() is None:
+                        conn.execute(sqlalchemy.text(ddl))
+                        conn.execute(sqlalchemy.text("COMMIT;"))
+            except Exception as e6:
+                print(f"[WARN] Impossible d'ajouter les colonnes data/mime_type sur item_photos: {e6}", file=sys.stderr)
     except Exception as e:
         import sys
         print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)

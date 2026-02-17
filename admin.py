@@ -617,9 +617,13 @@ def goodies_products():
             ext = os.path.splitext(file.filename)[1].lower()
             fname = f"prod_{uuid.uuid4().hex}{ext}"
             safe = secure_filename(fname)
-            dest = os.path.join(current_app.config['UPLOAD_FOLDER'], safe)
-            file.save(dest)
             p.image_filename = safe
+            p.image_data = file.read()
+            p.image_original_filename = file.filename
+            if getattr(file, 'mimetype', None):
+                p.image_mime_type = file.mimetype
+            else:
+                p.image_mime_type = None
         db.session.add(p)
         db.session.commit()
         flash('Article ajouté.', 'success')
@@ -647,22 +651,17 @@ def goodies_product_edit(pid):
         p.active = bool(form.active.data)
         file = form.image.data
         if file and getattr(file, 'filename', ''):
-            # remove old file
-            try:
-                if p.image_filename:
-                    old_path = os.path.join(current_app.config['UPLOAD_FOLDER'], p.image_filename)
-                    if os.path.exists(old_path):
-                        os.remove(old_path)
-            except Exception:
-                pass
-            # save new file
-            import uuid
+            import uuid, os
             ext = os.path.splitext(file.filename)[1].lower()
             fname = f"prod_{uuid.uuid4().hex}{ext}"
             safe = secure_filename(fname)
-            dest = os.path.join(current_app.config['UPLOAD_FOLDER'], safe)
-            file.save(dest)
             p.image_filename = safe
+            p.image_data = file.read()
+            p.image_original_filename = file.filename
+            if getattr(file, 'mimetype', None):
+                p.image_mime_type = file.mimetype
+            else:
+                p.image_mime_type = None
         db.session.commit()
         flash('Article modifié.', 'success')
         return redirect(url_for('admin.goodies_products'))
@@ -692,15 +691,6 @@ def goodies_products_delete(pid):
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin.goodies_products'))
     p = Product.query.get_or_404(pid)
-    # Delete image file if present
-    try:
-        if p.image_filename:
-            import os
-            path = os.path.join(current_app.config['UPLOAD_FOLDER'], p.image_filename)
-            if os.path.exists(path):
-                os.remove(path)
-    except Exception:
-        pass
     db.session.delete(p)
     db.session.commit()
     flash('Article supprimé.', 'success')

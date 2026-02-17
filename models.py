@@ -170,12 +170,18 @@ class Item(db.Model):
     reporter_email = db.Column(db.String(150), nullable=True)
     reporter_phone = db.Column(db.String(50), nullable=True)
     photo_filename = db.Column(db.String(200), nullable=True)  # Pour compatibilité
+    photo_data = db.Column(db.LargeBinary, nullable=True)
+    photo_mime_type = db.Column(db.String(100), nullable=True)
+    photo_original_filename = db.Column(db.String(200), nullable=True)
     claimant_name = db.Column(db.String(100), nullable=True)
     claimant_email = db.Column(db.String(150), nullable=True)
     claimant_phone = db.Column(db.String(50), nullable=True)
     return_date = db.Column(db.DateTime, nullable=True)
     return_comment = db.Column(db.Text, nullable=True)
     return_photo_filename = db.Column(db.String(200), nullable=True)  # Photo prise lors de la restitution
+    return_photo_data = db.Column(db.LargeBinary, nullable=True)
+    return_photo_mime_type = db.Column(db.String(100), nullable=True)
+    return_photo_original_filename = db.Column(db.String(200), nullable=True)
     photos = db.relationship('ItemPhoto', backref='item', lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -200,6 +206,9 @@ class ItemPhoto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     item_id = db.Column(db.Integer, db.ForeignKey('items.id'), nullable=False)
     filename = db.Column(db.String(200), nullable=False)
+    data = db.Column(db.LargeBinary, nullable=True)
+    mime_type = db.Column(db.String(100), nullable=True)
+    original_filename = db.Column(db.String(200), nullable=True)
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -237,6 +246,9 @@ class Product(db.Model):
     vat_rate = db.Column(db.Integer, nullable=False, default=21)  # taux TVA en % (0,6,12,21)
     active = db.Column(db.Boolean, nullable=False, default=True)
     image_filename = db.Column(db.String(200), nullable=True)
+    image_data = db.Column(db.LargeBinary, nullable=True)
+    image_mime_type = db.Column(db.String(100), nullable=True)
+    image_original_filename = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
