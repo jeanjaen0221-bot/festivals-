@@ -1,43 +1,31 @@
-print("DEBUG: VIEWS.PY CHARGÉ SUR RAILWAY")
 import os
+import uuid
+import base64
+import requests
+import tempfile
+import matching
+import image_text_matcher as itm
+from io import BytesIO
+from collections import defaultdict
+from datetime import datetime, timedelta
+from functools import wraps
+from types import SimpleNamespace
+from werkzeug.datastructures import FileStorage
 from flask import (
-    Blueprint, render_template, redirect, url_for,
-    flash, request, current_app, send_from_directory, make_response
+    Blueprint, render_template, redirect, url_for, abort,
+    flash, request, current_app, send_from_directory, make_response, jsonify
 )
+from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 from rapidfuzz import fuzz
-from datetime import datetime
 
 from app import app, db
-from models import Item, Category, Status, ItemPhoto
-from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm
-from flask_login import login_user, logout_user, login_required, current_user
-from functools import wraps
-from models import User, ActionLog, HeadphoneLoan, DepositType
-from forms import HeadphoneLoanForm
-from flask import jsonify
-import os
+from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, Product
+from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm
 from ocr_utils import extract_id_card_data
-from sqlalchemy import or_
-from types import SimpleNamespace
-import matching
-import image_text_matcher as itm
-import tempfile
-
-bp = Blueprint('main', __name__)
-
-import requests
-from datetime import datetime
-
-bp = Blueprint('main', __name__)
-print("DEBUG: BLUEPRINT MAIN DÉCLARÉ")
-
-
-
-import requests
-from datetime import datetime
-from flask import Blueprint, render_template, current_app
+from flask_wtf.csrf import validate_csrf
+from admin import admin_required
 
 bp = Blueprint('main', __name__)
 
@@ -79,7 +67,6 @@ def _db_image_bytes_by_filename(filename: str):
     if not filename:
         return None, None
     try:
-        from models import Product, ItemPhoto, Item
         p = Product.query.filter_by(image_filename=filename).first()
         if p and p.image_data:
             return bytes(p.image_data), (p.image_mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
@@ -297,7 +284,6 @@ def list_items():
         if to_date_str:
             # inclure toute la journée de fin
             dt = datetime.strptime(to_date_str, '%Y-%m-%d')
-            from datetime import timedelta
             dt_end = dt + timedelta(days=1)
             query = query.filter(Item.date_reported < dt_end)
     except Exception:
@@ -308,7 +294,6 @@ def list_items():
     # Construction des groupes pour affichage superposé
     seen = set()
     grouped_items = []
-    from models import Match
     matches = Match.query.filter(
         (Match.lost_id.in_([item.id for item in items])) | (Match.found_id.in_([item.id for item in items]))
     ).all()
@@ -363,8 +348,6 @@ def list_items():
 @bp.route('/report', methods=['GET', 'POST'])
 @login_required
 def report_item():
-    from models import ItemPhoto
-
     tab = request.args.get('tab')
     if tab not in ('lost', 'found'):
         # Sécurité : toute valeur non valide redirige vers la landing page
@@ -452,83 +435,6 @@ def report_item():
     # Forcer l'onglet actif et empêcher le switch selon le choix initial
     active_tab = tab if tab in ('lost', 'found') else 'lost'
     return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab=active_tab, categories=categories)
-    from models import Match
-    try:
-        st = Status(status)
-    except ValueError:
-        st = Status.LOST
-
-    q = request.args.get('q', '', type=str)
-    cat_filter = request.args.get('category', type=int)
-    page = request.args.get('page', 1, type=int)
-
-    query = Item.query.filter_by(status=st)
-    if cat_filter:
-        query = query.filter_by(category_id=cat_filter)
-    if q:
-        mot = f"%{q}%"
-        query = query.filter(or_(Item.title.ilike(mot), Item.comments.ilike(mot)))
-
-    pagination = query.order_by(Item.date_reported.desc()).paginate(page=page, per_page=12, error_out=False)
-    items = pagination.items
-    categories = Category.query.order_by(Category.name).all()
-
-    # Construction des groupes pour affichage superposé
-    seen = set()
-    grouped_items = []
-    # Nouvelle logique de groupement basée sur la table Match
-    # On récupère tous les matchs impliquant les items de la page
-    matches = Match.query.filter(
-        (Match.lost_id.in_([item.id for item in items])) | (Match.found_id.in_([item.id for item in items]))
-    ).all()
-    match_map = {}
-    for m in matches:
-        match_map[m.lost_id] = m.found_id
-        match_map[m.found_id] = m.lost_id
-
-    for item in items:
-        if item.id in seen:
-            continue
-        match_id = match_map.get(item.id)
-        if match_id and match_id in [i.id for i in items]:
-            other = next(i for i in items if i.id == match_id)
-            grouped_items.append([item, other])
-            seen.add(item.id)
-            seen.add(other.id)
-        else:
-            grouped_items.append([item])
-            seen.add(item.id)
-
-    # Optimisation : pré-calcule les ids des items affichés
-    all_items = [item for group in grouped_items for item in group]
-    item_ids = [item.id for item in all_items]
-    matches = Match.query.filter(
-        (Match.lost_id.in_(item_ids)) | (Match.found_id.in_(item_ids))
-    ).all()
-    matched_ids = set()
-    for m in matches:
-        matched_ids.add(m.lost_id)
-        matched_ids.add(m.found_id)
-    # Mapping id → has_match pour usage fiable dans le template
-    matches_map = {item.id: (item.id in matched_ids) for item in all_items}
-
-    # Pré-calcul des icônes Bootstrap pour optimiser l'affichage
-    for cat in categories:
-        _ = cat.icon_bootstrap_class  # force le calcul, utile pour SQLAlchemy lazy loading
-    for obj in items:
-        if obj.category:
-            _ = obj.category.icon_bootstrap_class
-    return render_template(
-        'list.html',
-        items=items,
-        grouped_items=grouped_items,
-        pagination=pagination,
-        status=st.value,
-        categories=categories,
-        selected_category=cat_filter,
-        matches_map=matches_map,
-        Status=Status  # Ajout de Status dans le contexte pour Jinja2
-    )
 
 @bp.route('/item/<int:item_id>', methods=['GET', 'POST'])
 @login_required
@@ -542,21 +448,16 @@ def detail_item(item_id):
     more_url = None
 
     # Si l'objet est déjà rendu, pas de correspondance ni réclamation
-    from forms import DeleteForm
     delete_form = DeleteForm()
     if item.status == Status.RETURNED:
-        from models import Match
         has_match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first() is not None
         return render_template('detail.html', item=item, can_claim=False, Status=Status, delete_form=delete_form, confirm_return_form=confirm_return_form, form=form, match_form=match_form, has_match=has_match, suggestions=suggestions, has_more=has_more, more_url=more_url)
 
     # Définit toujours has_match par défaut pour tous les autres chemins
-    from models import Match
     has_match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first() is not None
 
     # Restitution : si FOUND, proposer le formulaire de restitution
     if item.status == Status.FOUND and confirm_return_form.validate_on_submit() and 'submit_return' in request.form:
-        from werkzeug.utils import secure_filename
-        import uuid
         f = confirm_return_form.return_photo.data
         if f:
             ext = os.path.splitext(f.filename)[1].lower()
@@ -686,7 +587,6 @@ def detail_item(item_id):
             match_form.match_with.choices = choices
 
     # POST : correspondance prioritaire
-    from models import Match
     if ('submit_match' in request.form) and match_form and match_form.validate_on_submit():
         other_id = request.form.get('match_with_id', type=int) or match_form.match_with.data
         if other_id and other_id != 0:
@@ -712,8 +612,6 @@ def detail_item(item_id):
         item.claimant_phone = form.claimant_phone.data
         item.return_date = datetime.utcnow()
         if form.photos.data:
-            from werkzeug.datastructures import FileStorage
-            import uuid
             for f in form.photos.data:
                 if isinstance(f, FileStorage) and f and allowed_file(f.filename):
                     ext = os.path.splitext(f.filename)[1].lower()
@@ -729,8 +627,7 @@ def detail_item(item_id):
                     )
                     db.session.add(photo)
         db.session.commit()
-        # Synchronisation automatique : si l’objet est lié, on marque aussi l’autre comme rendu
-        from models import Match
+        # Synchronisation automatique : si l’objet est lié, on marque aussi l’autre comme rendu
         match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first()
         if match:
             other_id = match.found_id if match.lost_id == item.id else match.lost_id
@@ -746,10 +643,8 @@ def detail_item(item_id):
         flash("Réclamation enregistrée et objet marqué comme rendu !", "success")
         return redirect(url_for('main.list_items', status='returned'))
 
-    from forms import DeleteForm
     delete_form = DeleteForm()
     # Calcul du statut de match pour affichage badge
-    from models import Match
     has_match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first() is not None
     return render_template(
         'detail.html',
@@ -801,7 +696,6 @@ def edit_item(item_id):
         # Suppression des photos cochées
         photo_ids_to_delete = request.form.getlist('delete_photos')
         if photo_ids_to_delete:
-            from models import ItemPhoto
             for pid in photo_ids_to_delete:
                 photo = ItemPhoto.query.filter_by(id=pid, item_id=item.id).first()
                 if photo:
@@ -833,12 +727,12 @@ def delete_item(item_id):
         if not current_user.check_password(delete_form.delete_password.data):
             flash("Mot de passe incorrect.", "danger")
             return redirect(url_for('main.detail_item', item_id=item_id))
+        old_status = item.status.value if hasattr(item, 'status') else 'lost'
+        item_id_log = item.id
         db.session.delete(item)
         db.session.commit()
-        log_action(current_user.id, 'delete_item', f'Item supprimé: {item.id}')
+        log_action(current_user.id, 'delete_item', f'Item supprimé: {item_id_log}')
         flash('Objet supprimé.', 'success')
-        # Redirige vers la bonne liste selon l'ancien statut
-        old_status = item.status.value if hasattr(item, 'status') else 'lost'
         if old_status in ['lost', 'found', 'returned']:
             return redirect(url_for('main.list_items', status=old_status))
         return redirect(url_for('main.index'))
@@ -854,7 +748,6 @@ def delete_item(item_id):
 @bp.route('/export/<status>')
 @login_required
 def export_items(status):
-    import base64
     try:
         st = Status(status)
     except ValueError:
@@ -925,8 +818,6 @@ def api_check_similar():
     if not titre or not cat_id:
         return {'similars': []}
     similars = find_similar_items(titre, cat_id, seuil=70)
-    # Retourne une vraie réponse JSON Flask
-    from flask import jsonify
     return jsonify({'similars': similars})
 
 @bp.route('/api/match_explain', methods=['POST'])
@@ -1035,19 +926,20 @@ def api_match_explain():
 def headphone_loans():
     form = HeadphoneLoanForm()
     search = request.args.get('q', '', type=str).strip()
+    page = request.args.get('page', 1, type=int)
     query = HeadphoneLoan.query
     sort = request.args.get('sort', 'date')
     if search:
         query = query.filter((HeadphoneLoan.first_name.ilike(f'%{search}%')) | (HeadphoneLoan.last_name.ilike(f'%{search}%')))
     # Exclure les prêts en attente de suppression
-    from models import LoanStatus
     query = query.filter(HeadphoneLoan.status != LoanStatus.PENDING_DELETION)
     if sort == 'name':
-        loans = query.order_by(HeadphoneLoan.last_name.asc(), HeadphoneLoan.first_name.asc()).all()
+        query = query.order_by(HeadphoneLoan.last_name.asc(), HeadphoneLoan.first_name.asc())
     else:
-        loans = query.order_by(HeadphoneLoan.loan_date.desc()).all()
+        query = query.order_by(HeadphoneLoan.loan_date.desc())
+    pagination = query.paginate(page=page, per_page=25, error_out=False)
+    loans = pagination.items
     if form.validate_on_submit():
-        import base64
         id_card_photo_b64 = None
         if form.deposit_type.data == 'id_card' and 'id_card_photo' in request.files:
             file = request.files['id_card_photo']
@@ -1068,7 +960,7 @@ def headphone_loans():
         db.session.commit()
         flash("Prêt enregistré !", "success")
         return redirect(url_for('main.headphone_loans'))
-    return render_template('loans.html', form=form, loans=loans, search=search, sort=sort)
+    return render_template('loans.html', form=form, loans=loans, search=search, sort=sort, pagination=pagination)
 
 @bp.route('/trains')
 def train_schedule():
@@ -1078,33 +970,9 @@ def train_schedule():
 def shuttle_page():
     return render_template('shuttle.html')
 
-@bp.route('/api/trains/liveboard')
-def api_trains_liveboard():
-    station = request.args.get('station')
-    if not station:
-        return jsonify({'error': 'Paramètre "station" manquant.'}), 400
-    try:
-        url = f'https://api.irail.be/liveboard/?station={station}&format=json&lang=fr'
-        resp = requests.get(url, timeout=7)
-        resp.raise_for_status()
-        data = resp.json()
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-print("DEBUG: ROUTES DÉCLARÉES DANS BP:", bp.deferred_functions)
-
-from io import BytesIO
-
-
-
 @bp.route('/loans/<int:loan_id>/request_deletion', methods=['POST'])
 @login_required
 def request_loan_deletion(loan_id):
-    from models import HeadphoneLoan, LoanStatus
-    from app import db
-    from flask import request
     loan = HeadphoneLoan.query.get_or_404(loan_id)
     # Vérifie que le prêt n'est pas déjà en attente
     if loan.status == LoanStatus.PENDING_DELETION:
@@ -1127,14 +995,11 @@ def request_loan_deletion(loan_id):
 @bp.route('/loans/<int:loan_id>/return', methods=['POST'])
 @login_required
 def return_headphone_loan(loan_id):
-    from flask import request
     loan = HeadphoneLoan.query.get_or_404(loan_id)
-    from flask import jsonify
     data = request.get_json(silent=True)
     if not data or 'signature' not in data:
         return jsonify({'success': False, 'error': 'Signature manquante'}), 400
     signature = data.get('signature')
-    from datetime import datetime
     loan.signature = signature
     loan.return_date = datetime.utcnow()
     db.session.commit()
@@ -1144,8 +1009,6 @@ def return_headphone_loan(loan_id):
 # Routes de correspondance globale Lost↔Found (nouvelles)
 # ───────────────────────────────────────────────────────────────────────────────
 def get_all_candidate_pairs(seuil=60):
-    from collections import defaultdict
-    import matching
     pairs = []
     lost_items = Item.query.filter_by(status=Status.LOST).all()
     found_items = Item.query.filter_by(status=Status.FOUND).all()
@@ -1166,15 +1029,6 @@ def get_all_candidate_pairs(seuil=60):
                 pairs.append((lost, found, score, explanation))
     return pairs
 
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not getattr(current_user, 'is_admin', False):
-            flash("Accès réservé à l'administrateur.", "danger")
-            return redirect(url_for('main.index'))
-        return f(*args, **kwargs)
-    return decorated_function
-
 @bp.route('/matches')
 @login_required
 @admin_required
@@ -1188,7 +1042,6 @@ def list_matches():
     pairs = sorted(pairs, key=lambda x: x[2], reverse=True)
 
     # Ajout d'un booléen is_validated pour chaque paire (via la table Match)
-    from models import Match
     pairs_with_status = []
     for lost, found, score, explanation in pairs:
         is_validated = Match.query.filter_by(lost_id=lost.id, found_id=found.id).first() is not None or \
@@ -1208,7 +1061,6 @@ def list_matches():
 @login_required
 @admin_required
 def confirm_match():
-    from models import Match
     try:
         lost_id = int(request.form.get('lost_id'))
         found_id = int(request.form.get('found_id'))

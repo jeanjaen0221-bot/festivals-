@@ -3,7 +3,6 @@ from datetime import datetime
 from app import db
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-import enum
 
 class DepositType(enum.Enum):
     ID_CARD = 'id_card'
@@ -290,6 +289,19 @@ class ZClosure(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     from_ts = db.Column(db.DateTime, nullable=True)
     to_ts = db.Column(db.DateTime, nullable=False)
+    tickets = db.relationship('ZTicketPDF', backref='closure', cascade='all, delete-orphan', lazy=True)
 
     def __repr__(self):
         return f'<ZClosure #{self.id} {self.from_ts}→{self.to_ts}>'
+
+class ZTicketPDF(db.Model):
+    __tablename__ = 'z_ticket_pdfs'
+    id = db.Column(db.Integer, primary_key=True)
+    closure_id = db.Column(db.Integer, db.ForeignKey('z_closures.id'), nullable=True, index=True)
+    filename = db.Column(db.String(200), nullable=False)
+    pdf_data = db.Column(db.LargeBinary, nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f'<ZTicketPDF {self.filename}>'

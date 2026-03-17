@@ -1,7 +1,8 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_from_directory, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
 import os
 import sys
-import traceback
+from collections import defaultdict
+from io import BytesIO
 from werkzeug.utils import secure_filename
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -11,15 +12,12 @@ ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 # Ancien système d'icônes supprimé - plus besoin d'importer fetch_category_icons
 from flask_login import login_required, current_user
 from app import db
-from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, LoanStatus
+from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus
 from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm
 from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from zoneinfo import ZoneInfo
-
-# Directory to store Z ticket PDFs
-Z_TICKETS_DIR = os.path.join(os.path.dirname(__file__), 'z_tickets')
 
 def admin_required(f):
     from functools import wraps
@@ -206,15 +204,31 @@ def remove_custom_icon(category_id):
 def admin_dashboard():
     nb_found = Item.query.filter_by(status=Status.FOUND).count()
     nb_lost = Item.query.filter_by(status=Status.LOST).count()
+    nb_returned = Item.query.filter_by(status=Status.RETURNED).count()
     nb_users = User.query.count()
     nb_deletions = Item.query.filter_by(status=Status.PENDING_DELETION).count()
+    active_loans = HeadphoneLoan.query.filter_by(status=LoanStatus.ACTIVE).count()
+    total_sales_eur = Decimal('0')
+    try:
+        last_z = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+        sales_q = Sale.query
+        if last_z and last_z.to_ts:
+            sales_q = sales_q.filter(Sale.created_at > last_z.to_ts)
+        for s in sales_q.all():
+            for si in s.items:
+                total_sales_eur += si.unit_price * si.quantity
+    except Exception:
+        pass
     csrf_form = SimpleCsrfForm()
     return render_template(
         'admin/dashboard.html',
         nb_found=nb_found,
         nb_lost=nb_lost,
+        nb_returned=nb_returned,
         nb_users=nb_users,
         nb_deletions=nb_deletions,
+        active_loans=active_loans,
+        total_sales_eur=total_sales_eur,
         csrf_form=csrf_form
     )
 
@@ -235,7 +249,7 @@ def confirm_deletion(item_id):
     item = Item.query.get_or_404(item_id)
     db.session.delete(item)
     db.session.commit()
-    ActionLog.query.session.add(ActionLog(user_id=current_user.id, action_type='confirm_deletion', details=f'Suppression validée pour objet {item_id}'))
+    db.session.add(ActionLog(user_id=current_user.id, action_type='confirm_deletion', details=f'Suppression validée pour objet {item_id}'))
     db.session.commit()
     flash("Suppression définitive effectuée.", "success")
     return redirect(url_for('admin.deletion_requests'))
@@ -249,7 +263,7 @@ def confirm_loan_deletion(loan_id):
     form = SimpleCsrfForm()
     loan = HeadphoneLoan.query.get_or_404(loan_id)
     if form.validate_on_submit():
-        ActionLog.query.session.add(ActionLog(
+        db.session.add(ActionLog(
             user_id=current_user.id,
             action_type='confirm_loan_deletion',
             details=f'Suppression validée pour prêt casque {loan.id}'
@@ -277,7 +291,7 @@ def reject_loan_deletion(loan_id):
         else:
             loan.status = LoanStatus.ACTIVE
         db.session.commit()
-        ActionLog.query.session.add(ActionLog(
+        db.session.add(ActionLog(
             user_id=current_user.id,
             action_type='reject_loan_deletion',
             details=f'Restauration prêt casque {loan.id}'
@@ -300,7 +314,7 @@ def reject_deletion(item_id):
     else:
         item.status = Status.LOST
     db.session.commit()
-    ActionLog.query.session.add(ActionLog(user_id=current_user.id, action_type='reject_deletion', details=f'Rejet suppression objet {item_id}'))
+    db.session.add(ActionLog(user_id=current_user.id, action_type='reject_deletion', details=f'Rejet suppression objet {item_id}'))
     db.session.commit()
     flash("Demande de suppression rejetée. L'objet est de nouveau visible.", "info")
     return redirect(url_for('admin.deletion_requests'))
@@ -396,7 +410,7 @@ def delete_rental(rental_id):
     
     if form.validate_on_submit():
         # Enregistrer l'action dans les logs
-        ActionLog.query.session.add(ActionLog(
+        db.session.add(ActionLog(
             user_id=current_user.id, 
             action_type='delete_rental', 
             details=f'Suppression location casque {rental.first_name} {rental.last_name} (ID: {rental_id})'
@@ -463,39 +477,27 @@ def admin_logs():
 @login_required
 @admin_required
 def delete_log(log_id):
-    print(f"[DEBUG] Appel de delete_log pour log_id={log_id}")
-    print(f"[DEBUG] Méthode: {request.method}, is_json: {request.is_json}")
-    try:
-        print(f"[DEBUG] Données reçues: {request.get_json()}")
-    except Exception as ex:
-        print(f"[DEBUG] Impossible de parser le JSON: {ex}")
     if not request.is_json:
-        print("[DEBUG] Requête non JSON, rejetée.")
         return jsonify({'error': 'Invalid request'}), 400
-    
+
     log = ActionLog.query.get_or_404(log_id)
-    print(f"[DEBUG] Log trouvé: id={log.id}, timestamp={log.timestamp}")
     # Ne pas permettre de supprimer des logs de moins d'une heure
     diff = datetime.utcnow() - log.timestamp
-    print(f"[DEBUG] Différence UTCnow - log.timestamp: {diff}")
     if diff < timedelta(hours=1):
-        print("[DEBUG] Log trop récent pour être supprimé.")
         return jsonify({
             'success': False,
             'message': 'Impossible de supprimer un log de moins d\'une heure'
         }), 400
-    
+
     try:
         db.session.delete(log)
         db.session.commit()
-        print("[DEBUG] Log supprimé avec succès.")
         return jsonify({
             'success': True,
             'message': 'Log supprimé avec succès'
         })
     except Exception as e:
         db.session.rollback()
-        print(f"[DEBUG] Exception lors de la suppression: {str(e)}")
         return jsonify({
             'success': False,
             'message': f'Erreur lors de la suppression du log: {str(e)}'
@@ -516,6 +518,7 @@ def _round_cash_to_0_05(amount: Decimal) -> Decimal:
 
 @bp_admin.route('/goodies/pos', methods=['GET', 'POST'])
 @login_required
+@admin_required
 def goodies_pos():
     csrf_form = SimpleCsrfForm()
     products = Product.query.filter_by(active=True).order_by(Product.name).all()
@@ -587,7 +590,7 @@ def goodies_pos():
             )
             db.session.add(si)
         db.session.commit()
-        ActionLog.query.session.add(ActionLog(user_id=current_user.id, action_type='sale_goodies', details=f'Sale #{sale.id} {sale.payment_method.value} total {sale.total_amount}'))
+        db.session.add(ActionLog(user_id=current_user.id, action_type='sale_goodies', details=f'Sale #{sale.id} {sale.payment_method.value} total {sale.total_amount}'))
         db.session.commit()
         flash(f'Vente enregistrée (#{sale.id}).', 'success')
         return redirect(url_for('admin.goodies_pos'))
@@ -696,6 +699,34 @@ def goodies_products_delete(pid):
     flash('Article supprimé.', 'success')
     return redirect(url_for('admin.goodies_products'))
 
+@bp_admin.route('/goodies/sales', methods=['GET'])
+@login_required
+@admin_required
+def goodies_sales():
+    last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+    from_ts = last.to_ts if last else None
+    query = Sale.query
+    if from_ts:
+        query = query.filter(Sale.created_at > from_ts)
+    sales = query.order_by(Sale.created_at.desc()).all()
+    csrf_form = SimpleCsrfForm()
+    return render_template('admin/goodies_sales.html', sales=sales, csrf_form=csrf_form, from_ts=from_ts)
+
+@bp_admin.route('/goodies/sales/<int:sale_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def goodies_sale_delete(sale_id):
+    csrf_form = SimpleCsrfForm()
+    if not csrf_form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin.goodies_sales'))
+    sale = Sale.query.get_or_404(sale_id)
+    db.session.add(ActionLog(user_id=current_user.id, action_type='delete_sale', details=f'Vente #{sale_id} supprimée ({sale.payment_method.value} {sale.total_amount}€)'))
+    db.session.delete(sale)
+    db.session.commit()
+    flash(f'Vente #{sale_id} supprimée.', 'success')
+    return redirect(url_for('admin.goodies_sales'))
+
 @bp_admin.route('/goodies/z', methods=['GET'])
 @login_required
 @admin_required
@@ -755,7 +786,6 @@ def goodies_z_close():
     sales = query.filter(Sale.created_at <= to_ts).order_by(Sale.created_at.asc()).all()
 
     # Group sales by calendar day in Europe/Brussels
-    from collections import defaultdict
     tz_utc = ZoneInfo("UTC")
     tz_brussels = ZoneInfo("Europe/Brussels")
     by_day = defaultdict(list)
@@ -765,12 +795,6 @@ def goodies_z_close():
             dt = dt.replace(tzinfo=tz_utc)
         day = dt.astimezone(tz_brussels).date()
         by_day[day].append(s)
-
-    # Ensure directory exists
-    try:
-        os.makedirs(Z_TICKETS_DIR, exist_ok=True)
-    except Exception:
-        pass
 
     generated = 0
     errors = 0
@@ -797,16 +821,15 @@ def goodies_z_close():
             e['ttc'] = _quantize(e['ttc'])
             e['vat'] = _quantize(e['vat'])
             e['net'] = _quantize(e['net'])
-        # Generate per-day PDF
+        # Generate per-day PDF into memory and store in DB
         try:
             day_str = day.strftime('%Y-%m-%d')
             filename = f"z_ticket_{day_str}.pdf"
-            # If file exists, add time suffix to avoid overwrite
-            pdf_path = os.path.join(Z_TICKETS_DIR, filename)
-            if os.path.exists(pdf_path):
+            # If a ticket for this day already exists in DB, add time suffix
+            if ZTicketPDF.query.filter_by(filename=filename).first():
                 filename = f"z_ticket_{day_str}_{to_ts.strftime('%H%M%S')}.pdf"
-                pdf_path = os.path.join(Z_TICKETS_DIR, filename)
-            c = canvas.Canvas(pdf_path, pagesize=A4)
+            buf = BytesIO()
+            c = canvas.Canvas(buf, pagesize=A4)
             width, height = A4
             x, y = 40, height - 40
             def line(text, inc=18):
@@ -829,6 +852,15 @@ def goodies_z_close():
                 line(f"  TVA {rate}% → TTC: {e['ttc']} € | VAT: {e['vat']} € | NET: {e['net']} €")
             c.showPage()
             c.save()
+            pdf_bytes = buf.getvalue()
+            ticket = ZTicketPDF(
+                closure_id=z.id,
+                filename=filename,
+                pdf_data=pdf_bytes,
+                size_bytes=len(pdf_bytes),
+            )
+            db.session.add(ticket)
+            db.session.commit()
             generated += 1
         except Exception:
             errors += 1
@@ -845,21 +877,15 @@ def goodies_z_close():
 @login_required
 @admin_required
 def goodies_z_tickets_list():
-    files = []
-    try:
-        os.makedirs(Z_TICKETS_DIR, exist_ok=True)
-        for name in os.listdir(Z_TICKETS_DIR):
-            if name.lower().endswith('.pdf'):
-                path = os.path.join(Z_TICKETS_DIR, name)
-                stat = os.stat(path)
-                files.append({
-                    'name': name,
-                    'size_kb': round(stat.st_size/1024.0, 1),
-                    'mtime': datetime.fromtimestamp(stat.st_mtime)
-                })
-        files.sort(key=lambda f: f['mtime'], reverse=True)
-    except Exception:
-        pass
+    tickets = ZTicketPDF.query.order_by(ZTicketPDF.created_at.desc()).all()
+    files = [
+        {
+            'name': t.filename,
+            'size_kb': round((t.size_bytes or 0) / 1024.0, 1),
+            'mtime': t.created_at,
+        }
+        for t in tickets
+    ]
     csrf_form = SimpleCsrfForm()
     return render_template('admin/z_tickets.html', files=files, csrf_form=csrf_form)
 
@@ -867,15 +893,16 @@ def goodies_z_tickets_list():
 @login_required
 @admin_required
 def goodies_z_ticket_download(filename):
-    # basic safety: no traversal outside directory
-    if '..' in filename or filename.startswith('/'):
-        flash('Nom de fichier invalide.', 'danger')
-        return redirect(url_for('admin.goodies_z_tickets_list'))
-    try:
-        return send_from_directory(Z_TICKETS_DIR, filename, as_attachment=False)
-    except Exception:
+    ticket = ZTicketPDF.query.filter_by(filename=filename).first()
+    if not ticket:
         flash('Fichier introuvable.', 'danger')
         return redirect(url_for('admin.goodies_z_tickets_list'))
+    return send_file(
+        BytesIO(ticket.pdf_data),
+        mimetype='application/pdf',
+        download_name=ticket.filename,
+        as_attachment=False,
+    )
 
 @bp_admin.route('/goodies/last_z', methods=['GET'])
 @login_required

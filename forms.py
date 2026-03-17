@@ -1,11 +1,6 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SelectField, FileField, SubmitField, PasswordField, BooleanField, DateField, TimeField
+from wtforms import StringField, TextAreaField, SelectField, SubmitField, PasswordField, BooleanField, DateField, TimeField, MultipleFileField, RadioField, DecimalField, IntegerField
 from wtforms.validators import DataRequired, Length, Email, Optional, EqualTo
-from flask_wtf.file import FileAllowed
-from wtforms import MultipleFileField
-
-from wtforms import RadioField, DecimalField, IntegerField
-
 from flask_wtf.file import FileField, FileAllowed, FileRequired
 
 class HeadphoneLoanForm(FlaskForm):
@@ -28,7 +23,7 @@ class ItemForm(FlaskForm):
     comments = TextAreaField('Description / Commentaires', validators=[Length(max=500)])
     LIEUX_CHOIX = [
         ('', 'Sélectionnez un lieu'),
-        ('point_info', 'Camping Famille'),
+        ('camping_famille', 'Camping Famille'),
         ('point_info', 'Point info Festival'),
         ('festivalier', 'Camping Festivalier'),
         ('autre', 'Autre (précisez)')
@@ -143,7 +138,7 @@ class ClaimForm(FlaskForm):
 from flask_wtf.file import FileField, FileAllowed, FileRequired
 
 class ConfirmReturnForm(FlaskForm):
-    return_photo = FileField('Photo de restitution', validators=[FileRequired(message="La photo de restitution est obligatoire."), FileAllowed(['jpg', 'jpeg', 'png'], "Images uniquement")])
+    return_photo = FileField('Photo de restitution (optionnelle)', validators=[Optional(), FileAllowed(['jpg', 'jpeg', 'png'], "Images uniquement")])
     return_comment = TextAreaField('Commentaire de restitution', validators=[Length(max=500)])
     submit = SubmitField('Confirmer restitution')
 

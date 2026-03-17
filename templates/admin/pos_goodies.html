@@ -1,5 +1,6 @@
-{% extends 'base.html' %}
-{% block content %}
+{% extends 'admin/base.html' %}
+{% block admin_title %}Ventes Goodies{% endblock %}
+{% block admin_content %}
 <div class="row g-3" id="posRoot" data-last-z="{{ last_z_iso }}">
   <div class="col-12 d-flex justify-content-between align-items-center">
     <h3 class="mb-3">Ventes Goodies</h3>
@@ -48,7 +49,7 @@
           </div>
           <div id="cart_list" class="list-group mb-3"></div>
           <div class="d-flex justify-content-between"><span>Sous-total</span><span id="subtotal">0,00 €</span></div>
-          <div class="d-flex justify-content-between"><span>Ajustement arrondi</span><span id="rounding">0,00 €</span></div>
+          <div class="d-flex justify-content-between" id="rounding-row"><span>Ajustement arrondi</span><span id="rounding">0,00 €</span></div>
           <div class="d-flex justify-content-between fw-bold fs-5 border-top pt-2"><span>Total</span><span id="total">0,00 €</span></div>
           <div class="d-grid mt-3">
             <button type="submit" class="btn btn-primary" id="submit_btn" disabled>Encaisser</button>
@@ -108,6 +109,14 @@
   });
   document.getElementById('pay_card').addEventListener('change', render);
   document.getElementById('pay_cash').addEventListener('change', render);
+  function updateRoundingVisibility(){
+    const isCash = document.getElementById('pay_cash').checked;
+    const roundingRow = document.getElementById('rounding-row');
+    if(roundingRow) roundingRow.style.display = isCash ? '' : 'none';
+  }
+  document.getElementById('pay_card').addEventListener('change', updateRoundingVisibility);
+  document.getElementById('pay_cash').addEventListener('change', updateRoundingVisibility);
+  updateRoundingVisibility();
   document.getElementById('posForm').addEventListener('submit', (e)=>{
     const data = []; cart.forEach(it=> data.push({product_id: it.id, quantity: it.qty}));
     document.getElementById('cart_json').value = JSON.stringify(data);
@@ -133,4 +142,4 @@
   setInterval(checkLastZ, 60000); // every 60s
 })();
 </script>
-{% endblock %}
+{% endblock admin_content %}

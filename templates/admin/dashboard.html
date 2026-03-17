@@ -1,65 +1,187 @@
 {% extends 'admin/base.html' %}
 {% block admin_title %}Tableau de bord{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
 {% block admin_content %}
-<div class="row g-4 mb-4">
-  <!-- Statistiques à remplir dynamiquement -->
-  <div class="col-12 col-md-6 col-xl-3">
-    <div class="card shadow-sm border-0">
-      <div class="card-body text-center">
-        <h5 class="card-title">Objets trouvés</h5>
-        <h2 class="display-6" id="nb_found">{{ nb_found }}</h2>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-6 col-xl-3">
-    <div class="card shadow-sm border-0">
-      <div class="card-body text-center">
-        <h5 class="card-title">Objets perdus</h5>
-        <h2 class="display-6" id="nb_lost">{{ nb_lost }}</h2>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-6 col-xl-3">
-    <div class="card shadow-sm border-0">
-      <div class="card-body text-center">
-        <h5 class="card-title">Utilisateurs</h5>
-        <h2 class="display-6" id="nb_users">{{ nb_users }}</h2>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-6 col-xl-3">
-    <div class="card shadow-sm border-0">
-      <div class="card-body text-center">
-        <h5 class="card-title">Demandes suppression</h5>
-        <h2 class="display-6" id="nb_deletions">{{ nb_deletions }}</h2>
-      </div>
-    </div>
-  </div>
-</div>
+
+<!-- Stat cards row 1 -->
 <div class="row g-3 mb-4">
-  <div class="col-12">
-    <div class="card shadow-sm border-0">
-      <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-          <h5 class="mb-0"><i class="bi bi-lightning-charge"></i> Actions rapides</h5>
-          <div class="d-flex flex-wrap gap-2">
-            <a href="{{ url_for('admin.goodies_pos') }}" class="btn btn-primary"><i class="bi bi-cash-coin"></i> Caisse</a>
-            <a href="{{ url_for('admin.goodies_products') }}" class="btn btn-outline-primary"><i class="bi bi-box-seam"></i> Articles</a>
-            <a href="{{ url_for('admin.goodies_z') }}" class="btn btn-outline-primary"><i class="bi bi-receipt"></i> Rapport Z</a>
-          </div>
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #0d6efd !important;">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;background:#e7f1ff;">
+          <i class="bi bi-bag-check fs-4 text-primary"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Objets trouvés</div>
+          <div class="fw-bold fs-3">{{ nb_found }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #dc3545 !important;">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;background:#fff0f3;">
+          <i class="bi bi-bag-x fs-4 text-danger"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Objets perdus</div>
+          <div class="fw-bold fs-3">{{ nb_lost }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #198754 !important;">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;background:#e6f9ed;">
+          <i class="bi bi-arrow-repeat fs-4 text-success"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Objets rendus</div>
+          <div class="fw-bold fs-3">{{ nb_returned }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #6c757d !important;">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;background:#f8f9fa;">
+          <i class="bi bi-people fs-4 text-secondary"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Utilisateurs</div>
+          <div class="fw-bold fs-3">{{ nb_users }}</div>
         </div>
       </div>
     </div>
   </div>
 </div>
-<div class="row">
-  <div class="col-12 mb-3">
-    <a href="{{ url_for('admin.category_icons') }}" class="btn btn-outline-primary">
-      <i class="bi bi-images"></i> Gérer les icônes de catégories
-    </a>
+
+<!-- Stat cards row 2 -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #fd7e14 !important;">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;background:#fff3e0;">
+          <i class="bi bi-headphones fs-4 text-warning"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Prêts actifs</div>
+          <div class="fw-bold fs-3">{{ active_loans }}</div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="col-12">
-    <div class="alert alert-info">Bienvenue dans l'administration. Utilisez le menu à gauche pour naviguer.</div>
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #0dcaf0 !important;">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;background:#e0f7fa;">
+          <i class="bi bi-cash-coin fs-4 text-info"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Ventes (période)</div>
+          <div class="fw-bold fs-4">{{ '%.2f'|format(total_sales_eur) }} €</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100{% if nb_deletions > 0 %} border-danger{% endif %}" style="border-left:4px solid #dc3545 !important;">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;background:#fff0f3;">
+          <i class="bi bi-trash fs-4 text-danger"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Suppressions</div>
+          <div class="fw-bold fs-3 {% if nb_deletions > 0 %}text-danger{% endif %}">{{ nb_deletions }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #6f42c1 !important;">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;background:#f3e8ff;">
+          <i class="bi bi-bar-chart-line fs-4" style="color:#6f42c1;"></i>
+        </div>
+        <div>
+          <div class="text-muted small">Total objets</div>
+          <div class="fw-bold fs-3">{{ nb_found + nb_lost + nb_returned }}</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+<!-- Chart + Actions rapides -->
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-5">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="bi bi-pie-chart text-primary me-1"></i> Répartition des objets</h6>
+        <canvas id="itemsChart" style="max-height:220px;"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-7">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="bi bi-lightning-charge text-warning me-1"></i> Actions rapides</h6>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <a href="{{ url_for('admin.goodies_pos') }}" class="btn btn-primary"><i class="bi bi-cash-coin"></i> Caisse</a>
+          <a href="{{ url_for('admin.goodies_products') }}" class="btn btn-outline-primary"><i class="bi bi-box-seam"></i> Articles</a>
+          <a href="{{ url_for('admin.goodies_z') }}" class="btn btn-outline-primary"><i class="bi bi-receipt"></i> Rapport Z</a>
+          <a href="{{ url_for('admin.category_icons') }}" class="btn btn-outline-secondary"><i class="bi bi-images"></i> Icônes catégories</a>
+        </div>
+        {% if nb_deletions > 0 %}
+        <div class="alert alert-danger d-flex align-items-center gap-2 py-2">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span><strong>{{ nb_deletions }}</strong> demande{{ 's' if nb_deletions > 1 else '' }} de suppression en attente.</span>
+          <a href="{{ url_for('admin.deletion_requests') }}" class="btn btn-danger btn-sm ms-auto">Traiter</a>
+        </div>
+        {% else %}
+        <div class="alert alert-success d-flex align-items-center gap-2 py-2">
+          <i class="bi bi-check-circle-fill"></i> Aucune demande de suppression en attente.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const ctx = document.getElementById('itemsChart');
+  if(!ctx) return;
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Trouvés', 'Perdus', 'Rendus'],
+      datasets: [{
+        data: [{{ nb_found }}, {{ nb_lost }}, {{ nb_returned }}],
+        backgroundColor: ['#0d6efd', '#dc3545', '#198754'],
+        borderWidth: 2,
+        borderColor: '#fff',
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { padding: 16, font: { size: 13 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label} : ${ctx.parsed} objet${ctx.parsed > 1 ? 's' : ''}`
+          }
+        }
+      },
+      cutout: '60%'
+    }
+  });
+})();
+</script>
 {% endblock %}

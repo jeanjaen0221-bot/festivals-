@@ -1,7 +1,6 @@
 import os
+import re
 import base64
-from google.cloud import vision
-from google.oauth2 import service_account
 
 # Utilitaire pour extraire les infos d'une CI belge via Google Vision
 # Nécessite la variable d'environnement GOOGLE_APPLICATION_CREDENTIALS ou un chemin de clé explicite
@@ -11,27 +10,43 @@ def extract_id_card_data(image_b64: str, credentials_path: str = None):
     Appelle Google Vision OCR sur une image base64 et extrait nom, prénom, etc. (support multilingue)
     :param image_b64: image en base64 (data:image/jpeg;base64,....)
     :param credentials_path: chemin vers la clé de service JSON (optionnel, sinon GOOGLE_APPLICATION_CREDENTIALS)
-    :return: dictionnaire avec les champs extraits
+    :return: dictionnaire avec les champs extraits, ou {'error': ...} si OCR indisponible
     """
+    creds_available = (
+        credentials_path
+        or os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+        or os.environ.get('GOOGLE_CLOUD_CREDENTIALS')
+    )
+    if not creds_available:
+        return {'error': 'OCR non disponible : aucune configuration Google Cloud trouvée.'}
+
+    try:
+        from google.cloud import vision
+        from google.oauth2 import service_account
+    except ImportError:
+        return {'error': 'OCR non disponible : google-cloud-vision non installé.'}
+
     if image_b64.startswith("data:"):
         image_b64 = image_b64.split(",", 1)[1]
     image_bytes = base64.b64decode(image_b64)
 
-    if credentials_path:
-        creds = service_account.Credentials.from_service_account_file(credentials_path)
-        client = vision.ImageAnnotatorClient(credentials=creds)
-    else:
-        client = vision.ImageAnnotatorClient()
+    try:
+        if credentials_path:
+            creds = service_account.Credentials.from_service_account_file(credentials_path)
+            client = vision.ImageAnnotatorClient(credentials=creds)
+        else:
+            client = vision.ImageAnnotatorClient()
 
-    image = vision.Image(content=image_bytes)
-    response = client.text_detection(image=image)
+        image = vision.Image(content=image_bytes)
+        response = client.text_detection(image=image)
+    except Exception as e:
+        return {'error': f'Erreur Google Vision : {e}'}
+
     texts = response.text_annotations
     if not texts:
         return {}
     full_text = texts[0].description
 
-    # Extraction multilingue simple (fr/nl/en)
-    import re
     result = {}
     # Nom
     match = re.search(r"NOM\s*[:\-]?\s*([A-Z\- ]+)", full_text)
@@ -69,6 +84,5 @@ def extract_id_card_data(image_b64: str, credentials_path: str = None):
         match = re.search(r"Expiry\s*[:\-]?\s*(\d{2}/\d{2}/\d{4})", full_text)
     if match:
         result['expiry_date'] = match.group(1)
-    # Ajoute le texte brut pour debug
-    result['raw_text'] = full_text
+
     return result

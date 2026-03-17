@@ -18,17 +18,16 @@ document.addEventListener('DOMContentLoaded', function() {
     function fetchLoans(query) {
         const url = new URL(window.location.href);
         url.searchParams.set('q', query);
-        url.searchParams.set('ajax', '1');
-        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        url.searchParams.delete('page');
+        fetch(url)
             .then(resp => resp.text())
             .then(html => {
-                // Replace only the table
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
-                const newTable = doc.querySelector('.table-responsive');
-                if (newTable) {
-                    const container = document.querySelector('.table-responsive');
-                    if (container) container.replaceWith(newTable);
+                const newResults = doc.querySelector('#loans-results');
+                if (newResults) {
+                    const container = document.querySelector('#loans-results');
+                    if (container) container.replaceWith(newResults);
                 }
             });
     }

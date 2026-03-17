@@ -17,7 +17,7 @@ LIVEBOARD_CACHE = {}
 
 # As recommended by iRail docs, set a descriptive User-Agent to facilitate communication
 IRAIL_HEADERS = {
-    'User-Agent': 'FestivalsNavette/1.0 (https://example.org; contact@example.org)'
+    'User-Agent': 'FestivalsNavette/1.0 (festival-app; contact@festival.be)'
 }
 
 def _cache_get(key: str):

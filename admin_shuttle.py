@@ -3,7 +3,7 @@ from flask_login import login_required
 from admin import admin_required
 from app import db
 from models import ShuttleScheduleDay, ShuttleScheduleSlot, ShuttleRouteStop, ShuttleSettings
-from forms import ShuttleScheduleDayForm, ShuttleScheduleSlotForm, ShuttleRouteStopForm, ShuttleSettingsForm
+from forms import ShuttleScheduleDayForm, ShuttleScheduleSlotForm, ShuttleRouteStopForm, ShuttleSettingsForm, SimpleCsrfForm
 from datetime import datetime
 
 bp = Blueprint('admin_shuttle', __name__, url_prefix='/admin/shuttle')
@@ -15,7 +15,8 @@ def shuttle_schedule():
     days = ShuttleScheduleDay.query.order_by(ShuttleScheduleDay.date.asc()).all()
     stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
     stop_names = [s.name for s in stops]
-    return render_template('admin/shuttle_schedule.html', days=days, stop_names=stop_names)
+    csrf_form = SimpleCsrfForm()
+    return render_template('admin/shuttle_schedule.html', days=days, stop_names=stop_names, csrf_form=csrf_form)
 
 # Days
 @bp.route('/days/add', methods=['GET', 'POST'])
@@ -46,10 +47,14 @@ def edit_shuttle_day(day_id):
         return redirect(url_for('admin_shuttle.shuttle_schedule'))
     return render_template('admin/shuttle_day_form.html', form=form, title='Modifier le jour')
 
-@bp.route('/days/<int:day_id>/delete')
+@bp.route('/days/<int:day_id>/delete', methods=['POST'])
 @login_required
 @admin_required
 def delete_shuttle_day(day_id):
+    form = SimpleCsrfForm()
+    if not form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin_shuttle.shuttle_schedule'))
     day = ShuttleScheduleDay.query.get_or_404(day_id)
     db.session.delete(day)
     db.session.commit()
@@ -123,10 +128,14 @@ def edit_shuttle_slot(slot_id):
     stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
     return render_template('admin/shuttle_slot_form.html', form=form, title='Modifier le créneau', stops=stops)
 
-@bp.route('/slots/<int:slot_id>/delete')
+@bp.route('/slots/<int:slot_id>/delete', methods=['POST'])
 @login_required
 @admin_required
 def delete_shuttle_slot(slot_id):
+    form = SimpleCsrfForm()
+    if not form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin_shuttle.shuttle_schedule'))
     slot = ShuttleScheduleSlot.query.get_or_404(slot_id)
     db.session.delete(slot)
     db.session.commit()
@@ -139,7 +148,8 @@ def delete_shuttle_slot(slot_id):
 @admin_required
 def shuttle_route():
     stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
-    return render_template('admin/shuttle_route.html', stops=stops)
+    csrf_form = SimpleCsrfForm()
+    return render_template('admin/shuttle_route.html', stops=stops, csrf_form=csrf_form)
 
 @bp.route('/route/add', methods=['GET', 'POST'])
 @login_required
@@ -175,10 +185,14 @@ def edit_route_stop(stop_id):
         return redirect(url_for('admin_shuttle.shuttle_route'))
     return render_template('admin/shuttle_route_form.html', form=form, title='Modifier un arrêt')
 
-@bp.route('/route/<int:stop_id>/delete')
+@bp.route('/route/<int:stop_id>/delete', methods=['POST'])
 @login_required
 @admin_required
 def delete_route_stop(stop_id):
+    form = SimpleCsrfForm()
+    if not form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin_shuttle.shuttle_route'))
     stop = ShuttleRouteStop.query.get_or_404(stop_id)
     db.session.delete(stop)
     db.session.commit()

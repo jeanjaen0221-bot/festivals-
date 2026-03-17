@@ -27,7 +27,10 @@
               <td>{{ stop.note or '' }}</td>
               <td>
                 <a href="{{ url_for('admin_shuttle.edit_route_stop', stop_id=stop.id) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
-                <a href="{{ url_for('admin_shuttle.delete_route_stop', stop_id=stop.id) }}" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Supprimer cet arrêt ?')">Supprimer</a>
+                <form method="post" action="{{ url_for('admin_shuttle.delete_route_stop', stop_id=stop.id) }}" class="d-inline" onsubmit="return confirm('Supprimer cet arrêt ?')">
+                  {{ csrf_form.csrf_token }}
+                  <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Supprimer</button>
+                </form>
               </td>
             </tr>
             {% else %}

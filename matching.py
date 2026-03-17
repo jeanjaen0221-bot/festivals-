@@ -1,6 +1,15 @@
 import re
+import nltk
 from rapidfuzz import fuzz
 from unidecode import unidecode
+
+try:
+    nltk.download('stopwords', quiet=True)
+    nltk.download('punkt', quiet=True)
+    nltk.download('snowball_data', quiet=True)
+except Exception:
+    pass
+
 from nltk.stem.snowball import FrenchStemmer
 
 # Liste de mots vides français courants

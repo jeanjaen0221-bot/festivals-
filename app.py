@@ -1,4 +1,6 @@
 import os
+import sys
+from datetime import datetime
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
@@ -23,7 +25,6 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_timeout': int(os.environ.get('DB_POOL_TIMEOUT', '30')),
     'connect_args': {'sslmode': 'require'},
 }
-print("DATABASE_URL utilisé :", app.config['SQLALCHEMY_DATABASE_URI'])
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Sécurité : forcer la présence de secrets en production
@@ -33,7 +34,7 @@ if not app.config['SQLALCHEMY_DATABASE_URI'] or 'user:pass@localhost' in app.con
     raise RuntimeError('DATABASE_URL PostgreSQL doit être défini dans les variables d\'environnement Railway !')
 
 # Cookies de session sécurisés
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SECURE'] = not app.debug
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
@@ -65,6 +66,10 @@ app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30 MB
 
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
+
+@app.context_processor
+def inject_current_year():
+    return {'current_year': datetime.utcnow().year}
 
 from flask_login import LoginManager
 login_manager = LoginManager(app)
@@ -124,6 +129,13 @@ with app.app_context():
             if result.fetchone() is None:
                 conn.execute(sqlalchemy.text("ALTER TABLE headphone_loans ADD COLUMN previous_status VARCHAR(20);"))
                 conn.execute(sqlalchemy.text("COMMIT;"))
+            # Ajoute id_card_photo si manquant
+            result = conn.execute(sqlalchemy.text("""
+                SELECT column_name FROM information_schema.columns WHERE table_name='headphone_loans' AND column_name='id_card_photo'
+            """))
+            if result.fetchone() is None:
+                conn.execute(sqlalchemy.text("ALTER TABLE headphone_loans ADD COLUMN id_card_photo TEXT;"))
+                conn.execute(sqlalchemy.text("COMMIT;"))
             # --- Ensure shuttle_settings columns exist ---
             try:
                 # loop_enabled
@@ -165,6 +177,14 @@ with app.app_context():
                 """))
                 if result.fetchone() is None:
                     conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN display_base_stop_sequence INTEGER NULL;"))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
+                # updated_at
+                result = conn.execute(sqlalchemy.text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name='shuttle_settings' AND column_name='updated_at'
+                """))
+                if result.fetchone() is None:
+                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT NOW();"))
                     conn.execute(sqlalchemy.text("COMMIT;"))
             except Exception as e2:
                 print(f"[WARN] Impossible d'ajouter les colonnes shuttle_settings: {e2}", file=sys.stderr)
@@ -234,7 +254,6 @@ with app.app_context():
             except Exception as e6:
                 print(f"[WARN] Impossible d'ajouter les colonnes data/mime_type sur item_photos: {e6}", file=sys.stderr)
     except Exception as e:
-        import sys
         print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)
 
 @login_manager.user_loader
@@ -258,9 +277,6 @@ app.register_blueprint(api_navette_bp)
 import admin_shuttle
 app.register_blueprint(admin_shuttle.bp)
 
-print("DEBUG: ROUTES FLASK:")
-for rule in app.url_map.iter_rules():
-    print(rule, rule.endpoint)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

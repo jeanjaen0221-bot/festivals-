@@ -76,7 +76,7 @@
             </a>
           </li>
 
-          {% set goodies_active = request.path.startswith(url_for('admin.goodies_pos')) or request.path.startswith(url_for('admin.goodies_products')) or request.path.startswith(url_for('admin.goodies_z')) %}
+          {% set goodies_active = request.path.startswith(url_for('admin.goodies_pos')) or request.path.startswith(url_for('admin.goodies_products')) or request.path.startswith(url_for('admin.goodies_z')) or request.path.startswith(url_for('admin.goodies_sales')) %}
           <li class="nav-item">
             <a class="nav-link text-white d-flex justify-content-between align-items-center {% if goodies_active %}active{% endif %}" data-bs-toggle="collapse" href="#collapseGoodies" role="button" aria-expanded="{{ 'true' if goodies_active else 'false' }}" aria-controls="collapseGoodies">
               <span><i class="bi bi-gift"></i> Goodies</span>
@@ -95,6 +95,11 @@
                 <li class="nav-item">
                   <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_products')) %}active{% endif %}" href="{{ url_for('admin.goodies_products') }}">
                     <i class="bi bi-box-seam"></i> Articles
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_sales')) %}active{% endif %}" href="{{ url_for('admin.goodies_sales') }}">
+                    <i class="bi bi-list-ul"></i> Ventes (liste)
                   </a>
                 </li>
                 <li class="nav-item">
@@ -149,9 +154,6 @@
     </main>
   </div>
 </div>
-
-<!-- Bootstrap Icons CDN -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
 <style>
   body {

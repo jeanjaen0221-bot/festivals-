@@ -37,7 +37,10 @@
               {% endif %}
               {% if slot.note %}<span class="badge bg-info ms-2">{{ slot.note }}</span>{% endif %}
               <a href="{{ url_for('admin_shuttle.edit_shuttle_slot', slot_id=slot.id) }}" class="btn btn-sm btn-outline-primary ms-2">Modifier</a>
-              <a href="{{ url_for('admin_shuttle.delete_shuttle_slot', slot_id=slot.id) }}" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Supprimer ce créneau ?')">Supprimer</a>
+              <form method="post" action="{{ url_for('admin_shuttle.delete_shuttle_slot', slot_id=slot.id) }}" class="d-inline" onsubmit="return confirm('Supprimer ce créneau ?')">
+                {{ csrf_form.csrf_token }}
+                <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Supprimer</button>
+              </form>
             </li>
             {% endfor %}
           </ul>
@@ -45,7 +48,10 @@
         </td>
         <td>
           <a href="{{ url_for('admin_shuttle.edit_shuttle_day', day_id=day.id) }}" class="btn btn-sm btn-outline-primary">Modifier</a>
-          <a href="{{ url_for('admin_shuttle.delete_shuttle_day', day_id=day.id) }}" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Supprimer ce jour et tous ses créneaux ?')">Supprimer</a>
+          <form method="post" action="{{ url_for('admin_shuttle.delete_shuttle_day', day_id=day.id) }}" class="d-inline" onsubmit="return confirm('Supprimer ce jour et tous ses créneaux ?')">
+            {{ csrf_form.csrf_token }}
+            <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Supprimer</button>
+          </form>
         </td>
       </tr>
       {% endfor %}

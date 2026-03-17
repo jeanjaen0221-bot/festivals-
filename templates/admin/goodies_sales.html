@@ -1,0 +1,64 @@
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0"><i class="bi bi-receipt"></i> Ventes en cours</h3>
+  <a href="{{ url_for('admin.goodies_z') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-bar-chart"></i> Rapport Z</a>
+</div>
+{% if from_ts %}
+<p class="text-muted small">Ventes depuis la dernière clôture Z : <strong>{{ from_ts.strftime('%d/%m/%Y %H:%M') }}</strong></p>
+{% else %}
+<p class="text-muted small">Toutes les ventes (aucune clôture Z effectuée).</p>
+{% endif %}
+{% if sales %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>#</th>
+        <th>Date</th>
+        <th>Paiement</th>
+        <th>Total TTC</th>
+        <th>Articles</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sale in sales %}
+      <tr>
+        <td><span class="badge bg-secondary">{{ sale.id }}</span></td>
+        <td>{{ sale.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+        <td>
+          {% if sale.payment_method.value == 'cash' %}
+            <span class="badge bg-success"><i class="bi bi-cash"></i> Cash</span>
+          {% else %}
+            <span class="badge bg-primary"><i class="bi bi-credit-card"></i> Carte</span>
+          {% endif %}
+        </td>
+        <td>
+          <strong>{{ '%.2f'|format(sale.rounded_total_amount or sale.total_amount) }} €</strong>
+          {% if sale.rounding_adjustment and sale.rounding_adjustment != 0 %}
+            <span class="text-muted small">(arrondi {{ '%.2f'|format(sale.rounding_adjustment) }})</span>
+          {% endif %}
+        </td>
+        <td>
+          <ul class="list-unstyled mb-0 small">
+            {% for item in sale.items %}
+            <li>{{ item.quantity }}× {{ item.product.name }} — {{ '%.2f'|format(item.line_total) }} €</li>
+            {% endfor %}
+          </ul>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('admin.goodies_sale_delete', sale_id=sale.id) }}" class="d-inline" onsubmit="return confirm('Supprimer la vente #{{ sale.id }} ? Cette action est irréversible.')">
+            {{ csrf_form.csrf_token }}
+            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info"><i class="bi bi-info-circle"></i> Aucune vente depuis la dernière clôture Z.</div>
+{% endif %}
+{% endblock %}
