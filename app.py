@@ -71,6 +71,17 @@ csrf = CSRFProtect(app)
 def inject_current_year():
     return {'current_year': datetime.utcnow().year}
 
+@app.context_processor
+def inject_unread_count():
+    from flask_login import current_user
+    try:
+        if current_user.is_authenticated:
+            from messaging import total_unread
+            return {'unread_msg_count': total_unread(current_user.id)}
+    except Exception:
+        pass
+    return {'unread_msg_count': 0}
+
 from flask_login import LoginManager
 login_manager = LoginManager(app)
 login_manager.login_view = 'main.auth'
@@ -253,6 +264,83 @@ with app.app_context():
                         conn.execute(sqlalchemy.text("COMMIT;"))
             except Exception as e6:
                 print(f"[WARN] Impossible d'ajouter les colonnes data/mime_type sur item_photos: {e6}", file=sys.stderr)
+
+            # --- Messagerie interne : enum types + tables ---
+            try:
+                # Types enum PostgreSQL (idempotents)
+                conn.execute(sqlalchemy.text("""
+                    DO $$ BEGIN
+                        CREATE TYPE convtype AS ENUM ('direct', 'group');
+                    EXCEPTION WHEN duplicate_object THEN null;
+                    END $$;
+                """))
+                conn.execute(sqlalchemy.text("""
+                    DO $$ BEGIN
+                        CREATE TYPE participantrole AS ENUM ('member', 'admin');
+                    EXCEPTION WHEN duplicate_object THEN null;
+                    END $$;
+                """))
+                conn.execute(sqlalchemy.text("COMMIT;"))
+
+                # Table conversations
+                conn.execute(sqlalchemy.text("""
+                    CREATE TABLE IF NOT EXISTS conversations (
+                        id SERIAL PRIMARY KEY,
+                        type convtype NOT NULL DEFAULT 'direct',
+                        name VARCHAR(120),
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                        is_archived BOOLEAN NOT NULL DEFAULT FALSE
+                    );
+                """))
+                conn.execute(sqlalchemy.text("COMMIT;"))
+
+                # Table conversation_participants
+                conn.execute(sqlalchemy.text("""
+                    CREATE TABLE IF NOT EXISTS conversation_participants (
+                        id SERIAL PRIMARY KEY,
+                        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        role participantrole NOT NULL DEFAULT 'member',
+                        joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        last_read_at TIMESTAMP
+                    );
+                """))
+                conn.execute(sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_cp_conv ON conversation_participants(conversation_id);"
+                ))
+                conn.execute(sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_cp_user ON conversation_participants(user_id);"
+                ))
+                conn.execute(sqlalchemy.text("COMMIT;"))
+
+                # Table messages
+                conn.execute(sqlalchemy.text("""
+                    CREATE TABLE IF NOT EXISTS messages (
+                        id SERIAL PRIMARY KEY,
+                        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        body TEXT NOT NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                        pinned BOOLEAN NOT NULL DEFAULT FALSE,
+                        pinned_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+                    );
+                """))
+                conn.execute(sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_msg_conv ON messages(conversation_id);"
+                ))
+                conn.execute(sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_msg_sender ON messages(sender_id);"
+                ))
+                conn.execute(sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_msg_created ON messages(created_at);"
+                ))
+                conn.execute(sqlalchemy.text("COMMIT;"))
+                print("[INFO] Tables messagerie vérifiées/créées avec succès.", file=sys.stderr)
+            except Exception as e_msg:
+                print(f"[WARN] Impossible de créer les tables messagerie : {e_msg}", file=sys.stderr)
+
     except Exception as e:
         print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)
 
@@ -276,6 +364,9 @@ from api_navette import api_navette_bp
 app.register_blueprint(api_navette_bp)
 import admin_shuttle
 app.register_blueprint(admin_shuttle.bp)
+
+import messaging
+app.register_blueprint(messaging.bp_msg)
 
 
 if __name__ == '__main__':

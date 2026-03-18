@@ -305,3 +305,84 @@ class ZTicketPDF(db.Model):
 
     def __repr__(self):
         return f'<ZTicketPDF {self.filename}>'
+
+
+# --- Messagerie interne ---
+
+class ConvType(enum.Enum):
+    DIRECT = 'direct'
+    GROUP = 'group'
+
+class ParticipantRole(enum.Enum):
+    MEMBER = 'member'
+    ADMIN = 'admin'
+
+class Conversation(db.Model):
+    __tablename__ = 'conversations'
+    id = db.Column(db.Integer, primary_key=True)
+    type = db.Column(db.Enum(ConvType), nullable=False, default=ConvType.DIRECT)
+    name = db.Column(db.String(120), nullable=True)  # groupes uniquement
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False)
+    participants = db.relationship('ConversationParticipant', backref='conversation',
+                                   cascade='all, delete-orphan', lazy=True)
+    messages = db.relationship('Message', backref='conversation',
+                                cascade='all, delete-orphan', lazy=True,
+                                order_by='Message.created_at')
+
+    def last_message(self):
+        return Message.query.filter_by(conversation_id=self.id, is_deleted=False)\
+                            .order_by(Message.created_at.desc()).first()
+
+    def unread_count(self, user_id):
+        part = ConversationParticipant.query.filter_by(
+            conversation_id=self.id, user_id=user_id).first()
+        if not part:
+            return 0
+        q = Message.query.filter_by(conversation_id=self.id, is_deleted=False)\
+                         .filter(Message.sender_id != user_id)
+        if part.last_read_at:
+            q = q.filter(Message.created_at > part.last_read_at)
+        return q.count()
+
+    def display_name(self, current_user_id):
+        if self.type == ConvType.GROUP:
+            return self.name or 'Groupe sans nom'
+        other = next((p for p in self.participants if p.user_id != current_user_id), None)
+        if other and other.user:
+            return f"{other.user.first_name} {other.user.last_name}"
+        return 'Conversation'
+
+    def __repr__(self):
+        return f'<Conversation {self.id} {self.type.value}>'
+
+
+class ConversationParticipant(db.Model):
+    __tablename__ = 'conversation_participants'
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversations.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    role = db.Column(db.Enum(ParticipantRole), nullable=False, default=ParticipantRole.MEMBER)
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_read_at = db.Column(db.DateTime, nullable=True)
+    user = db.relationship('User', lazy=True)
+
+    def __repr__(self):
+        return f'<Participant conv={self.conversation_id} user={self.user_id} role={self.role.value}>'
+
+
+class Message(db.Model):
+    __tablename__ = 'messages'
+    id = db.Column(db.Integer, primary_key=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversations.id'), nullable=False, index=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False)
+    pinned = db.Column(db.Boolean, nullable=False, default=False)
+    pinned_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    sender = db.relationship('User', foreign_keys=[sender_id], lazy=True)
+
+    def __repr__(self):
+        return f'<Message {self.id} conv={self.conversation_id} sender={self.sender_id}>'

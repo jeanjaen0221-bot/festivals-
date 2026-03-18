@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
 import os
 import sys
 from collections import defaultdict
@@ -12,7 +12,7 @@ ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 # Ancien système d'icônes supprimé - plus besoin d'importer fetch_category_icons
 from flask_login import login_required, current_user
 from app import db
-from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus
+from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, ConversationParticipant, Message, ConvType, ParticipantRole
 from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm
 from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import A4
@@ -903,6 +903,104 @@ def goodies_z_ticket_download(filename):
         download_name=ticket.filename,
         as_attachment=False,
     )
+
+# --- Messagerie admin ---
+
+@bp_admin.route('/messages')
+@login_required
+@admin_required
+def admin_messages():
+    import sqlalchemy as sa
+    convs = (Conversation.query
+             .order_by(Conversation.created_at.desc())
+             .all())
+
+    if not convs:
+        csrf_form = SimpleCsrfForm()
+        return render_template('admin/messages.html', conv_data=[],
+                               csrf_form=csrf_form, ConvType=ConvType)
+
+    conv_ids = [c.id for c in convs]
+
+    last_msg_sq = (db.session.query(
+        Message.conversation_id,
+        sa.func.max(Message.id).label('max_id')
+    ).filter(
+        Message.conversation_id.in_(conv_ids),
+        Message.is_deleted == False
+    ).group_by(Message.conversation_id).subquery())
+
+    last_msgs_rows = (db.session.query(Message)
+                      .join(last_msg_sq, Message.id == last_msg_sq.c.max_id)
+                      .all())
+    last_msgs = {m.conversation_id: m for m in last_msgs_rows}
+
+    msg_counts = dict(
+        db.session.query(Message.conversation_id, sa.func.count(Message.id))
+        .filter(Message.conversation_id.in_(conv_ids), Message.is_deleted == False)
+        .group_by(Message.conversation_id)
+        .all()
+    )
+
+    conv_data = []
+    for c in convs:
+        conv_data.append({
+            'conv': c,
+            'last_msg': last_msgs.get(c.id),
+            'member_count': len(c.participants),
+            'msg_count': msg_counts.get(c.id, 0),
+        })
+    csrf_form = SimpleCsrfForm()
+    return render_template('admin/messages.html', conv_data=conv_data,
+                           csrf_form=csrf_form, ConvType=ConvType)
+
+
+@bp_admin.route('/messages/<int:conv_id>/archive', methods=['POST'])
+@login_required
+@admin_required
+def admin_archive_conversation(conv_id):
+    csrf_form = SimpleCsrfForm()
+    if not csrf_form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin.admin_messages'))
+    conv = Conversation.query.get_or_404(conv_id)
+    conv.is_archived = not conv.is_archived
+    db.session.commit()
+    flash(f"Conversation {'archivée' if conv.is_archived else 'restaurée'}.", 'success')
+    return redirect(url_for('admin.admin_messages'))
+
+
+@bp_admin.route('/messages/<int:conv_id>/delete-msg/<int:msg_id>', methods=['POST'])
+@login_required
+@admin_required
+def admin_delete_message(conv_id, msg_id):
+    csrf_form = SimpleCsrfForm()
+    if not csrf_form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin.admin_messages'))
+    msg = Message.query.get_or_404(msg_id)
+    if msg.conversation_id != conv_id:
+        abort(404)
+    msg.is_deleted = True
+    db.session.commit()
+    flash('Message supprimé.', 'success')
+    return redirect(url_for('messaging.conversation', conv_id=conv_id))
+
+
+@bp_admin.route('/messages/<int:conv_id>/delete-conv', methods=['POST'])
+@login_required
+@admin_required
+def admin_delete_conversation(conv_id):
+    csrf_form = SimpleCsrfForm()
+    if not csrf_form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin.admin_messages'))
+    conv = Conversation.query.get_or_404(conv_id)
+    db.session.delete(conv)
+    db.session.commit()
+    flash('Conversation supprimée définitivement.', 'success')
+    return redirect(url_for('admin.admin_messages'))
+
 
 @bp_admin.route('/goodies/last_z', methods=['GET'])
 @login_required

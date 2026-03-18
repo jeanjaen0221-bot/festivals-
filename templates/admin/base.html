@@ -75,6 +75,12 @@
               <i class="bi bi-link-45deg"></i> Correspondances
             </a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link text-white d-flex justify-content-between align-items-center {% if request.path.startswith(url_for('admin.admin_messages')) %}active{% endif %}" href="{{ url_for('admin.admin_messages') }}">
+              <span><i class="bi bi-chat-dots"></i> Messagerie</span>
+              {% if unread_msg_count > 0 %}<span class="badge bg-danger rounded-pill msg-unread-badge">{{ unread_msg_count }}</span>{% else %}<span class="badge bg-danger rounded-pill msg-unread-badge" style="display:none;">0</span>{% endif %}
+            </a>
+          </li>
 
           {% set goodies_active = request.path.startswith(url_for('admin.goodies_pos')) or request.path.startswith(url_for('admin.goodies_products')) or request.path.startswith(url_for('admin.goodies_z')) or request.path.startswith(url_for('admin.goodies_sales')) %}
           <li class="nav-item">

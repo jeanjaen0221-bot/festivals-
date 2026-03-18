@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% block title %}{{ conv.display_name(current_user.id) }} — Messagerie{% endblock %}
+{% block extra_head %}
+<style>
+  .msg-thread { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: .5rem; padding: 1rem; background: #f8f9fa; border-radius: .75rem; }
+  .msg-bubble { max-width: 70%; word-break: break-word; }
+  .msg-me .msg-bubble { background: #0d6efd; color: #fff; border-radius: 1.1rem 1.1rem 0.2rem 1.1rem; }
+  .msg-other .msg-bubble { background: #fff; border: 1px solid #dee2e6; color: #212529; border-radius: 1.1rem 1.1rem 1.1rem 0.2rem; }
+  .msg-deleted { opacity: .55; font-style: italic; }
+  .msg-pinned-bar { background: #fff3cd; border-left: 4px solid #ffc107; border-radius: .5rem; padding: .5rem .75rem; font-size: .9rem; }
+  .avatar-sm { width:32px; height:32px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:700; color:#fff; flex-shrink:0; }
+  @media(max-width:576px){ .msg-bubble { max-width: 90%; } .msg-thread { max-height: 55vh; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <a href="{{ url_for('messaging.inbox') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  {% if conv.type == ConvType.GROUP %}
+    <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+         style="width:38px;height:38px;background:linear-gradient(135deg,#6f42c1,#0d6efd);">
+      <i class="bi bi-people-fill" style="font-size:.9rem;"></i>
+    </div>
+  {% else %}
+    {% set other_name = conv.display_name(current_user.id) %}
+    <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+         style="width:38px;height:38px;background:linear-gradient(135deg,#0d6efd,#0dcaf0);">
+      {{ (other_name[:1])|upper }}
+    </div>
+  {% endif %}
+  <div class="flex-grow-1">
+    <span class="fw-bold fs-5">{{ conv.display_name(current_user.id) }}</span>
+    {% if conv.type == ConvType.GROUP %}
+      <small class="text-muted ms-2">{{ participants|length }} membre{% if participants|length > 1 %}s{% endif %}</small>
+    {% endif %}
+  </div>
+  <!-- Actions -->
+  <div class="d-flex gap-2">
+    {% if conv.type == ConvType.GROUP %}
+      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="offcanvas" data-bs-target="#groupPanel">
+        <i class="bi bi-gear"></i> Groupe
+      </button>
+    {% endif %}
+    {% if conv.type == ConvType.GROUP %}
+      <form method="POST" action="{{ url_for('messaging.leave_group', conv_id=conv.id) }}"
+            onsubmit="return confirm('Quitter ce groupe ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-right"></i> Quitter</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Messages épinglés -->
+{% if pinned %}
+<div class="mb-3">
+  {% for m in pinned %}
+  <div class="msg-pinned-bar d-flex align-items-start gap-2 mb-1">
+    <i class="bi bi-pin-fill text-warning mt-1 flex-shrink-0"></i>
+    <div class="flex-grow-1">
+      <span class="fw-semibold small">{{ m.sender.first_name if m.sender else '?' }} :</span>
+      <span class="small">{{ m.body[:120] }}{% if m.body|length > 120 %}…{% endif %}</span>
+    </div>
+    <form method="POST" action="{{ url_for('messaging.pin_message', conv_id=conv.id, msg_id=m.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-xs btn-link text-muted p-0 ms-1" title="Désépingler"><i class="bi bi-x"></i></button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Charger messages précédents -->
+{% if has_more %}
+<div class="text-center mb-2">
+  <a href="{{ url_for('messaging.conversation', conv_id=conv.id, before=messages[0].id) }}"
+     class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-up-circle me-1"></i>Charger les messages précédents
+  </a>
+</div>
+{% endif %}
+
+<!-- Thread -->
+<div class="msg-thread" id="msgThread">
+  {% for m in messages %}
+    {% if m.is_deleted %}
+      <div class="d-flex {% if m.sender_id == current_user.id %}justify-content-end{% else %}justify-content-start{% endif %}">
+        <div class="msg-bubble px-3 py-2 msg-deleted {% if m.sender_id == current_user.id %}msg-me{% else %}msg-other{% endif %}">
+          <i class="bi bi-trash3 me-1"></i>Message supprimé
+        </div>
+      </div>
+    {% else %}
+      <div class="d-flex {% if m.sender_id == current_user.id %}justify-content-end msg-me{% else %}justify-content-start msg-other{% endif %} align-items-end gap-2"
+           id="msg-{{ m.id }}">
+        {% if m.sender_id != current_user.id %}
+          {% set s = m.sender %}
+          <div class="avatar-sm flex-shrink-0" style="background:linear-gradient(135deg,#6c757d,#adb5bd);">
+            {{ (s.first_name[:1] if s else '?')|upper }}
+          </div>
+        {% endif %}
+        <div class="d-flex flex-column {% if m.sender_id == current_user.id %}align-items-end{% else %}align-items-start{% endif %}">
+          {% if m.sender_id != current_user.id %}
+            <small class="text-muted mb-1">{{ m.sender.first_name ~ ' ' ~ m.sender.last_name if m.sender else '?' }}</small>
+          {% endif %}
+          <div class="msg-bubble px-3 py-2 shadow-sm">
+            {{ m.body | e | replace('\n', '<br>') | safe }}
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <small class="text-muted" style="font-size:.75rem;">{{ m.created_at.strftime('%d/%m %H:%M') }}</small>
+            {% if m.pinned %}<i class="bi bi-pin-fill text-warning" style="font-size:.75rem;" title="Épinglé"></i>{% endif %}
+            <!-- Actions message -->
+            <div class="dropdown">
+              <button class="btn btn-link p-0 text-muted" style="font-size:.75rem;" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-three-dots"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:.9rem;min-width:150px;">
+                <li>
+                  <form method="POST" action="{{ url_for('messaging.pin_message', conv_id=conv.id, msg_id=m.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="dropdown-item">
+                      <i class="bi bi-pin {% if m.pinned %}text-warning{% endif %} me-2"></i>
+                      {% if m.pinned %}Désépingler{% else %}Épingler{% endif %}
+                    </button>
+                  </form>
+                </li>
+                {% if m.sender_id == current_user.id or current_user.is_admin or (my_role == ParticipantRole.ADMIN) %}
+                <li>
+                  <form method="POST" action="{{ url_for('messaging.delete_message', conv_id=conv.id, msg_id=m.id) }}"
+                        onsubmit="return confirm('Supprimer ce message ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="dropdown-item text-danger">
+                      <i class="bi bi-trash3 me-2"></i>Supprimer
+                    </button>
+                  </form>
+                </li>
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+        </div>
+        {% if m.sender_id == current_user.id %}
+          <div class="avatar-sm flex-shrink-0" style="background:linear-gradient(135deg,#0d6efd,#0dcaf0);">
+            {{ (current_user.first_name[:1])|upper }}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-chat-square display-4 d-block mb-2"></i>
+      Aucun message. Soyez le premier à écrire !
+    </div>
+  {% endfor %}
+  <div id="bottom"></div>
+</div>
+
+<!-- Bandeau conversation archivée -->
+{% if conv.is_archived %}
+<div class="alert alert-warning d-flex align-items-center gap-2 mt-3 mb-0" role="alert">
+  <i class="bi bi-archive-fill flex-shrink-0"></i>
+  <span>Cette conversation est <strong>archivée</strong>. Les nouveaux messages sont désactivés.</span>
+</div>
+{% endif %}
+
+<!-- Formulaire d'envoi -->
+<form method="POST" action="{{ url_for('messaging.send_message', conv_id=conv.id) }}"
+      class="mt-3 {% if conv.is_archived %}opacity-50 pe-none{% endif %}" id="sendForm">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="input-group shadow-sm">
+    <textarea name="body" id="msgInput" class="form-control rounded-start-4"
+              rows="2" placeholder="Écrire un message…" maxlength="2000"
+              style="resize:none;" required></textarea>
+    <button type="submit" class="btn btn-primary rounded-end-4 px-3">
+      <i class="bi bi-send-fill"></i>
+    </button>
+  </div>
+  <div class="text-end">
+    <small id="charCount" class="text-muted">0 / 2000</small>
+  </div>
+</form>
+
+<!-- Offcanvas gestion groupe -->
+{% if conv.type == ConvType.GROUP %}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="groupPanel" aria-labelledby="groupPanelLabel">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title fw-bold" id="groupPanelLabel">
+      <i class="bi bi-people-fill text-primary me-2"></i>Paramètres du groupe
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
+  </div>
+  <div class="offcanvas-body">
+
+    {% if my_role == ParticipantRole.ADMIN or current_user.is_admin %}
+    <!-- Renommer -->
+    <h6 class="fw-semibold mb-2"><i class="bi bi-pencil me-1"></i>Renommer le groupe</h6>
+    <form method="POST" action="{{ url_for('messaging.rename_group', conv_id=conv.id) }}" class="mb-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="input-group input-group-sm">
+        <input type="text" name="name" class="form-control" value="{{ conv.name or '' }}" placeholder="Nom du groupe" required>
+        <button class="btn btn-outline-primary" type="submit">OK</button>
+      </div>
+    </form>
+    {% endif %}
+
+    <!-- Membres -->
+    <h6 class="fw-semibold mb-2"><i class="bi bi-people me-1"></i>Membres ({{ participants|length }})</h6>
+    <ul class="list-group list-group-flush mb-4">
+      {% for p in participants %}
+      <li class="list-group-item d-flex align-items-center justify-content-between px-0 py-2">
+        <div class="d-flex align-items-center gap-2">
+          <div class="avatar-sm" style="background:linear-gradient(135deg,#6c757d,#adb5bd);font-size:.75rem;">
+            {{ (p.user.first_name[:1] if p.user else '?')|upper }}
+          </div>
+          <span>{{ p.user.first_name ~ ' ' ~ p.user.last_name if p.user else 'Utilisateur supprimé' }}</span>
+          {% if p.role == ParticipantRole.ADMIN %}
+            <span class="badge bg-primary" style="font-size:.7rem;">Admin</span>
+          {% endif %}
+        </div>
+        {% if (my_role == ParticipantRole.ADMIN or current_user.is_admin) and p.user_id != current_user.id %}
+        <div class="d-flex gap-1">
+          <form method="POST" action="{{ url_for('messaging.promote_member', conv_id=conv.id, uid=p.user_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-xs btn-outline-secondary py-0 px-1" title="Changer le rôle" style="font-size:.75rem;">
+              <i class="bi bi-arrow-up-down"></i>
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('messaging.remove_member', conv_id=conv.id, uid=p.user_id) }}"
+                onsubmit="return confirm('Retirer ce membre ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-xs btn-outline-danger py-0 px-1" title="Retirer" style="font-size:.75rem;">
+              <i class="bi bi-person-dash"></i>
+            </button>
+          </form>
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+
+    {% if my_role == ParticipantRole.ADMIN or current_user.is_admin %}
+    <!-- Ajouter membre -->
+    <h6 class="fw-semibold mb-2"><i class="bi bi-person-plus me-1"></i>Ajouter un membre</h6>
+    <form method="POST" action="{{ url_for('messaging.add_member', conv_id=conv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="input-group input-group-sm">
+        <select name="user_id" class="form-select" required>
+          <option value="">Choisir…</option>
+          {% set member_ids = participants | map(attribute='user_id') | list %}
+          {% for u in all_users %}
+            {% if u.id not in member_ids %}
+              <option value="{{ u.id }}">{{ u.first_name }} {{ u.last_name }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+        <button class="btn btn-outline-primary" type="submit">Ajouter</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+  initConversation({{ conv.id }}, {{ last_msg_id }}, {{ current_user.id }});
+</script>
+{% endblock %}
