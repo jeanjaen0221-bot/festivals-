@@ -146,26 +146,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  var prefix = "{{ prefix }}";
-  var select = document.getElementById(prefix + 'location-select');
-  var otherGroup = document.getElementById(prefix + 'location-other-group');
-  function updateOther() {
-    if (select.value === 'autre') {
-      otherGroup.style.display = 'block';
-      otherGroup.querySelector('input').required = true;
-    } else {
-      otherGroup.style.display = 'none';
-      otherGroup.querySelector('input').required = false;
-    }
-  }
-  if (select && otherGroup) {
-    select.addEventListener('change', updateOther);
-    updateOther();
-  }
-});
-</script>
 {# Utilisation d'un préfixe pour chaque formulaire (lost/found) #}
 {% set prefix = prefix if prefix is defined else '' %}
 <div class="mb-3">

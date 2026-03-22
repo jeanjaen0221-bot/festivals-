@@ -2,20 +2,23 @@ document.addEventListener('DOMContentLoaded', function() {
   const itemForm = document.getElementById('itemForm');
   if (!itemForm) return;
 
+  var submitted = false;
   itemForm.addEventListener('submit', function(e) {
+    if (submitted) return;
     e.preventDefault();
     const form = this;
     const titre = (form.querySelector('input[name="title"]') || {}).value || '';
     const categoryId = (form.querySelector('select[name="category"]') || {}).value || '';
 
     if (!titre || !categoryId) {
-      form.removeEventListener('submit', arguments.callee);
+      submitted = true;
       form.submit();
       return;
     }
 
+    const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || '';
     const body = new URLSearchParams({ title: titre, category_id: categoryId });
-    fetch('/api/check_similar', { method: 'POST', body: body })
+    fetch('/api/check_similar', { method: 'POST', headers: { 'X-CSRFToken': csrfToken }, body: body })
       .then(r => r.json())
       .then(function(response) {
         const doublonList = document.getElementById('doublonList');
@@ -53,6 +56,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const confirmHandler = function() {
           modal.hide();
           confirmBtn.removeEventListener('click', confirmHandler);
+          submitted = true;
           form.submit();
         };
         confirmBtn.addEventListener('click', confirmHandler);

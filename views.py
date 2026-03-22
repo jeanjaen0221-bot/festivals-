@@ -20,7 +20,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 from rapidfuzz import fuzz
 
-from app import app, db
+from app import app, db, limiter
 from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, Product
 from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm
 from ocr_utils import extract_id_card_data
@@ -33,6 +33,8 @@ bp = Blueprint('main', __name__)
 
 
 @bp.route('/ocr_id_card', methods=['POST'])
+@limiter.limit("3 per minute")
+@login_required
 def ocr_id_card():
     data = request.get_json()
     image_b64 = data.get('image_b64')
@@ -168,6 +170,7 @@ def index():
     return render_template('index.html', latest_found_items=latest_found_items)
 
 @bp.route('/auth', methods=['GET', 'POST'])
+@limiter.limit("15 per minute")
 def auth():
     if current_user.is_authenticated:
         return redirect(url_for('main.index'))
@@ -439,7 +442,7 @@ def report_item():
 @bp.route('/item/<int:item_id>', methods=['GET', 'POST'])
 @login_required
 def detail_item(item_id):
-    item = Item.query.get_or_404(item_id)
+    item = db.get_or_404(Item, item_id)
     form = ClaimForm()
     confirm_return_form = ConfirmReturnForm()
     match_form = None
@@ -590,7 +593,7 @@ def detail_item(item_id):
     if ('submit_match' in request.form) and match_form and match_form.validate_on_submit():
         other_id = request.form.get('match_with_id', type=int) or match_form.match_with.data
         if other_id and other_id != 0:
-            other = Item.query.get_or_404(other_id)
+            other = db.get_or_404(Item, other_id)
 
             # Créer un match validé
             if not Match.query.filter_by(lost_id=min(item.id, other.id), found_id=max(item.id, other.id)).first():
@@ -631,7 +634,7 @@ def detail_item(item_id):
         match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first()
         if match:
             other_id = match.found_id if match.lost_id == item.id else match.lost_id
-            other = Item.query.get(other_id)
+            other = db.session.get(Item, other_id)
             if other and other.status != Status.RETURNED:
                 other.status = Status.RETURNED
                 other.claimant_name = item.claimant_name
@@ -665,7 +668,7 @@ def detail_item(item_id):
 @login_required
 def edit_item(item_id):
     # Suppression de la restriction admin : tout utilisateur connecté peut modifier
-    item = Item.query.get_or_404(item_id)
+    item = db.get_or_404(Item, item_id)
     form = ItemForm()
     form.category.choices = [(c.id, c.name) for c in Category.query.order_by(Category.name).all()]
 
@@ -710,7 +713,7 @@ def edit_item(item_id):
 @bp.route('/item/<int:item_id>/delete', methods=['POST'])
 @login_required
 def delete_item(item_id):
-    item = Item.query.get_or_404(item_id)
+    item = db.get_or_404(Item, item_id)
     delete_form = DeleteForm()
     # Si non-admin : demande de suppression
     if not current_user.is_admin:
@@ -812,6 +815,8 @@ def uploaded_file(filename):
     return '', 404
 
 @bp.route('/api/check_similar', methods=['POST'])
+@limiter.limit("20 per minute")
+@login_required
 def api_check_similar():
     titre = request.form.get('title', '')
     cat_id = request.form.get('category_id', type=int)
@@ -821,6 +826,8 @@ def api_check_similar():
     return jsonify({'similars': similars})
 
 @bp.route('/api/match_explain', methods=['POST'])
+@limiter.limit("20 per minute")
+@login_required
 def api_match_explain():
     """Explique le matching entre deux items existants.
     Entrée: item_id, candidate_id (form or json). Retourne score pondéré et détails par champ.
@@ -839,8 +846,8 @@ def api_match_explain():
         if not item_id or not cand_id:
             return jsonify({'error': 'item_id et candidate_id sont requis'}), 400
 
-        i1 = Item.query.get_or_404(item_id)
-        i2 = Item.query.get_or_404(cand_id)
+        i1 = db.get_or_404(Item, item_id)
+        i2 = db.get_or_404(Item, cand_id)
 
         # Prépare des objets simplifiés avec un champ "location" cohérent selon le statut
         def to_matchable(i: Item) -> SimpleNamespace:
@@ -973,7 +980,7 @@ def shuttle_page():
 @bp.route('/loans/<int:loan_id>/request_deletion', methods=['POST'])
 @login_required
 def request_loan_deletion(loan_id):
-    loan = HeadphoneLoan.query.get_or_404(loan_id)
+    loan = db.get_or_404(HeadphoneLoan, loan_id)
     # Vérifie que le prêt n'est pas déjà en attente
     if loan.status == LoanStatus.PENDING_DELETION:
         flash("Ce prêt est déjà en attente de suppression.", "warning")
@@ -995,7 +1002,7 @@ def request_loan_deletion(loan_id):
 @bp.route('/loans/<int:loan_id>/return', methods=['POST'])
 @login_required
 def return_headphone_loan(loan_id):
-    loan = HeadphoneLoan.query.get_or_404(loan_id)
+    loan = db.get_or_404(HeadphoneLoan, loan_id)
     data = request.get_json(silent=True)
     if not data or 'signature' not in data:
         return jsonify({'success': False, 'error': 'Signature manquante'}), 400
@@ -1068,8 +1075,8 @@ def confirm_match():
         flash("Identifiants invalides pour la correspondance.", "danger")
         return redirect(url_for('main.list_matches'))
 
-    lost = Item.query.get(lost_id)
-    found = Item.query.get(found_id)
+    lost = db.session.get(Item, lost_id)
+    found = db.session.get(Item, found_id)
     if not lost or not found:
         flash("Objet introuvable pour correspondance.", "danger")
         return redirect(url_for('main.list_matches'))

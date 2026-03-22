@@ -36,7 +36,7 @@ def add_shuttle_day():
 @login_required
 @admin_required
 def edit_shuttle_day(day_id):
-    day = ShuttleScheduleDay.query.get_or_404(day_id)
+    day = db.get_or_404(ShuttleScheduleDay, day_id)
     form = ShuttleScheduleDayForm(obj=day)
     if form.validate_on_submit():
         day.date = form.date.data
@@ -55,7 +55,7 @@ def delete_shuttle_day(day_id):
     if not form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    day = ShuttleScheduleDay.query.get_or_404(day_id)
+    day = db.get_or_404(ShuttleScheduleDay, day_id)
     db.session.delete(day)
     db.session.commit()
     flash('Jour navette supprimé.', 'success')
@@ -66,7 +66,7 @@ def delete_shuttle_day(day_id):
 @login_required
 @admin_required
 def add_shuttle_slot(day_id):
-    day = ShuttleScheduleDay.query.get_or_404(day_id)
+    day = db.get_or_404(ShuttleScheduleDay, day_id)
     form = ShuttleScheduleSlotForm()
     if form.validate_on_submit():
         stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
@@ -101,7 +101,7 @@ def add_shuttle_slot(day_id):
 @login_required
 @admin_required
 def edit_shuttle_slot(slot_id):
-    slot = ShuttleScheduleSlot.query.get_or_404(slot_id)
+    slot = db.get_or_404(ShuttleScheduleSlot, slot_id)
     form = ShuttleScheduleSlotForm(obj=slot)
     if form.validate_on_submit():
         stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
@@ -136,7 +136,7 @@ def delete_shuttle_slot(slot_id):
     if not form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    slot = ShuttleScheduleSlot.query.get_or_404(slot_id)
+    slot = db.get_or_404(ShuttleScheduleSlot, slot_id)
     db.session.delete(slot)
     db.session.commit()
     flash('Créneau supprimé.', 'success')
@@ -173,7 +173,7 @@ def add_route_stop():
 @login_required
 @admin_required
 def edit_route_stop(stop_id):
-    stop = ShuttleRouteStop.query.get_or_404(stop_id)
+    stop = db.get_or_404(ShuttleRouteStop, stop_id)
     form = ShuttleRouteStopForm(obj=stop)
     if form.validate_on_submit():
         stop.name = form.name.data.strip()
@@ -193,7 +193,7 @@ def delete_route_stop(stop_id):
     if not form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin_shuttle.shuttle_route'))
-    stop = ShuttleRouteStop.query.get_or_404(stop_id)
+    stop = db.get_or_404(ShuttleRouteStop, stop_id)
     db.session.delete(stop)
     db.session.commit()
     flash('Arrêt supprimé.', 'success')

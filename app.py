@@ -1,10 +1,12 @@
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import sqlalchemy
 
 app = Flask(__name__)
@@ -38,6 +40,10 @@ app.config['SESSION_COOKIE_SECURE'] = not app.debug
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
+# Durée de vie des sessions et des tokens CSRF
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+app.config['WTF_CSRF_TIME_LIMIT'] = 3600
+
 # Headers HTTP de sécurité
 @app.after_request
 def set_security_headers(response):
@@ -45,10 +51,10 @@ def set_security_headers(response):
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'geolocation=()'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), usb=(), payment=(), geolocation=()'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
         "img-src 'self' data:; "
@@ -66,6 +72,12 @@ app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30 MB
 
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["300 per minute"],
+    storage_uri="memory://",
+)
 
 @app.context_processor
 def inject_current_year():
@@ -346,7 +358,7 @@ with app.app_context():
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 # Register blueprints
 import views

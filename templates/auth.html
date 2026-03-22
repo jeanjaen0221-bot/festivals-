@@ -39,11 +39,11 @@
         <input type="hidden" name="csrf_token" value="{{ login_form.csrf_token._value() }}" id="login_csrf_token">
         <div class="mb-3">
           {{ login_form.email.label(class="form-label", for="login_email") }}
-          {{ login_form.email(class="form-control", id="login_email") }}
+          {{ login_form.email(class="form-control", id="login_email", autocomplete="email") }}
         </div>
         <div class="mb-3">
           {{ login_form.password.label(class="form-label", for="login_password") }}
-          {{ login_form.password(class="form-control", id="login_password") }}
+          {{ login_form.password(class="form-control", id="login_password", autocomplete="current-password") }}
         </div>
         <div class="mb-3 form-check">
           {{ login_form.remember(class="form-check-input") }}
@@ -70,15 +70,15 @@
         </div>
         <div class="mb-3">
           {{ register_form.email.label(class="form-label", for="register_email") }}
-          {{ register_form.email(class="form-control", id="register_email") }}
+          {{ register_form.email(class="form-control", id="register_email", autocomplete="email") }}
         </div>
         <div class="mb-3">
           {{ register_form.password.label(class="form-label", for="register_password") }}
-          {{ register_form.password(class="form-control", id="register_password") }}
+          {{ register_form.password(class="form-control", id="register_password", autocomplete="new-password") }}
         </div>
         <div class="mb-3">
           {{ register_form.password2.label(class="form-label", for="register_password2") }}
-          {{ register_form.password2(class="form-control", id="register_password2") }}
+          {{ register_form.password2(class="form-control", id="register_password2", autocomplete="new-password") }}
         </div>
         {% if show_admin_checkbox %}
         <div class="mb-3 form-check">

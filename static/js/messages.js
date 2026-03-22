@@ -108,7 +108,8 @@ function updateUnreadBadge() {
     .catch(function() {});
 }
 
-// Poll unread count every 30s on all pages
+// Poll unread count every 30s on all pages, and once immediately on load
 if (document.querySelector('.msg-unread-badge') !== null) {
+  updateUnreadBadge();
   setInterval(updateUnreadBadge, 30000);
 }

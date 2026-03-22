@@ -5,6 +5,14 @@ body {
 .custom-navbar {
     border-bottom: 1.5px solid #e1e7ef;
     background: #fff;
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+}
+.footer {
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+.offcanvas {
+    padding-bottom: env(safe-area-inset-bottom);
 }
 .custom-navbar .navbar-brand {
     font-weight: 600;

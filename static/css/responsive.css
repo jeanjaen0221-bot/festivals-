@@ -1,3 +1,25 @@
+/* Responsive fixes pour tablettes portrait (576-767px) */
+@media (min-width: 576px) and (max-width: 767.98px) {
+  .card-img-top,
+  .bg-light[style*='height: 220px;'],
+  .bg-light[style*='height: 200px;'],
+  .bg-light[style*='height: 300px;'] {
+    height: 150px !important;
+  }
+  .form-control, .form-select {
+    font-size: 1rem;
+  }
+  .btn {
+    min-height: 44px;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+  }
+  .table-responsive .btn {
+    min-height: 36px;
+    font-size: 0.95rem;
+  }
+}
+
 /* Responsive fixes pour images de card sur mobile */
 @media (max-width: 575.98px) {
   .card-img-top,

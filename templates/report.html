@@ -28,7 +28,7 @@
                   <div class="alert alert-warning">{{ message }}</div>
                 {% endfor %}
               {% endwith %}
-              <form method="post" enctype="multipart/form-data" autocomplete="off">
+              <form method="post" enctype="multipart/form-data" autocomplete="off" id="itemForm">
                 {{ found_form.hidden_tag() }}
                 {% set form = found_form %}
                 {% set prefix = 'found-' %}
@@ -73,7 +73,7 @@
                   <div class="alert alert-warning">{{ message }}</div>
                 {% endfor %}
               {% endwith %}
-              <form method="post" autocomplete="off">
+              <form method="post" autocomplete="off" id="itemForm">
                 {{ lost_form.hidden_tag() }}
                 {% set form = lost_form %}
                 {% set prefix = 'lost-' %}
@@ -97,7 +97,6 @@
     </div>
   </div>
 {% endif %}
-  </div>
   <!-- Modal de suggestion de doublons -->
   <div class="modal fade" id="doublonModal" tabindex="-1" aria-labelledby="doublonModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -116,7 +115,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-          <button type="button" class="btn btn-primary" id="confirmSubmit">Continuer et créer quand même</button>
+          <button type="button" class="btn btn-primary" id="confirmSubmit">Signaler quand même</button>
         </div>
       </div>
     </div>
@@ -149,7 +148,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-{% endblock %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   // LOST
@@ -212,3 +210,4 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
+{% endblock %}

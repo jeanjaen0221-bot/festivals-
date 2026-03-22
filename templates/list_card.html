@@ -39,8 +39,7 @@
       {% if obj.category %}
         {% set icon_info = obj.category.get_icon_display() %}
         {% if icon_info.type == 'image' %}
-          <img src="{{ icon_info.url }}" alt="{{ obj.category.name }}" class="img-fluid" 
-               class="img-fluid" style="max-width: 120px; max-height: 120px; object-fit: contain;">
+          <img src="{{ icon_info.url }}" alt="{{ obj.category.name }}" class="img-fluid" style="max-width: 120px; max-height: 120px; object-fit: contain;">
         {% else %}
           <i class="{{ icon_info.class }} category-icon"></i>
         {% endif %}

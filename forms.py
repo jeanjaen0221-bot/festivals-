@@ -135,8 +135,6 @@ class ClaimForm(FlaskForm):
     photos = MultipleFileField('Photos de restitution (jpg/png)', validators=[FileAllowed(['jpg','jpeg','png'])])
     submit = SubmitField('Réclamer')
 
-from flask_wtf.file import FileField, FileAllowed, FileRequired
-
 class ConfirmReturnForm(FlaskForm):
     return_photo = FileField('Photo de restitution (optionnelle)', validators=[Optional(), FileAllowed(['jpg', 'jpeg', 'png'], "Images uniquement")])
     return_comment = TextAreaField('Commentaire de restitution', validators=[Length(max=500)])

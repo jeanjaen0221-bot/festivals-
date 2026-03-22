@@ -1,6 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
 import os
-import sys
 from collections import defaultdict
 from io import BytesIO
 from werkzeug.utils import secure_filename
@@ -83,7 +82,7 @@ def category_icons():
 @admin_required
 def delete_category(category_id):
     from models import Category
-    category = Category.query.get_or_404(category_id)
+    category = db.get_or_404(Category, category_id)
     csrf_form = SimpleCsrfForm()
     if not csrf_form.validate_on_submit():
         flash("Erreur de validation du formulaire.", "danger")
@@ -97,7 +96,7 @@ def delete_category(category_id):
 @bp_admin.route('/category-icons/<int:category_id>/icon')
 def category_icon_data(category_id):
     from models import Category
-    category = Category.query.get_or_404(category_id)
+    category = db.get_or_404(Category, category_id)
     if not category.has_custom_icon:
         return '', 404
     return (category.icon_data, 200, {'Content-Type': category.icon_mime_type})
@@ -110,7 +109,7 @@ def update_category_icon(category_id):
     from forms import CategoryIconForm
     import os
     
-    category = Category.query.get_or_404(category_id)
+    category = db.get_or_404(Category, category_id)
     form = CategoryIconForm()
     
     if form.validate_on_submit():
@@ -178,7 +177,7 @@ def update_category_icon(category_id):
 def remove_custom_icon(category_id):
     from models import Category
     
-    category = Category.query.get_or_404(category_id)
+    category = db.get_or_404(Category, category_id)
     csrf_form = SimpleCsrfForm()
     
     if not csrf_form.validate_on_submit():
@@ -246,7 +245,7 @@ def deletion_requests():
 @login_required
 @admin_required
 def confirm_deletion(item_id):
-    item = Item.query.get_or_404(item_id)
+    item = db.get_or_404(Item, item_id)
     db.session.delete(item)
     db.session.commit()
     db.session.add(ActionLog(user_id=current_user.id, action_type='confirm_deletion', details=f'Suppression validée pour objet {item_id}'))
@@ -261,7 +260,7 @@ def confirm_loan_deletion(loan_id):
     from models import HeadphoneLoan
     from forms import SimpleCsrfForm
     form = SimpleCsrfForm()
-    loan = HeadphoneLoan.query.get_or_404(loan_id)
+    loan = db.get_or_404(HeadphoneLoan, loan_id)
     if form.validate_on_submit():
         db.session.add(ActionLog(
             user_id=current_user.id,
@@ -282,7 +281,7 @@ def reject_loan_deletion(loan_id):
     from models import HeadphoneLoan, LoanStatus
     from forms import SimpleCsrfForm
     form = SimpleCsrfForm()
-    loan = HeadphoneLoan.query.get_or_404(loan_id)
+    loan = db.get_or_404(HeadphoneLoan, loan_id)
     if form.validate_on_submit():
         # Restaure le statut original si connu, sinon ACTIVE par défaut
         if loan.previous_status:
@@ -306,7 +305,7 @@ def reject_loan_deletion(loan_id):
 @login_required
 @admin_required
 def reject_deletion(item_id):
-    item = Item.query.get_or_404(item_id)
+    item = db.get_or_404(Item, item_id)
     # Restaure le statut original si connu, sinon LOST par défaut
     if item.previous_status:
         item.status = item.previous_status
@@ -331,7 +330,7 @@ def admin_users():
 @admin_required
 def user_detail(user_id):
     from forms import SimpleCsrfForm, HeadphoneLoanForm
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     csrf_form = SimpleCsrfForm()
     return render_template('admin/user_detail.html', user=user, csrf_form=csrf_form)
 
@@ -341,7 +340,7 @@ def user_detail(user_id):
 def toggle_admin(user_id):
     from forms import SimpleCsrfForm, HeadphoneLoanForm
     form = SimpleCsrfForm()
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     if form.validate_on_submit():
         if user.id == current_user.id:
             flash("Vous ne pouvez pas modifier votre propre statut admin.", "danger")
@@ -359,7 +358,7 @@ def toggle_admin(user_id):
 def delete_user(user_id):
     from forms import SimpleCsrfForm, HeadphoneLoanForm
     form = SimpleCsrfForm()
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     if user.id == current_user.id:
         flash("Vous ne pouvez pas supprimer votre propre compte.", "danger")
         return redirect(url_for('admin.user_detail', user_id=user_id))
@@ -406,7 +405,7 @@ def export_helmet_rentals():
 @admin_required
 def delete_rental(rental_id):
     form = SimpleCsrfForm()
-    rental = HeadphoneLoan.query.get_or_404(rental_id)
+    rental = db.get_or_404(HeadphoneLoan, rental_id)
     
     if form.validate_on_submit():
         # Enregistrer l'action dans les logs
@@ -480,7 +479,7 @@ def delete_log(log_id):
     if not request.is_json:
         return jsonify({'error': 'Invalid request'}), 400
 
-    log = ActionLog.query.get_or_404(log_id)
+    log = db.get_or_404(ActionLog, log_id)
     # Ne pas permettre de supprimer des logs de moins d'une heure
     diff = datetime.utcnow() - log.timestamp
     if diff < timedelta(hours=1):
@@ -504,9 +503,6 @@ def delete_log(log_id):
         }), 500
 
 # --- Goodies sales module ---
-from decimal import Decimal, ROUND_HALF_UP
-from forms import ProductForm
-from models import Product, Sale, SaleItem, PaymentMethod, ZClosure
 
 def _quantize(amount: Decimal) -> Decimal:
     return amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -545,7 +541,7 @@ def goodies_pos():
             qty = int(entry.get('quantity', 1))
             if qty <= 0:
                 continue
-            p = Product.query.get(pid)
+            p = db.session.get(Product, pid)
             if not p or not p.active:
                 flash(f"Article invalide ou inactif (ID {pid}).", 'danger')
                 return redirect(url_for('admin.goodies_pos'))
@@ -640,7 +636,7 @@ def goodies_products():
 @login_required
 @admin_required
 def goodies_product_edit(pid):
-    p = Product.query.get_or_404(pid)
+    p = db.get_or_404(Product, pid)
     form = ProductForm()
     if request.method == 'GET':
         form.name.data = p.name
@@ -679,7 +675,7 @@ def goodies_products_toggle(pid):
     if not csrf_form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin.goodies_products'))
-    p = Product.query.get_or_404(pid)
+    p = db.get_or_404(Product, pid)
     p.active = not p.active
     db.session.commit()
     flash('Statut modifié.', 'success')
@@ -693,7 +689,7 @@ def goodies_products_delete(pid):
     if not csrf_form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin.goodies_products'))
-    p = Product.query.get_or_404(pid)
+    p = db.get_or_404(Product, pid)
     db.session.delete(p)
     db.session.commit()
     flash('Article supprimé.', 'success')
@@ -720,7 +716,7 @@ def goodies_sale_delete(sale_id):
     if not csrf_form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin.goodies_sales'))
-    sale = Sale.query.get_or_404(sale_id)
+    sale = db.get_or_404(Sale, sale_id)
     db.session.add(ActionLog(user_id=current_user.id, action_type='delete_sale', details=f'Vente #{sale_id} supprimée ({sale.payment_method.value} {sale.total_amount}€)'))
     db.session.delete(sale)
     db.session.commit()
@@ -963,7 +959,7 @@ def admin_archive_conversation(conv_id):
     if not csrf_form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin.admin_messages'))
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     conv.is_archived = not conv.is_archived
     db.session.commit()
     flash(f"Conversation {'archivée' if conv.is_archived else 'restaurée'}.", 'success')
@@ -978,7 +974,7 @@ def admin_delete_message(conv_id, msg_id):
     if not csrf_form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin.admin_messages'))
-    msg = Message.query.get_or_404(msg_id)
+    msg = db.get_or_404(Message, msg_id)
     if msg.conversation_id != conv_id:
         abort(404)
     msg.is_deleted = True
@@ -995,7 +991,7 @@ def admin_delete_conversation(conv_id):
     if not csrf_form.validate_on_submit():
         flash('Erreur CSRF.', 'danger')
         return redirect(url_for('admin.admin_messages'))
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     db.session.delete(conv)
     db.session.commit()
     flash('Conversation supprimée définitivement.', 'success')

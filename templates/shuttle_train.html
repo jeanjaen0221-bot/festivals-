@@ -8,8 +8,10 @@
   </div>
   <form id="station-search-form" class="row g-3 mb-4">
     <div class="col-md-8">
-      <input type="text" class="form-control form-control-lg" id="station-input" placeholder="Rechercher une gare (ex: Wavre)" autocomplete="off">
-      <div id="station-suggestions" class="list-group position-absolute w-100" style="z-index:10;"></div>
+      <div class="position-relative">
+        <input type="text" class="form-control form-control-lg" id="station-input" placeholder="Rechercher une gare (ex: Wavre)" autocomplete="off">
+        <div id="station-suggestions" class="list-group position-absolute w-100" style="z-index:10;"></div>
+      </div>
     </div>
     <div class="col-md-4">
       <button type="submit" class="btn btn-primary btn-lg w-100"><i class="bi bi-search"></i> Rechercher</button>

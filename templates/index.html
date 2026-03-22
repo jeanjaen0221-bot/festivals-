@@ -21,7 +21,7 @@
         {% for item in latest_found_items %}
         <div class="carousel-item {% if loop.first %}active{% endif %}">
           <div class="d-flex justify-content-center">
-            <div class="card shadow-sm border-0 rounded-4 position-relative" style="width: 22rem;">
+            <div class="card shadow-sm border-0 rounded-4 position-relative" style="max-width: 22rem; width: 100%;">
               {# Badge lieu stockage #}
               {% if item.status.name == 'FOUND' or item.status.name == 'RETURNED' %}
                 {% set lieu = item.storage_location or item.found_location %}

@@ -5,7 +5,8 @@
     <a href="{{ url_for('main.list_items', status='found') }}" class="btn btn-outline-secondary {% if status == 'found' %}active{% endif %}">Trouvés</a>
     <a href="{{ url_for('main.list_items', status='returned') }}" class="btn btn-outline-secondary {% if status == 'returned' %}active{% endif %}">Rendus</a>
   </div>
-  <h2 class="mb-1">Objets {{ status.capitalize() }}</h2>
+  {% set status_labels = {'lost': 'Perdus', 'found': 'Trouvés', 'returned': 'Rendus'} %}
+  <h2 class="mb-1">Objets {{ status_labels.get(status, status.capitalize()) }}</h2>
   <div class="text-muted small mb-3">
     {% if status == 'found' %}
       <i class="bi bi-info-circle"></i> Un badge <span class="badge bg-success">Matché</span> apparaît lorsque deux fiches sont déjà liées.
@@ -32,7 +33,7 @@
       <input type="date" class="form-control" name="to_date" value="{{ to_date or '' }}" placeholder="Au">
     </div>
     <div class="col-md-2">
-      <button type="submit" class="btn btn-outline-primary">Filtrer</button>
+      <button type="submit" class="btn btn-outline-primary w-100">Filtrer</button>
     </div>
   </form>
   {% if items %}

@@ -245,6 +245,12 @@
     max-width: 100vw;
     overflow-x: hidden;
   }
+  /* Masquer la sidebar utilisateur sur les pages admin (desktop) */
+  @media (min-width: 992px) {
+    .lf-layout, .lf-sidebar { display: none !important; }
+    .lf-content { margin-left: 0 !important; }
+    .img-border-left, .img-border-right { display: none !important; }
+  }
 </style>
 <script>
   // Sidebar responsive toggle

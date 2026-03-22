@@ -115,7 +115,7 @@ def new_direct():
     if not target_id or target_id == current_user.id:
         flash("Destinataire invalide.", "danger")
         return redirect(url_for('messaging.inbox'))
-    target = User.query.get_or_404(target_id)
+    target = db.get_or_404(User, target_id)
 
     existing = (Conversation.query
                 .filter_by(type=ConvType.DIRECT, is_archived=False)
@@ -178,7 +178,7 @@ MSG_PAGE_SIZE = 50
 @bp_msg.route('/<int:conv_id>')
 @login_required
 def conversation(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     part = _get_participant(conv_id, current_user.id)
     if not part and not current_user.is_admin:
         abort(403)
@@ -221,7 +221,7 @@ def conversation(conv_id):
 @bp_msg.route('/<int:conv_id>/send', methods=['POST'])
 @login_required
 def send_message(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     part = _get_participant(conv_id, current_user.id)
     if not part and not current_user.is_admin:
         abort(403)
@@ -247,7 +247,7 @@ def send_message(conv_id):
 @bp_msg.route('/<int:conv_id>/delete/<int:msg_id>', methods=['POST'])
 @login_required
 def delete_message(conv_id, msg_id):
-    msg = Message.query.get_or_404(msg_id)
+    msg = db.get_or_404(Message, msg_id)
     if msg.conversation_id != conv_id:
         abort(404)
     part = _get_participant(conv_id, current_user.id)
@@ -264,7 +264,7 @@ def delete_message(conv_id, msg_id):
 @bp_msg.route('/<int:conv_id>/pin/<int:msg_id>', methods=['POST'])
 @login_required
 def pin_message(conv_id, msg_id):
-    msg = Message.query.get_or_404(msg_id)
+    msg = db.get_or_404(Message, msg_id)
     if msg.conversation_id != conv_id:
         abort(404)
     part = _get_participant(conv_id, current_user.id)
@@ -281,7 +281,7 @@ def pin_message(conv_id, msg_id):
 @bp_msg.route('/<int:conv_id>/leave', methods=['POST'])
 @login_required
 def leave_group(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     if conv.type != ConvType.GROUP:
         abort(400)
     part = _get_participant(conv_id, current_user.id)
@@ -305,7 +305,7 @@ def leave_group(conv_id):
 @bp_msg.route('/<int:conv_id>/add-member', methods=['POST'])
 @login_required
 def add_member(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     if conv.type != ConvType.GROUP:
         abort(400)
     part = _get_participant(conv_id, current_user.id)
@@ -331,7 +331,7 @@ def add_member(conv_id):
 @bp_msg.route('/<int:conv_id>/remove-member/<int:uid>', methods=['POST'])
 @login_required
 def remove_member(conv_id, uid):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     if conv.type != ConvType.GROUP:
         abort(400)
     part = _get_participant(conv_id, current_user.id)
@@ -350,7 +350,7 @@ def remove_member(conv_id, uid):
 @bp_msg.route('/<int:conv_id>/rename', methods=['POST'])
 @login_required
 def rename_group(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     if conv.type != ConvType.GROUP:
         abort(400)
     part = _get_participant(conv_id, current_user.id)
@@ -371,7 +371,7 @@ def rename_group(conv_id):
 @bp_msg.route('/<int:conv_id>/promote/<int:uid>', methods=['POST'])
 @login_required
 def promote_member(conv_id, uid):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = db.get_or_404(Conversation, conv_id)
     part = _get_participant(conv_id, current_user.id)
     if not part or (part.role != ParticipantRole.ADMIN and not current_user.is_admin):
         abort(403)

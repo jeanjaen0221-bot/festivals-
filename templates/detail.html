@@ -6,8 +6,7 @@
 
       {# Affiche la photo de restitution si objet rendu #}
       {% if item.status == Status.RETURNED and item.return_photo_filename %}
-        <img src="{{ url_for('main.uploaded_file', filename=item.return_photo_filename) }}" class="img-fluid"
-             class="img-fluid mb-3" alt="Photo de restitution">
+        <img src="{{ url_for('main.uploaded_file', filename=item.return_photo_filename) }}" class="img-fluid mb-3" alt="Photo de restitution">
       {% elif item.photos and item.photos|length > 0 %}
         <div class="row g-2 mb-3">
   {% for photo in item.photos %}
@@ -47,15 +46,13 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
       {% elif item.photo_filename %}
-        <img src="{{ url_for('main.uploaded_file', filename=item.photo_filename) }}" class="img-fluid"
-             class="img-fluid mb-3" alt="Photo">
+        <img src="{{ url_for('main.uploaded_file', filename=item.photo_filename) }}" class="img-fluid mb-3" alt="Photo">
       {% else %}
         <div class="bg-light d-flex align-items-center justify-content-center w-100" style="height: 300px;">
           {% if item.category %}
             {% set icon_info = item.category.get_icon_display() %}
             {% if icon_info.type == 'image' %}
-              <img src="{{ icon_info.url }}" alt="{{ item.category.name }}" class="img-fluid" 
-                   class="img-fluid" style="max-width: 150px; max-height: 150px; object-fit: contain;">
+              <img src="{{ icon_info.url }}" alt="{{ item.category.name }}" class="img-fluid" style="max-width: 150px; max-height: 150px; object-fit: contain;">
             {% else %}
               <i class="{{ icon_info.class }} detail-category-icon d-flex align-items-center justify-content-center"></i>
             {% endif %}
@@ -253,7 +250,6 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endif %}
     </div>
   </div>
-{% endblock %}
 
 {# Modale d'explication #}
 <div class="modal fade" id="explainModal" tabindex="-1" aria-labelledby="explainModalLabel" aria-hidden="true">
@@ -403,3 +399,4 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script>
+{% endblock %}

@@ -120,7 +120,7 @@
                       <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body text-center">
-                      <canvas id="signaturePad{{ loan.id }}" width="400" height="200" style="border:1px solid #ccc;"></canvas>
+                      <canvas id="signaturePad{{ loan.id }}" style="border:1px solid #ccc; width:100%; max-width:400px; height:180px; display:block; margin:0 auto;"></canvas>
                       <div class="mt-2">
                         <button class="btn btn-secondary btn-sm" onclick="clearSignature(Number('{{ loan.id }}'))">Effacer</button>
                         <button class="btn btn-primary btn-sm" id="save-signature-btn-{{ loan.id }}" onclick="saveSignature(Number('{{ loan.id }}'))"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Valider</button>
@@ -293,64 +293,6 @@ window.addEventListener('DOMContentLoaded', function() {
   updateDepositAmountField();
 });
 
-let currentLoanId = null;
-let signaturePad = null;
-
-function openSignatureModal(loanId) {
-  currentLoanId = loanId;
-  const modal = new bootstrap.Modal(document.getElementById('signatureModal'));
-  modal.show();
-  if (!signaturePad) {
-    const canvas = document.getElementById('signaturePad');
-    signaturePad = new SignaturePad(canvas);
-  } else {
-    signaturePad.clear();
-  }
-}
-
-var clearBtn = document.getElementById('clearSignature');
-if (clearBtn) {
-    clearBtn.onclick = function() {
-        if (signaturePad) signaturePad.clear();
-    };
-}
-
-var saveBtn = document.getElementById('saveSignature');
-if (saveBtn) {
-    saveBtn.onclick = function() {
-        if (!signaturePad || signaturePad.isEmpty()) {
-            alert('Merci de signer avant de valider.');
-            return;
-        }
-        const dataUrl = signaturePad.toDataURL();
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-        fetch(`/loans/${currentLoanId}/return`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken || ''
-            },
-            body: JSON.stringify({ signature: dataUrl })
-        })
-        .then(async resp => {
-            let data;
-            try {
-                data = await resp.json();
-            } catch (e) {
-                alert('Erreur serveur: réponse non conforme (pas du JSON).');
-                return;
-            }
-            if (resp.ok && data.success) {
-                location.reload();
-            } else {
-                alert('Erreur: ' + (data && data.error ? data.error : 'Impossible de sauvegarder la signature.'));
-            }
-        })
-        .catch(err => {
-            alert('Erreur réseau ou JSON: ' + err);
-        });
-    };
-}
 function validateQuantity() {
   var q = document.getElementById('quantity');
   if (q) {
