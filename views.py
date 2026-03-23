@@ -1,8 +1,10 @@
 import os
 import uuid
+import json
 import base64
 import requests
 import tempfile
+from decimal import Decimal, ROUND_HALF_UP
 import matching
 import image_text_matcher as itm
 from io import BytesIO
@@ -19,13 +21,32 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
 from app import app, db, limiter
-from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product
-from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm
+from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure
+from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm, SimpleCsrfForm
 from ocr_utils import extract_id_card_data
 from flask_wtf.csrf import validate_csrf
 from admin import admin_required
 
 bp = Blueprint('main', __name__)
+
+
+def vendor_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not (current_user.is_admin or current_user.is_vendor_goodies):
+            flash("Accès réservé aux vendeurs goodies.", "danger")
+            return redirect(url_for('main.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def _qz(amount: Decimal) -> Decimal:
+    return amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def _round_cash_0_05(amount: Decimal) -> Decimal:
+    cents = amount * 20
+    return (cents.quantize(Decimal('1'), rounding=ROUND_HALF_UP) / Decimal(20)).quantize(Decimal('0.01'))
 
 
 
@@ -1217,3 +1238,95 @@ def confirm_match():
     log_action(current_user.id, 'validate_match', f'Match Lost:{lost.id} Found:{found.id}')
     flash(f"Correspondance validée : Lost #{lost.id} ↔ Found #{found.id}", "success")
     return redirect(url_for('main.list_matches'))
+
+
+@bp.route('/caisse', methods=['GET', 'POST'])
+@login_required
+@vendor_required
+def caisse():
+    csrf_form = SimpleCsrfForm()
+    products = Product.query.filter_by(active=True).order_by(Product.name).all()
+    last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+    last_z_iso = last.to_ts.isoformat() if last else ''
+    if request.method == 'POST':
+        if not csrf_form.validate_on_submit():
+            flash('Erreur CSRF.', 'danger')
+            return redirect(url_for('main.caisse'))
+        try:
+            cart_json = request.form.get('cart_json', '[]')
+            cart = json.loads(cart_json)
+            payment = request.form.get('payment_method')
+            if payment not in ('cash', 'card'):
+                raise ValueError('Méthode de paiement invalide')
+        except Exception as e:
+            flash(f'Panier invalide : {e}', 'danger')
+            return redirect(url_for('main.caisse'))
+
+        total = Decimal('0.00')
+        total_vat = Decimal('0.00')
+        items_data = []
+        for entry in cart:
+            pid = int(entry.get('product_id'))
+            qty = int(entry.get('quantity', 1))
+            if qty <= 0:
+                continue
+            p = db.session.get(Product, pid)
+            if not p or not p.active:
+                flash(f"Article invalide ou inactif (ID {pid}).", 'danger')
+                return redirect(url_for('main.caisse'))
+            unit = _qz(Decimal(str(p.price)))
+            line_total = _qz(unit * qty)
+            rate = int(p.vat_rate or 21)
+            divisor = Decimal('1') + (Decimal(rate) / Decimal('100'))
+            vat = _qz(line_total - line_total / divisor)
+            total += line_total
+            total_vat += vat
+            items_data.append({
+                'product': p, 'quantity': qty, 'unit_price': unit,
+                'vat_rate': rate, 'line_total': line_total, 'vat_amount': vat,
+            })
+
+        if not items_data:
+            flash('Le panier est vide.', 'warning')
+            return redirect(url_for('main.caisse'))
+
+        sale = Sale(
+            payment_method=PaymentMethod.CASH if payment == 'cash' else PaymentMethod.CARD,
+            total_amount=_qz(total),
+            total_vat_amount=_qz(total_vat),
+        )
+        if payment == 'cash':
+            rounded = _round_cash_0_05(total)
+            sale.rounded_total_amount = _qz(rounded)
+            sale.rounding_adjustment = _qz(rounded - total)
+        db.session.add(sale)
+        db.session.flush()
+        for d in items_data:
+            db.session.add(SaleItem(
+                sale_id=sale.id,
+                product_id=d['product'].id,
+                quantity=d['quantity'],
+                unit_price=d['unit_price'],
+                vat_rate=d['vat_rate'],
+                line_total=d['line_total'],
+                vat_amount=d['vat_amount'],
+            ))
+        db.session.add(ActionLog(
+            user_id=current_user.id,
+            action_type='sale_goodies',
+            details=f'Vente #{sale.id} {payment} {_qz(total)}€ ({len(items_data)} ligne(s)) par vendeur #{current_user.id}'
+        ))
+        db.session.commit()
+        flash(f'Vente #{sale.id} enregistrée — {_qz(total):.2f} € ({payment}).', 'success')
+        return redirect(url_for('main.caisse'))
+
+    return render_template('caisse.html', products=products, csrf_form=csrf_form, last_z_iso=last_z_iso)
+
+
+@bp.route('/caisse/last_z')
+@login_required
+@vendor_required
+def caisse_last_z():
+    last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
+    iso = last.to_ts.isoformat() if last and last.to_ts else ''
+    return jsonify({'last_z_iso': iso})

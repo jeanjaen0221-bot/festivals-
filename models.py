@@ -230,6 +230,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(150), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
+    is_vendor_goodies = db.Column(db.Boolean, default=False)
     actions = db.relationship('ActionLog', backref='user', lazy=True)
 
     def set_password(self, password):

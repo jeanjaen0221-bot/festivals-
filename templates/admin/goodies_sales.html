@@ -48,9 +48,10 @@
           </ul>
         </td>
         <td>
-          <form method="post" action="{{ url_for('admin.goodies_sale_delete', sale_id=sale.id) }}" class="d-inline" onsubmit="return confirm('Supprimer la vente #{{ sale.id }} ? Cette action est irréversible.')">
+          <a href="{{ url_for('admin.goodies_sale_edit', sale_id=sale.id) }}" class="btn btn-sm btn-outline-warning me-1" title="Corriger la vente"><i class="bi bi-pencil"></i></a>
+          <form method="post" action="{{ url_for('admin.goodies_sale_delete', sale_id=sale.id) }}" class="d-inline" onsubmit="return confirm('Supprimer la vente #{{ sale.id }} ?\nCette action est irréversible.')">
             {{ csrf_form.csrf_token }}
-            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer la vente"><i class="bi bi-trash"></i></button>
           </form>
         </td>
       </tr>

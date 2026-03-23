@@ -11,6 +11,8 @@
       <dd class="col-sm-9">{{ user.email }}</dd>
       <dt class="col-sm-3">Administrateur</dt>
       <dd class="col-sm-9">{% if user.is_admin %}<span class="badge bg-success">Oui</span>{% else %}Non{% endif %}</dd>
+      <dt class="col-sm-3">Vendeur goodies</dt>
+      <dd class="col-sm-9">{% if user.is_vendor_goodies %}<span class="badge bg-warning text-dark"><i class="bi bi-cart3"></i> Oui</span>{% else %}Non{% endif %}</dd>
       <dt class="col-sm-3">ID</dt>
       <dd class="col-sm-9">{{ user.id }}</dd>
     </dl>
@@ -23,7 +25,15 @@
       <button class="btn btn-outline-secondary btn-sm" type="submit">Retirer admin</button>
       {% endif %}
     </form>
-    <form method="post" action="{{ url_for('admin.delete_user', user_id=user.id) }}" class="d-inline ms-2" onsubmit="return confirm('Supprimer cet utilisateur ? Cette action est irréversible.');">
+    <form method="post" action="{{ url_for('admin.toggle_vendor_goodies', user_id=user.id) }}" class="d-inline ms-2">
+      {{ csrf_form.hidden_tag() }}
+      {% if not user.is_vendor_goodies %}
+      <button class="btn btn-outline-warning btn-sm" type="submit"><i class="bi bi-cart3"></i> Activer vendeur goodies</button>
+      {% else %}
+      <button class="btn btn-outline-secondary btn-sm" type="submit"><i class="bi bi-cart3"></i> Retirer vendeur goodies</button>
+      {% endif %}
+    </form>
+    <form method="post" action="{{ url_for('admin.delete_user', user_id=user.id) }}" class="d-inline ms-2" onsubmit="return confirm('Supprimer cet utilisateur ? Cette action est irréversible.\nToutes ses données seront perdues.');">
       {{ csrf_form.hidden_tag() }}
       <button class="btn btn-outline-danger btn-sm" type="submit">Supprimer</button>
     </form>

@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+{% block title %}Caisse Goodies | Lost &amp; Found Festival{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"><i class="bi bi-cart3"></i> Caisse Goodies</h2>
+</div>
+
+<div class="row g-3" id="posRoot" data-last-z="{{ last_z_iso }}">
+  <!-- Catalogue produits -->
+  <div class="col-12 col-lg-8">
+    {% if products %}
+    <div class="row g-2">
+      {% for p in products %}
+      <div class="col-6 col-sm-4 col-md-3">
+        <button type="button"
+          class="btn btn-light w-100 h-100 border product-btn text-start"
+          data-id="{{ p.id }}"
+          data-name="{{ p.name }}"
+          data-price="{{ '%.2f'|format(p.price) }}"
+          data-vat="{{ p.vat_rate }}"
+          style="min-height:160px; padding:10px;">
+          {% if p.image_filename %}
+          <div class="mb-2" style="width:100%; height:90px; overflow:hidden; border-radius:8px; background:#f8f9fa;">
+            <img src="{{ url_for('main.uploaded_file', filename=p.image_filename) }}"
+                 alt="{{ p.name }}"
+                 style="width:100%; height:100%; object-fit:cover; display:block;"
+                 loading="lazy" onerror="this.style.display='none'">
+          </div>
+          {% else %}
+          <div class="mb-2 d-flex align-items-center justify-content-center"
+               style="width:100%; height:90px; background:#f8f9fa; border-radius:8px; color:#adb5bd;">
+            <i class="bi bi-bag-heart" style="font-size:1.5rem;"></i>
+          </div>
+          {% endif %}
+          <div class="fw-semibold small">{{ p.name }}</div>
+          <div class="text-muted small">{{ '%.2f'|format(p.price) }} € TTC</div>
+          <div class="text-muted small">TVA {{ p.vat_rate }}%</div>
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> Aucun article actif. Contactez un administrateur.</div>
+    {% endif %}
+  </div>
+
+  <!-- Panier -->
+  <div class="col-12 col-lg-4">
+    <form method="post" id="posForm" action="{{ url_for('main.caisse') }}">
+      {{ csrf_form.csrf_token }}
+      <input type="hidden" name="cart_json" id="cart_json">
+      <input type="hidden" name="payment_method" id="payment_method">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-bold fs-5">Panier</div>
+            <div class="btn-group" role="group" aria-label="Mode de paiement">
+              <input type="radio" class="btn-check" name="pay" id="pay_card" autocomplete="off" checked>
+              <label class="btn btn-outline-primary" for="pay_card"><i class="bi bi-credit-card"></i> Carte</label>
+              <input type="radio" class="btn-check" name="pay" id="pay_cash" autocomplete="off">
+              <label class="btn btn-outline-success" for="pay_cash"><i class="bi bi-cash"></i> Cash</label>
+            </div>
+          </div>
+          <div id="cart_list" class="list-group mb-3" aria-live="polite"></div>
+          <div class="d-flex justify-content-between text-muted small"><span>Sous-total</span><span id="subtotal">0,00 €</span></div>
+          <div class="d-flex justify-content-between text-muted small" id="rounding-row"><span>Ajustement arrondi (cash)</span><span id="rounding">0,00 €</span></div>
+          <div class="d-flex justify-content-between fw-bold fs-5 border-top pt-2 mt-1"><span>Total</span><span id="total">0,00 €</span></div>
+          <div class="d-grid mt-3 gap-2">
+            <button type="submit" class="btn btn-primary btn-lg" id="submit_btn" disabled>
+              <i class="bi bi-check-circle"></i> Encaisser
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="clear_btn">
+              <i class="bi bi-trash"></i> Vider le panier
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="zEndpoints"
+     data-last-z-url="{{ url_for('main.caisse_last_z') }}"
+     class="d-none"></div>
+
+<script>
+(function(){
+  const fmt = n => n.toFixed(2).replace('.', ',') + ' \u20ac';
+  const q2  = n => Number((Math.round(n * 100) / 100).toFixed(2));
+  const round005 = n => { const r = Math.round(n * 20) / 20; return q2(r); };
+  const cart = new Map();
+  const posRoot = document.getElementById('posRoot');
+  let lastZ = (posRoot && posRoot.dataset.lastZ) ? String(posRoot.dataset.lastZ) : '';
+  const lastZUrl = document.getElementById('zEndpoints').dataset.lastZUrl;
+
+  function clearCart() { cart.clear(); render(); }
+  function add(p) {
+    const id = String(p.id);
+    const prev = cart.get(id) || {id, name: p.name, price: Number(p.price), vat: Number(p.vat), qty: 0};
+    prev.qty += 1; cart.set(id, prev); render();
+  }
+  function setQty(id, q) {
+    const it = cart.get(id); if (!it) return;
+    it.qty = Math.max(0, q);
+    if (it.qty === 0) { cart.delete(id); }
+    render();
+  }
+  function subtotal() { let s = 0; cart.forEach(it => { s += it.price * it.qty; }); return q2(s); }
+  function totals() {
+    const sub = subtotal();
+    const isCash = document.getElementById('pay_cash').checked;
+    let rounding = 0, total = sub;
+    if (isCash) { const r = round005(sub); rounding = q2(r - sub); total = r; }
+    return {sub, rounding: q2(rounding), total: q2(total)};
+  }
+
+  function render() {
+    const list = document.getElementById('cart_list');
+    list.innerHTML = '';
+    cart.forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'list-group-item d-flex justify-content-between align-items-center py-2';
+      row.innerHTML =
+        '<div><div class="fw-semibold small">' + it.name + '</div>' +
+        '<div class="text-muted small">' + fmt(it.price) + ' × ' + it.qty + '</div></div>' +
+        '<div class="d-flex align-items-center gap-1">' +
+        '<button class="btn btn-sm btn-outline-secondary px-2" data-act="minus" data-id="' + it.id + '" aria-label="Retirer un ' + it.name + '">−</button>' +
+        '<span class="fw-bold px-1">' + it.qty + '</span>' +
+        '<button class="btn btn-sm btn-outline-secondary px-2" data-act="plus" data-id="' + it.id + '" aria-label="Ajouter un ' + it.name + '">+</button>' +
+        '<button class="btn btn-sm btn-outline-danger px-2" data-act="rm" data-id="' + it.id + '" aria-label="Supprimer"><i class="bi bi-x"></i></button>' +
+        '</div>';
+      list.appendChild(row);
+    });
+    const t = totals();
+    document.getElementById('subtotal').textContent = fmt(t.sub);
+    document.getElementById('rounding').textContent = fmt(t.rounding);
+    document.getElementById('total').textContent = fmt(t.total);
+    document.getElementById('submit_btn').disabled = cart.size === 0;
+    updateRoundingVisibility();
+  }
+
+  function updateRoundingVisibility() {
+    const isCash = document.getElementById('pay_cash').checked;
+    document.getElementById('rounding-row').style.display = isCash ? '' : 'none';
+  }
+
+  document.querySelectorAll('.product-btn').forEach(b => {
+    b.addEventListener('click', () => add({id: b.dataset.id, name: b.dataset.name, price: b.dataset.price, vat: b.dataset.vat}));
+  });
+  document.getElementById('cart_list').addEventListener('click', e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    const id = btn.dataset.id; const act = btn.dataset.act; const it = cart.get(id); if (!it) return;
+    if (act === 'plus') setQty(id, it.qty + 1);
+    else if (act === 'minus') setQty(id, it.qty - 1);
+    else if (act === 'rm') setQty(id, 0);
+  });
+  document.getElementById('clear_btn').addEventListener('click', clearCart);
+  document.getElementById('pay_card').addEventListener('change', render);
+  document.getElementById('pay_cash').addEventListener('change', render);
+
+  document.getElementById('posForm').addEventListener('submit', e => {
+    const data = []; cart.forEach(it => data.push({product_id: it.id, quantity: it.qty}));
+    document.getElementById('cart_json').value = JSON.stringify(data);
+    document.getElementById('payment_method').value = document.getElementById('pay_cash').checked ? 'cash' : 'card';
+  });
+
+  async function checkLastZ() {
+    try {
+      if (!lastZUrl) return;
+      const res = await fetch(lastZUrl, {headers: {'Accept': 'application/json'}});
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && typeof data.last_z_iso === 'string') {
+        if (lastZ !== data.last_z_iso) { lastZ = data.last_z_iso; clearCart(); }
+      }
+    } catch(e) { /* ignore */ }
+  }
+  setInterval(checkLastZ, 60000);
+  render();
+})();
+</script>
+{% endblock %}

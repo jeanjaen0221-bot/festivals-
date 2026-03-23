@@ -11,6 +11,7 @@
           <th scope="col">Nom</th>
           <th scope="col">Email</th>
           <th scope="col">Admin</th>
+          <th scope="col">Vendeur goodies</th>
           <th scope="col">Actions</th>
         </tr>
       </thead>
@@ -21,6 +22,7 @@
           <td><a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="text-decoration-none">{{ user.first_name }} {{ user.last_name }}</a></td>
           <td><a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="text-decoration-none">{{ user.email }}</a></td>
           <td>{% if user.is_admin %}<span class="badge bg-success">Oui</span>{% else %}Non{% endif %}</td>
+          <td>{% if user.is_vendor_goodies %}<span class="badge bg-warning text-dark"><i class="bi bi-cart3"></i> Oui</span>{% else %}Non{% endif %}</td>
           <td>
             <a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">Détail</a>
           </td>

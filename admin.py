@@ -337,6 +337,22 @@ def toggle_admin(user_id):
         flash("Erreur de validation du formulaire.", "danger")
     return redirect(url_for('admin.user_detail', user_id=user_id))
 
+@bp_admin.route('/users/<int:user_id>/toggle-vendor-goodies', methods=['POST'])
+@login_required
+@admin_required
+def toggle_vendor_goodies(user_id):
+    form = SimpleCsrfForm()
+    user = db.get_or_404(User, user_id)
+    if form.validate_on_submit():
+        user.is_vendor_goodies = not user.is_vendor_goodies
+        db.session.commit()
+        db.session.add(ActionLog(user_id=current_user.id, action_type='toggle_vendor_goodies', details=f'Utilisateur #{user_id} vendeur_goodies={user.is_vendor_goodies}'))
+        db.session.commit()
+        flash('Rôle vendeur goodies modifié.', 'success')
+    else:
+        flash('Erreur CSRF.', 'danger')
+    return redirect(url_for('admin.user_detail', user_id=user_id))
+
 @bp_admin.route('/users/<int:user_id>/delete', methods=['POST'])
 @login_required
 @admin_required
@@ -686,6 +702,82 @@ def goodies_sales():
     sales = query.order_by(Sale.created_at.desc()).all()
     csrf_form = SimpleCsrfForm()
     return render_template('admin/goodies_sales.html', sales=sales, csrf_form=csrf_form, from_ts=from_ts)
+
+@bp_admin.route('/goodies/sales/<int:sale_id>/edit', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def goodies_sale_edit(sale_id):
+    sale = db.get_or_404(Sale, sale_id)
+    csrf_form = SimpleCsrfForm()
+    products = Product.query.filter_by(active=True).order_by(Product.name).all()
+    if request.method == 'POST':
+        if not csrf_form.validate_on_submit():
+            flash('Erreur CSRF.', 'danger')
+            return redirect(url_for('admin.goodies_sale_edit', sale_id=sale_id))
+        payment = request.form.get('payment_method')
+        if payment not in ('cash', 'card'):
+            flash('Méthode de paiement invalide.', 'danger')
+            return redirect(url_for('admin.goodies_sale_edit', sale_id=sale_id))
+        sale.payment_method = PaymentMethod.CASH if payment == 'cash' else PaymentMethod.CARD
+        # Update existing items
+        for item in list(sale.items):
+            qty_val = request.form.get(f'qty_{item.id}', '0')
+            try:
+                qty = int(qty_val)
+            except ValueError:
+                qty = 0
+            if qty <= 0:
+                db.session.delete(item)
+            else:
+                item.quantity = qty
+                item.line_total = _quantize(item.unit_price * qty)
+                divisor = Decimal('1') + (Decimal(item.vat_rate) / Decimal('100'))
+                item.vat_amount = _quantize(item.line_total - item.line_total / divisor)
+        # Add new product lines
+        for p in products:
+            add_key = f'add_{p.id}'
+            add_qty_val = request.form.get(add_key, '0')
+            try:
+                add_qty = int(add_qty_val)
+            except ValueError:
+                add_qty = 0
+            if add_qty > 0:
+                unit = _quantize(Decimal(str(p.price)))
+                lt = _quantize(unit * add_qty)
+                divisor = Decimal('1') + (Decimal(p.vat_rate) / Decimal('100'))
+                vat = _quantize(lt - lt / divisor)
+                si = SaleItem(
+                    sale_id=sale.id,
+                    product_id=p.id,
+                    quantity=add_qty,
+                    unit_price=unit,
+                    vat_rate=int(p.vat_rate),
+                    line_total=lt,
+                    vat_amount=vat,
+                )
+                db.session.add(si)
+        db.session.flush()
+        # Recalculate totals
+        db.session.refresh(sale)
+        total = Decimal('0.00')
+        total_vat = Decimal('0.00')
+        for it in sale.items:
+            total += Decimal(str(it.line_total))
+            total_vat += Decimal(str(it.vat_amount))
+        sale.total_amount = _quantize(total)
+        sale.total_vat_amount = _quantize(total_vat)
+        if sale.payment_method == PaymentMethod.CASH:
+            rounded = _round_cash_to_0_05(total)
+            sale.rounded_total_amount = _quantize(rounded)
+            sale.rounding_adjustment = _quantize(rounded - total)
+        else:
+            sale.rounded_total_amount = None
+            sale.rounding_adjustment = None
+        db.session.add(ActionLog(user_id=current_user.id, action_type='edit_sale', details=f'Vente #{sale_id} corrigée — total {sale.total_amount}€ paiement {sale.payment_method.value}'))
+        db.session.commit()
+        flash(f'Vente #{sale_id} corrigée.', 'success')
+        return redirect(url_for('admin.goodies_sales'))
+    return render_template('admin/goodies_sale_edit.html', sale=sale, products=products, csrf_form=csrf_form)
 
 @bp_admin.route('/goodies/sales/<int:sale_id>/delete', methods=['POST'])
 @login_required
