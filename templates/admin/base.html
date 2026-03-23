@@ -172,7 +172,7 @@
             </a>
           </li>
 
-          {% set goodies_active = request.path.startswith(url_for('admin.goodies_pos')) or request.path.startswith(url_for('admin.goodies_products')) or request.path.startswith(url_for('admin.goodies_z')) or request.path.startswith(url_for('admin.goodies_sales')) %}
+          {% set goodies_active = request.path == url_for('main.caisse') or request.path.startswith(url_for('admin.goodies_products')) or request.path.startswith(url_for('admin.goodies_z')) or request.path.startswith(url_for('admin.goodies_sales')) %}
           <li class="nav-item">
             <a class="nav-link text-white d-flex justify-content-between align-items-center {% if goodies_active %}active{% endif %}" data-bs-toggle="collapse" href="#collapseGoodies" role="button" aria-expanded="{{ 'true' if goodies_active else 'false' }}" aria-controls="collapseGoodies">
               <span><i class="bi bi-gift"></i> Goodies</span>
@@ -181,8 +181,8 @@
             <div class="collapse {% if goodies_active %}show{% endif %}" id="collapseGoodies">
               <ul class="nav flex-column ms-3 my-1">
                 <li class="nav-item">
-                  <a class="nav-link text-white d-flex justify-content-between align-items-center {% if request.path.startswith(url_for('admin.goodies_pos')) %}active{% endif %}" href="{{ url_for('admin.goodies_pos') }}">
-                    <span><i class="bi bi-cash-coin"></i> Ventes (Caisse)</span>
+                  <a class="nav-link text-white d-flex justify-content-between align-items-center {% if request.path == url_for('main.caisse') %}active{% endif %}" href="{{ url_for('main.caisse') }}">
+                    <span><i class="bi bi-cart3"></i> Caisse (ventes)</span>
                     {% if admin_counts.sales_today_count > 0 %}
                     <span class="badge bg-primary">{{ admin_counts.sales_today_count }}</span>
                     {% endif %}

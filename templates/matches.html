@@ -46,8 +46,8 @@
           {% if pair.score >= 80 %}score-high
           {% elif pair.score >= 60 %}score-mid
           {% else %}score-low{% endif %}">
-          <span class="mpc-score-value">{{ pair.score }}%</span>
-          <div class="mpc-score-bar"><div style="width:{{ pair.score|int }}%"></div></div>
+          <span class="mpc-score-value">{{ pair.score|round(1) }}%</span>
+          <div class="mpc-score-bar"><div data-pct="{{ pair.score|int }}"></div></div>
           <span class="mpc-category text-truncate"><i class="bi bi-tag"></i> {{ pair.lost.category.name if pair.lost.category else '—' }}</span>
           {% if pair.is_validated %}<span class="mpc-status-badge validated"><i class="bi bi-patch-check-fill"></i> Validé</span>
           {% elif pair.is_rejected %}<span class="mpc-status-badge rejected"><i class="bi bi-slash-circle-fill"></i> Rejeté</span>
@@ -178,6 +178,10 @@
 
 <script>
 (function(){
+  document.querySelectorAll('.mpc-score-bar [data-pct]').forEach(function(el){
+    el.style.width = (el.dataset.pct || 0) + '%';
+  });
+
   var apiUrl = null;
   var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {content:''}).content || '';
 

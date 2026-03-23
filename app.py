@@ -352,6 +352,18 @@ with app.app_context():
             except Exception as e_msg:
                 print(f"[WARN] Impossible de créer les tables messagerie : {e_msg}", file=sys.stderr)
 
+            # --- Ensure users.is_vendor_goodies exists ---
+            try:
+                result = conn.execute(sqlalchemy.text("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name='users' AND column_name='is_vendor_goodies'
+                """))
+                if result.fetchone() is None:
+                    conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN is_vendor_goodies BOOLEAN NOT NULL DEFAULT FALSE;"))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
+            except Exception as e_vendor:
+                print(f"[WARN] Impossible d'ajouter la colonne users.is_vendor_goodies: {e_vendor}", file=sys.stderr)
+
     except Exception as e:
         print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)
 

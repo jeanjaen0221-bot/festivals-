@@ -1102,7 +1102,7 @@ def get_all_candidate_pairs(seuil=60):
 def list_matches():
     try:
         seuil = int(request.args.get('threshold', 60))
-    except ValueError:
+    except (TypeError, ValueError):
         seuil = 60
     show_validated = request.args.get('show_validated', '0') == '1'
     show_rejected  = request.args.get('show_rejected',  '0') == '1'
