@@ -30,6 +30,20 @@ from admin import admin_required
 bp = Blueprint('main', __name__)
 
 
+@bp.before_request
+def restrict_vendor_only():
+    """Les utilisateurs vendor-only (goodies, non-admin) n'ont accès qu'à /caisse."""
+    if not current_user.is_authenticated:
+        return
+    if current_user.is_admin:
+        return
+    if not getattr(current_user, 'is_vendor_goodies', False):
+        return
+    allowed = {'main.caisse', 'main.caisse_last_z', 'main.logout', 'main.auth'}
+    if request.endpoint and request.endpoint not in allowed:
+        return redirect(url_for('main.caisse'))
+
+
 def vendor_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -225,6 +239,8 @@ def auth():
                     login_user(user, remember=login_form.remember.data)
                     log_action(user.id, 'login', 'Connexion utilisateur')
                     flash('Connexion réussie.', 'success')
+                    if not user.is_admin and getattr(user, 'is_vendor_goodies', False):
+                        return redirect(url_for('main.caisse'))
                     return redirect(url_for('main.index'))
                 flash('Identifiants invalides.', 'danger')
         elif 'submit_register' in request.form:
