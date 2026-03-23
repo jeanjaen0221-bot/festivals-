@@ -28,7 +28,7 @@
             <label class="form-label">Image actuelle</label>
             <div>
               {% if product.image_filename %}
-                <img src="{{ url_for('main.uploaded_file', filename=product.image_filename) }}" alt="{{ product.name }}" class="img-thumbnail" style="width:120px; height:120px; object-fit:cover;">
+                <img src="{{ url_for('main.uploaded_file', filename=product.image_filename) }}" alt="{{ product.name }}" class="img-thumbnail" style="width:120px; height:120px; object-fit:cover;" loading="lazy">
               {% else %}
                 <span class="text-muted">Aucune image</span>
               {% endif %}

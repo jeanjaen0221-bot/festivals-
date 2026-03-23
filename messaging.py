@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, abort
 from flask_login import login_required, current_user
 from datetime import datetime
-from app import db
+from app import db, limiter
 import sqlalchemy as sa
 from models import (User, Conversation, ConversationParticipant, Message,
                     ConvType, ParticipantRole)
@@ -110,6 +110,7 @@ def inbox():
 
 @bp_msg.route('/direct/new', methods=['POST'])
 @login_required
+@limiter.limit("10 per minute")
 def new_direct():
     target_id = request.form.get('target_user_id', type=int)
     if not target_id or target_id == current_user.id:
@@ -142,6 +143,7 @@ def new_direct():
 
 @bp_msg.route('/group/new', methods=['GET', 'POST'])
 @login_required
+@limiter.limit("10 per minute")
 def new_group():
     all_users = User.query.filter(User.id != current_user.id).order_by(User.first_name).all()
     if request.method == 'POST':
@@ -220,6 +222,7 @@ def conversation(conv_id):
 
 @bp_msg.route('/<int:conv_id>/send', methods=['POST'])
 @login_required
+@limiter.limit("30 per minute")
 def send_message(conv_id):
     conv = db.get_or_404(Conversation, conv_id)
     part = _get_participant(conv_id, current_user.id)

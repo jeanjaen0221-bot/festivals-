@@ -6,12 +6,12 @@
 
       {# Affiche la photo de restitution si objet rendu #}
       {% if item.status == Status.RETURNED and item.return_photo_filename %}
-        <img src="{{ url_for('main.uploaded_file', filename=item.return_photo_filename) }}" class="img-fluid mb-3" alt="Photo de restitution">
+        <img src="{{ url_for('main.uploaded_file', filename=item.return_photo_filename) }}" class="img-fluid mb-3" alt="Photo de restitution" loading="lazy">
       {% elif item.photos and item.photos|length > 0 %}
         <div class="row g-2 mb-3">
   {% for photo in item.photos %}
     <div class="col-6 col-md-4 col-lg-3">
-      <img src="{{ url_for('main.uploaded_file', filename=photo.filename) }}" class="img-thumbnail w-100 shadow-sm enlarge-photo img-fluid" style="aspect-ratio: 1/1; object-fit: cover; cursor: zoom-in;" alt="Photo" data-bs-toggle="modal" data-bs-target="#photoModal" data-photo-url="{{ url_for('main.uploaded_file', filename=photo.filename) }}">
+      <img src="{{ url_for('main.uploaded_file', filename=photo.filename) }}" class="img-thumbnail w-100 shadow-sm enlarge-photo img-fluid" style="aspect-ratio: 1/1; object-fit: cover; cursor: zoom-in;" alt="Photo" loading="lazy" data-bs-toggle="modal" data-bs-target="#photoModal" data-photo-url="{{ url_for('main.uploaded_file', filename=photo.filename) }}">
     </div>
   {% endfor %}
 </div>
@@ -46,13 +46,13 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
       {% elif item.photo_filename %}
-        <img src="{{ url_for('main.uploaded_file', filename=item.photo_filename) }}" class="img-fluid mb-3" alt="Photo">
+        <img src="{{ url_for('main.uploaded_file', filename=item.photo_filename) }}" class="img-fluid mb-3" alt="Photo" loading="lazy">
       {% else %}
         <div class="bg-light d-flex align-items-center justify-content-center w-100" style="height: 300px;">
           {% if item.category %}
             {% set icon_info = item.category.get_icon_display() %}
             {% if icon_info.type == 'image' %}
-              <img src="{{ icon_info.url }}" alt="{{ item.category.name }}" class="img-fluid" style="max-width: 150px; max-height: 150px; object-fit: contain;">
+              <img src="{{ icon_info.url }}" alt="{{ item.category.name }}" class="img-fluid" style="max-width: 150px; max-height: 150px; object-fit: contain;" loading="lazy">
             {% else %}
               <i class="{{ icon_info.class }} detail-category-icon d-flex align-items-center justify-content-center"></i>
             {% endif %}
@@ -150,9 +150,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 {% for s in suggestions %}
                   <div class="match-card">
                     {% if s.photo_url %}
-                      <div class="match-thumb"><img src="{{ s.photo_url }}" alt="photo"></div>
+                      <div class="match-thumb"><img src="{{ s.photo_url }}" alt="photo" loading="lazy"></div>
                     {% elif s.category_icon_url %}
-                      <div class="match-thumb"><img src="{{ s.category_icon_url }}" alt="icône catégorie"></div>
+                      <div class="match-thumb"><img src="{{ s.category_icon_url }}" alt="icône catégorie" loading="lazy"></div>
                     {% elif s.category_icon_class %}
                       <div class="match-thumb"><i class="{{ s.category_icon_class }}"></i></div>
                     {% else %}
@@ -295,9 +295,10 @@ document.addEventListener('DOMContentLoaded', function () {
         this.classList.add('loading');
         this.disabled = true;
         var explainUrl = ctx ? ctx.dataset.apiExplain : '/api/match_explain';
+        var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content') || '';
         const resp = await fetch(explainUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
           body: JSON.stringify({ item_id: itemId, candidate_id: candId })
         });
         const data = await resp.json();

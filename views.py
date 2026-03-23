@@ -18,7 +18,6 @@ from flask import (
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_
-from rapidfuzz import fuzz
 
 from app import app, db, limiter
 from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, Product
@@ -86,8 +85,12 @@ def _db_image_bytes_by_filename(filename: str):
     return None, None
 
 
+_tmp_files_to_cleanup: list[str] = []
+
+
 def _ensure_image_on_disk_for_matching(filename: str) -> str | None:
-    """Return a readable file path for matching. Uses UPLOAD_FOLDER if present, otherwise writes a temp file from DB bytes."""
+    """Return a readable file path for matching. Uses UPLOAD_FOLDER if present,
+    otherwise writes a temp file from DB bytes. Temp paths are registered for cleanup."""
     if not filename:
         return None
     try:
@@ -106,32 +109,43 @@ def _ensure_image_on_disk_for_matching(filename: str) -> str | None:
         tmp.write(data)
         tmp.flush()
         tmp.close()
+        _tmp_files_to_cleanup.append(tmp.name)
         return tmp.name
     except Exception:
         return None
 
+
+def _cleanup_tmp_images() -> None:
+    """Supprime les fichiers temporaires créés pour le matching."""
+    while _tmp_files_to_cleanup:
+        path = _tmp_files_to_cleanup.pop()
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+        except Exception:
+            pass
+
 def find_similar_items(titre, category_id, seuil=70):
     """Retourne des objets similaires (même catégorie) triés par score descendant.
-    Utilise une normalisation FR (synonymes/stopwords) via matching.normalize_text.
+    Utilise le score complet (titre + description + lieu) via matching.match_score.
     """
     similaires = []
-    titre_norm = matching.normalize_text(titre or '')
+    probe = SimpleNamespace(title=titre or '', comments='', location='')
     candidats = Item.query.filter(
         Item.category_id == category_id,
         Item.status.in_([Status.LOST, Status.FOUND])
     ).all()
     for obj in candidats:
-        obj_title_norm = matching.normalize_text(obj.title or '')
-        score = fuzz.token_sort_ratio(titre_norm, obj_title_norm)
+        loc = obj.found_location if obj.status == Status.FOUND and obj.found_location else (obj.location or '')
+        candidate = SimpleNamespace(title=obj.title or '', comments=obj.comments or '', location=loc)
+        score = matching.match_score(probe, candidate)
         if score >= seuil:
-            # Détermination de la photo principale
             if hasattr(obj, 'photos') and obj.photos and len(obj.photos) > 0:
                 photo_url = url_for('main.uploaded_file', filename=obj.photos[0].filename)
             elif obj.photo_filename:
                 photo_url = url_for('main.uploaded_file', filename=obj.photo_filename)
             else:
                 photo_url = None
-            # Icône de catégorie
             cat_icon_url = None
             cat_icon_class = None
             try:
@@ -154,7 +168,6 @@ def find_similar_items(titre, category_id, seuil=70):
                 'category_icon_class': cat_icon_class,
                 'url_detail': url_for('main.detail_item', item_id=obj.id)
             })
-    # Tri descendant par score pour une meilleure UX
     similaires.sort(key=lambda x: x['score'], reverse=True)
     return similaires
 
@@ -496,50 +509,60 @@ def detail_item(item_id):
                 return i.photo_filename
             return None
 
-        TEXT_WEIGHT = 0.6
-        IMG_WEIGHT = 0.4
+        _cfg = matching.MATCH_CONFIG
+        TEXT_WEIGHT   = _cfg['text_weight']
+        IMG_WEIGHT    = _cfg['image_weight']
+        IMG_IMG_WEIGHT = _cfg['img_img_weight']
 
         for c in candidats:
             m = to_matchable(c)
-            base_score = matching.match_score(current_matchable, m, fields_weights={'title': 0.55, 'comments': 0.25, 'location': 0.20})
-            # Bonus/malus simples
-            bonus = 10  # catégorie identique assurée par le filtre
+            base_score = matching.match_score(current_matchable, m)
+            # Bonus/malus
+            bonus = _cfg['bonus_same_category']  # catégorie identique assurée par le filtre
             try:
                 dt = abs((item.date_reported - c.date_reported).total_seconds()) if item.date_reported and c.date_reported else None
                 if dt is not None:
                     days = dt / 86400.0
                     if days <= 2:
-                        bonus += 10
+                        bonus += _cfg['bonus_date_close']
                     elif days > 14:
-                        bonus -= 10
+                        bonus -= _cfg['malus_date_far']
             except Exception:
                 pass
-            # Similarité texte->image (texte LOST vs image FOUND)
+            # Chemins d'images (LOST item vs FOUND candidate)
+            img_lost_path = None
+            img_found_path = None
+            if item.status == Status.LOST:
+                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
+                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
+            else:
+                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
+                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
+            # Similarité texte↔image
             img_sim_pct = 0.0
             try:
-                if item.status == Status.LOST:
-                    # Texte courant vs image du candidat FOUND
-                    img_file = primary_photo_filename(c)
-                    if img_file:
-                        image_path = _ensure_image_on_disk_for_matching(img_file)
-                        if not image_path:
-                            raise RuntimeError('Image introuvable')
-                        img_sim = itm.text_image_similarity(f"{current_matchable.title}. {current_matchable.comments}", image_path)
-                        img_sim_pct = round(100.0 * float(img_sim), 2)
-                elif item.status == Status.FOUND:
-                    # Texte du candidat LOST vs image de l'item FOUND
-                    img_file = primary_photo_filename(item)
-                    if img_file:
-                        image_path = _ensure_image_on_disk_for_matching(img_file)
-                        if not image_path:
-                            raise RuntimeError('Image introuvable')
-                        img_sim = itm.text_image_similarity(f"{m.title}. {m.comments}", image_path)
-                        img_sim_pct = round(100.0 * float(img_sim), 2)
+                if item.status == Status.LOST and img_found_path:
+                    sim = itm.text_image_similarity(f"{current_matchable.title}. {current_matchable.comments}", img_found_path)
+                    img_sim_pct = round(100.0 * float(sim), 2)
+                elif item.status == Status.FOUND and img_found_path:
+                    sim = itm.text_image_similarity(f"{m.title}. {m.comments}", img_found_path)
+                    img_sim_pct = round(100.0 * float(sim), 2)
             except Exception:
                 img_sim_pct = 0.0
-
-            # Combinaison pondérée texte + image + bonus
-            combined = (TEXT_WEIGHT * base_score) + (IMG_WEIGHT * img_sim_pct)
+            # Similarité image↔image (quand les deux ont une photo)
+            img_img_pct = 0.0
+            try:
+                if img_lost_path and img_found_path:
+                    sim2 = itm.image_image_similarity(img_lost_path, img_found_path)
+                    img_img_pct = round(100.0 * float(sim2), 2)
+            except Exception:
+                img_img_pct = 0.0
+            # Score final pondéré
+            if img_img_pct > 0:
+                combined = TEXT_WEIGHT * base_score + IMG_WEIGHT * img_sim_pct + IMG_IMG_WEIGHT * img_img_pct
+            else:
+                effective_text = TEXT_WEIGHT + IMG_IMG_WEIGHT
+                combined = effective_text * base_score + IMG_WEIGHT * img_sim_pct
             final_score = max(0, min(100, round(combined + bonus, 2)))
             # Photo principale
             if hasattr(c, 'photos') and c.photos and len(c.photos) > 0:
@@ -574,6 +597,8 @@ def detail_item(item_id):
                 'category_icon_class': cat_icon_class,
                 'category_icon_url': cat_icon_url
             })
+        # Nettoyer les fichiers temporaires créés pour le matching
+        _cleanup_tmp_images()
         # Trier desc et limiter à top 10
         suggestions.sort(key=lambda x: x['score'], reverse=True)
         has_more = len(suggestions) > 10
@@ -750,6 +775,7 @@ def delete_item(item_id):
 
 @bp.route('/export/<status>')
 @login_required
+@admin_required
 def export_items(status):
     try:
         st = Status(status)
@@ -863,56 +889,75 @@ def api_match_explain():
         m1 = to_matchable(i1)
         m2 = to_matchable(i2)
 
-        fields_weights = {'title': 0.55, 'comments': 0.25, 'location': 0.20}
+        _cfg = matching.MATCH_CONFIG
+        fields_weights = _cfg['fields_weights']
+        TEXT_WEIGHT    = _cfg['text_weight']
+        IMG_WEIGHT     = _cfg['image_weight']
+        IMG_IMG_WEIGHT = _cfg['img_img_weight']
+
         score_text = matching.match_score(m1, m2, fields_weights=fields_weights)
         details = matching.match_explanation(m1, m2, fields_weights=fields_weights)
 
-        # Bonus/malus simples (catégorie identique et proximité temporelle)
+        # Bonus/malus (catégorie identique et proximité temporelle)
         bonus = 0
         if i1.category_id == i2.category_id:
-            bonus += 10
+            bonus += _cfg['bonus_same_category']
         try:
             dt = abs((i1.date_reported - i2.date_reported).total_seconds()) if i1.date_reported and i2.date_reported else None
             if dt is not None:
                 days = dt / 86400.0
                 if days <= 2:
-                    bonus += 10
+                    bonus += _cfg['bonus_date_close']
                 elif days > 14:
-                    bonus -= 10
+                    bonus -= _cfg['malus_date_far']
         except Exception:
             pass
 
-        # Similarité texte->image
         def primary_photo_filename(i: Item):
             if hasattr(i, 'photos') and i.photos and len(i.photos) > 0:
                 return i.photos[0].filename
             if i.photo_filename:
                 return i.photo_filename
             return None
+
+        # Déterminer l'image LOST et l'image FOUND
+        img_lost_path = None
+        img_found_path = None
+        if i1.status == Status.LOST and i2.status == Status.FOUND:
+            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
+            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
+        elif i1.status == Status.FOUND and i2.status == Status.LOST:
+            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
+            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
+
+        # Similarité texte↔image
         img_sim_pct = 0.0
-        TEXT_WEIGHT = 0.6
-        IMG_WEIGHT = 0.4
         try:
-            if i1.status == Status.LOST and i2.status == Status.FOUND:
-                img_file = primary_photo_filename(i2)
-                if img_file:
-                    image_path = _ensure_image_on_disk_for_matching(img_file)
-                    if not image_path:
-                        raise RuntimeError('Image introuvable')
-                    sim = itm.text_image_similarity(f"{m1.title}. {m1.comments}", image_path)
-                    img_sim_pct = round(100.0 * float(sim), 2)
-            elif i1.status == Status.FOUND and i2.status == Status.LOST:
-                img_file = primary_photo_filename(i1)
-                if img_file:
-                    image_path = _ensure_image_on_disk_for_matching(img_file)
-                    if not image_path:
-                        raise RuntimeError('Image introuvable')
-                    sim = itm.text_image_similarity(f"{m2.title}. {m2.comments}", image_path)
-                    img_sim_pct = round(100.0 * float(sim), 2)
+            if i1.status == Status.LOST and img_found_path:
+                sim = itm.text_image_similarity(f"{m1.title}. {m1.comments}", img_found_path)
+                img_sim_pct = round(100.0 * float(sim), 2)
+            elif i1.status == Status.FOUND and img_found_path:
+                sim = itm.text_image_similarity(f"{m2.title}. {m2.comments}", img_found_path)
+                img_sim_pct = round(100.0 * float(sim), 2)
         except Exception:
             img_sim_pct = 0.0
 
-        combined = (TEXT_WEIGHT * score_text) + (IMG_WEIGHT * img_sim_pct)
+        # Similarité image↔image
+        img_img_pct = 0.0
+        try:
+            if img_lost_path and img_found_path:
+                sim2 = itm.image_image_similarity(img_lost_path, img_found_path)
+                img_img_pct = round(100.0 * float(sim2), 2)
+        except Exception:
+            img_img_pct = 0.0
+
+        _cleanup_tmp_images()
+
+        if img_img_pct > 0:
+            combined = TEXT_WEIGHT * score_text + IMG_WEIGHT * img_sim_pct + IMG_IMG_WEIGHT * img_img_pct
+        else:
+            effective_text = TEXT_WEIGHT + IMG_IMG_WEIGHT
+            combined = effective_text * score_text + IMG_WEIGHT * img_sim_pct
         final_score = max(0, min(100, round(combined + bonus, 2)))
 
         return jsonify({
@@ -922,7 +967,8 @@ def api_match_explain():
             'bonus': bonus,
             'score_final': final_score,
             'image_similarity': img_sim_pct,
-            'weights': {'text': TEXT_WEIGHT, 'image': IMG_WEIGHT},
+            'image_image_similarity': img_img_pct,
+            'weights': {'text': TEXT_WEIGHT, 'image': IMG_WEIGHT, 'img_img': IMG_IMG_WEIGHT},
             'details': details
         })
     except Exception as e:
@@ -1024,8 +1070,7 @@ def get_all_candidate_pairs(seuil=60):
     for f in found_items:
         found_by_cat[f.category_id].append(f)
 
-    # Pondération des champs : titre, description, lieu
-    fields_weights = {'title': 0.5, 'comments': 0.3, 'location': 0.2}
+    fields_weights = matching.MATCH_CONFIG['fields_weights']
 
     for lost in lost_items:
         candidats = found_by_cat.get(lost.category_id, [])

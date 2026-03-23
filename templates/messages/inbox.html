@@ -84,8 +84,8 @@
       <form method="POST" action="{{ url_for('messaging.new_direct') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="modal-body">
-          <label class="form-label fw-semibold">Destinataire</label>
-          <select name="target_user_id" class="form-select" required>
+          <label class="form-label fw-semibold" for="selectTargetUser">Destinataire</label>
+          <select name="target_user_id" id="selectTargetUser" class="form-select" required>
             <option value="">Sélectionnez un utilisateur…</option>
             {% for u in all_users %}
               <option value="{{ u.id }}">{{ u.first_name }} {{ u.last_name }}{% if u.is_admin %} ⭐{% endif %}</option>

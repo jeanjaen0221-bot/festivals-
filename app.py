@@ -94,7 +94,6 @@ def inject_unread_count():
         pass
     return {'unread_msg_count': 0}
 
-from flask_login import LoginManager
 login_manager = LoginManager(app)
 login_manager.login_view = 'main.auth'
 login_manager.login_message_category = 'info'

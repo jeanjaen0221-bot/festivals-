@@ -36,15 +36,15 @@
     {% endif %}
     <div class="mb-3">
       <label class="form-label"><i class="bi bi-person"></i> {{ form.reporter_name.label.text }}</label>
-      {{ form.reporter_name(class="form-control", placeholder="Votre nom ou pseudo") }}
+      {{ form.reporter_name(class="form-control", placeholder="Votre nom ou pseudo", autocomplete="name") }}
     </div>
     <div class="mb-3">
       <label class="form-label"><i class="bi bi-envelope"></i> {{ form.reporter_email.label.text }}</label>
-      {{ form.reporter_email(class="form-control", placeholder="Votre e-mail pour contact") }}
+      {{ form.reporter_email(class="form-control", placeholder="Votre e-mail pour contact", autocomplete="email") }}
     </div>
     <div class="mb-3">
       <label class="form-label"><i class="bi bi-telephone"></i> {{ form.reporter_phone.label.text }}</label>
-      {{ form.reporter_phone(class="form-control", placeholder="Votre numéro (optionnel)") }}
+      {{ form.reporter_phone(class="form-control", type="tel", placeholder="Votre numéro (optionnel)", autocomplete="tel") }}
     </div>
     {% if item.status.name == 'FOUND' %}
       <div class="mb-3">
@@ -55,7 +55,7 @@
             <div class="row g-2">
               {% for photo in item.photos %}
                 <div class="col-4 col-md-3 text-center">
-                  <img src="{{ url_for('main.uploaded_file', filename=photo.filename) }}" class="img-thumbnail w-100 shadow-sm mb-1" style="aspect-ratio: 1/1; object-fit: cover;" alt="Photo">
+                  <img src="{{ url_for('main.uploaded_file', filename=photo.filename) }}" class="img-thumbnail w-100 shadow-sm mb-1" style="aspect-ratio: 1/1; object-fit: cover;" alt="Photo" loading="lazy">
                   <div>
                     <input type="checkbox" name="delete_photos" value="{{ photo.id }}" id="del-photo-{{ photo.id }}">
                     <label for="del-photo-{{ photo.id }}" class="small text-danger"><i class="bi bi-trash"></i> Supprimer</label>

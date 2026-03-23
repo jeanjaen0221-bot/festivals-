@@ -1,25 +1,22 @@
 import os
 from functools import lru_cache
-from typing import Optional
 
 try:
-    from PIL import Image
+    from PIL import Image as PILImage
 except Exception:  # pragma: no cover
-    Image = None  # type: ignore
+    PILImage = None  # type: ignore
 
 _model = None
-_processor = None
 
 @lru_cache(maxsize=1)
 def _load_model():
     """Charge paresseusement le modèle CLIP via sentence-transformers.
-    Retourne un tuple (model, processor) ou (None, None) si indisponible.
+    Retourne le modèle ou None si indisponible.
     """
     global _model
     if _model is not None:
         return _model
     try:
-        # Utilise un modèle CLIP compact compatible CPU
         from sentence_transformers import SentenceTransformer
         model = SentenceTransformer('clip-ViT-B-32')
         _model = model
@@ -42,40 +39,41 @@ def embed_text(text: str):
     if not model:
         return None
     try:
-        return model.encode([text or '' ], convert_to_numpy=True)[0]
+        return model.encode([text or ''], convert_to_numpy=True)[0]
     except Exception:
         return None
 
 
 def embed_image(image_path: str):
+    """Encode une image via CLIP. Utilise PIL pour charger et passer l'image au modèle."""
     model = _load_model()
     if not model:
         return None
     if not image_path or not os.path.exists(image_path):
         return None
+    if PILImage is None:
+        return None
     try:
-        # SentenceTransformers supporte encode_images si backends installés
-        # Alternative: encode avec encode + PIL via encode_image
-        from sentence_transformers import SentenceTransformer
-        if hasattr(model, 'encode_image'):
-            from PIL import Image as PILImage
-            img = PILImage.open(image_path).convert('RGB')
-            return model.encode_image(img, convert_to_numpy=True)
-        elif hasattr(model, 'encode') and hasattr(model, 'encode_images'):
-            return model.encode_images([image_path], convert_to_numpy=True)[0]
-        else:
-            # Fallback: pas support
-            return None
+        img = PILImage.open(image_path).convert('RGB')
+        # sentence-transformers CLIP : model.encode accepte PIL.Image directement
+        return model.encode(img, convert_to_numpy=True)
     except Exception:
         return None
 
 
 def text_image_similarity(text: str, image_path: str) -> float:
-    """Retourne une similarité cosine entre le texte et l'image (0..1).
-    0 si indisponible.
-    """
+    """Similarité cosine entre un texte et une image (0..1). 0 si indisponible."""
     t = embed_text(text)
     i = embed_image(image_path)
     if t is None or i is None:
         return 0.0
     return _cosine_sim(t, i)
+
+
+def image_image_similarity(image_path1: str, image_path2: str) -> float:
+    """Similarité cosine entre deux images via CLIP (0..1). 0 si indisponible."""
+    i1 = embed_image(image_path1)
+    i2 = embed_image(image_path2)
+    if i1 is None or i2 is None:
+        return 0.0
+    return _cosine_sim(i1, i2)

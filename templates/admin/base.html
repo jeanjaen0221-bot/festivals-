@@ -1,6 +1,96 @@
 {% extends 'base.html' %}
 {% block title %}Admin | {{ super() }}{% endblock %}
-
+{% block extra_head %}
+<style>
+  body {
+    background-color: #f8f9fa;
+  }
+  .sidebar {
+    min-height: 100vh;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+    background: linear-gradient(180deg, #212529 80%, #343a40 100%);
+    position: relative;
+  }
+  .sidebar .nav-link.active {
+    background: #0d6efd;
+    color: #fff !important;
+    font-weight: bold;
+    border-radius: 5px;
+  }
+  .sidebar .nav-link {
+    transition: background 0.2s;
+    border-radius: 5px;
+    margin-bottom: 2px;
+    font-size: 1.08rem;
+  }
+  .sidebar .nav-link:hover {
+    background: #0d6efd33;
+    color: #fff !important;
+  }
+  .btn-close[aria-label="Fermer le menu"] {
+    display: none;
+  }
+  @media (max-width: 991.98px) {
+    #sidebarMenu {
+      position: fixed;
+      z-index: 9999;
+      left: 0;
+      top: 0;
+      height: 100vh;
+      width: 220px;
+      background: #212529;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease-in-out;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.15);
+      display: block !important;
+    }
+    #sidebarMenu.show {
+      transform: translateX(0);
+    }
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 9998;
+    }
+    .btn-close[aria-label="Fermer le menu"] {
+      display: block;
+    }
+    .position-sticky.pt-3 {
+      padding-top: 3.5rem !important;
+    }
+    .zindex-tooltip {
+      z-index: 1052 !important;
+    }
+  }
+  @media (max-width: 767.98px) {
+    main, #adminMainContent {
+      padding: 1rem 0.5rem !important;
+    }
+    .sidebar {
+      font-size: 1rem;
+    }
+    .navbar, .d-flex.justify-content-between.flex-wrap.flex-md-nowrap.align-items-center.pb-2.mb-3.border-bottom {
+      position: sticky;
+      top: 0;
+      z-index: 1030;
+      background: #fff;
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+    }
+  }
+  html, body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  @media (min-width: 992px) {
+    .lf-layout, .lf-sidebar { display: none !important; }
+    .lf-content { margin-left: 0 !important; }
+    .img-border-left, .img-border-right { display: none !important; }
+  }
+</style>
+{% endblock %}
 {% block content %}
 <div class="container-fluid">
   <!-- Hamburger menu for mobile -->
@@ -9,7 +99,7 @@
   </button>
   <div class="row">
     <!-- Sidebar -->
-    <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-block bg-dark sidebar" aria-label="Menu administratif" aria-controls="sidebarMenu" aria-expanded="false">
+    <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-block bg-dark sidebar" aria-label="Menu administratif">
       <!-- Mobile close button -->
       <button type="button" class="btn-close btn-close-white d-lg-none position-absolute top-0 end-0 m-3" style="z-index:1051;" aria-label="Fermer le menu" onclick="toggleSidebar(false)"></button>
       <div class="position-sticky pt-3">
@@ -151,7 +241,7 @@
           {% for category, message in messages %}
             <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
               {{ message }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
             </div>
           {% endfor %}
         {% endif %}
@@ -161,97 +251,6 @@
   </div>
 </div>
 
-<style>
-  body {
-    background-color: #f8f9fa;
-  }
-  .sidebar {
-    min-height: 100vh;
-    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
-    background: linear-gradient(180deg, #212529 80%, #343a40 100%);
-    position: relative;
-  }
-  .sidebar .nav-link.active {
-    background: #0d6efd;
-    color: #fff !important;
-    font-weight: bold;
-    border-radius: 5px;
-  }
-  .sidebar .nav-link {
-    transition: background 0.2s;
-    border-radius: 5px;
-    margin-bottom: 2px;
-    font-size: 1.08rem;
-  }
-  .sidebar .nav-link:hover {
-    background: #0d6efd33;
-    color: #fff !important;
-  }
-  .btn-close[aria-label="Fermer le menu"] {
-    display: none;
-  }
-  @media (max-width: 991.98px) {
-    #sidebarMenu {
-      position: fixed;
-      z-index: 9999;
-      left: 0;
-      top: 0;
-      height: 100vh;
-      width: 220px;
-      background: #212529;
-      transform: translateX(-100%);
-      transition: transform 0.3s ease-in-out;
-      box-shadow: 2px 0 10px rgba(0,0,0,0.15);
-      display: block !important;
-    }
-    #sidebarMenu.show {
-      transform: translateX(0);
-    }
-    .sidebar-backdrop {
-      display: block;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.35);
-      z-index: 9998;
-    }
-    .btn-close[aria-label="Fermer le menu"] {
-      display: block;
-    }
-    .position-sticky.pt-3 {
-      padding-top: 3.5rem !important;
-    }
-    .zindex-tooltip {
-      z-index: 1052 !important;
-    }
-  }
-  @media (max-width: 767.98px) {
-    main, #adminMainContent {
-      padding: 1rem 0.5rem !important;
-    }
-    .sidebar {
-      font-size: 1rem;
-    }
-    .navbar, .d-flex.justify-content-between.flex-wrap.flex-md-nowrap.align-items-center.pb-2.mb-3.border-bottom {
-      position: sticky;
-      top: 0;
-      z-index: 1030;
-      background: #fff;
-      padding-top: 0.5rem;
-      padding-bottom: 0.5rem;
-    }
-  }
-  /* Prevent horizontal scroll on mobile */
-  html, body {
-    max-width: 100vw;
-    overflow-x: hidden;
-  }
-  /* Masquer la sidebar utilisateur sur les pages admin (desktop) */
-  @media (min-width: 992px) {
-    .lf-layout, .lf-sidebar { display: none !important; }
-    .lf-content { margin-left: 0 !important; }
-    .img-border-left, .img-border-right { display: none !important; }
-  }
-</style>
 <script>
   // Sidebar responsive toggle
   document.addEventListener('DOMContentLoaded', function() {

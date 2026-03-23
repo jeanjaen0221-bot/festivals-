@@ -64,13 +64,13 @@
   <table class="table table-hover align-middle">
       <thead class="table-light">
         <tr>
-          <th>Nom</th>
-          <th>Prénom</th>
-          <th>Téléphone</th>
-          <th>Caution</th>
-          <th>Date prêt</th>
-          <th>Date retour</th>
-          <th>Signature retour</th>
+          <th scope="col">Nom</th>
+          <th scope="col">Prénom</th>
+          <th scope="col">Téléphone</th>
+          <th scope="col">Caution</th>
+          <th scope="col">Date prêt</th>
+          <th scope="col">Date retour</th>
+          <th scope="col">Signature retour</th>
         </tr>
       </thead>
       <tbody>
@@ -80,7 +80,7 @@
           <td>{{ loan.first_name }}</td>
           <td>{{ loan.phone }}</td>
           <td>
-            {% if loan.deposit_type == 'id_card' or loan.deposit_type.name == 'ID_CARD' %}
+            {% if loan.deposit_type.name == 'ID_CARD' %}
               Carte d'identité
             {% else %}
               Caution en argent

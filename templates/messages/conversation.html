@@ -64,7 +64,7 @@
     </div>
     <form method="POST" action="{{ url_for('messaging.pin_message', conv_id=conv.id, msg_id=m.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-xs btn-link text-muted p-0 ms-1" title="Désépingler"><i class="bi bi-x"></i></button>
+      <button class="btn btn-sm btn-link text-muted p-0 ms-1" title="Désépingler" aria-label="Désépingler"><i class="bi bi-x"></i></button>
     </form>
   </div>
   {% endfor %}
@@ -111,7 +111,7 @@
             {% if m.pinned %}<i class="bi bi-pin-fill text-warning" style="font-size:.75rem;" title="Épinglé"></i>{% endif %}
             <!-- Actions message -->
             <div class="dropdown">
-              <button class="btn btn-link p-0 text-muted" style="font-size:.75rem;" data-bs-toggle="dropdown" aria-expanded="false">
+              <button class="btn btn-link p-0 text-muted" style="font-size:.75rem;" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions du message">
                 <i class="bi bi-three-dots"></i>
               </button>
               <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:.9rem;min-width:150px;">
@@ -170,8 +170,8 @@
   <div class="input-group shadow-sm">
     <textarea name="body" id="msgInput" class="form-control rounded-start-4"
               rows="2" placeholder="Écrire un message…" maxlength="2000"
-              style="resize:none;" required></textarea>
-    <button type="submit" class="btn btn-primary rounded-end-4 px-3">
+              style="resize:none;" required aria-label="Message"></textarea>
+    <button type="submit" class="btn btn-primary rounded-end-4 px-3" aria-label="Envoyer">
       <i class="bi bi-send-fill"></i>
     </button>
   </div>
@@ -221,14 +221,14 @@
         <div class="d-flex gap-1">
           <form method="POST" action="{{ url_for('messaging.promote_member', conv_id=conv.id, uid=p.user_id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-xs btn-outline-secondary py-0 px-1" title="Changer le rôle" style="font-size:.75rem;">
+            <button class="btn btn-sm btn-outline-secondary py-0 px-1" title="Changer le rôle" aria-label="Changer le rôle" style="font-size:.75rem;">
               <i class="bi bi-arrow-up-down"></i>
             </button>
           </form>
           <form method="POST" action="{{ url_for('messaging.remove_member', conv_id=conv.id, uid=p.user_id) }}"
                 onsubmit="return confirm('Retirer ce membre ?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-xs btn-outline-danger py-0 px-1" title="Retirer" style="font-size:.75rem;">
+            <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Retirer" aria-label="Retirer le membre" style="font-size:.75rem;">
               <i class="bi bi-person-dash"></i>
             </button>
           </form>
@@ -244,7 +244,7 @@
     <form method="POST" action="{{ url_for('messaging.add_member', conv_id=conv.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="input-group input-group-sm">
-        <select name="user_id" class="form-select" required>
+        <select name="user_id" class="form-select" required aria-label="Membre à ajouter">
           <option value="">Choisir…</option>
           {% set member_ids = participants | map(attribute='user_id') | list %}
           {% for u in all_users %}

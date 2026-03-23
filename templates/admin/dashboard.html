@@ -123,7 +123,9 @@
     <div class="card shadow-sm border-0 h-100">
       <div class="card-body">
         <h6 class="fw-bold mb-3"><i class="bi bi-pie-chart text-primary me-1"></i> Répartition des objets</h6>
-        <canvas id="itemsChart" style="max-height:220px;"></canvas>
+        <canvas id="itemsChart" style="max-height:220px;" role="img" aria-label="Graphique de répartition : objets trouvés, perdus et rendus">
+          <p class="visually-hidden">Trouvés : {{ nb_found }}, Perdus : {{ nb_lost }}, Rendus : {{ nb_returned }}</p>
+        </canvas>
       </div>
     </div>
   </div>

@@ -1,11 +1,35 @@
 {% extends 'admin/base.html' %}
 {% block admin_title %}Logs{% endblock %}
-
+{% block extra_head %}{{ super() }}
+<style>
+.log-row {
+    transition: background-color 0.2s;
+}
+.log-row.delete-mode {
+    cursor: pointer;
+}
+.log-row.delete-mode:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+.delete-column {
+    width: 50px;
+}
+#deleteModeAlert {
+    position: sticky;
+    top: 1rem;
+    z-index: 1000;
+}
+@media (max-width: 768px) {
+    .delete-column { width: 40px; }
+    .delete-log-btn { padding: 0.15rem 0.4rem; }
+}
+</style>
+{% endblock %}
 {% block admin_content %}
 <div class="card shadow-sm border-0 mb-4">
   <div class="card-body">
       <div class="text-end mb-2">
-        <img src="{{ url_for('static', filename='img/tete-mort-1.avif') }}" id="activateDeleteMode" alt="Activer mode suppression" title="Activer le mode suppression" style="height: 32px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">
+        <img src="{{ url_for('static', filename='img/tete-mort-1.avif') }}" id="activateDeleteMode" alt="Activer mode suppression" title="Activer le mode suppression" style="height: 32px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7" loading="lazy">
       </div>
     <div class="alert alert-warning d-none" id="deleteModeAlert">
       <i class="bi bi-exclamation-triangle-fill me-2"></i>
@@ -14,10 +38,10 @@
     </div>
     <form class="row g-2 mb-3" method="get">
       <div class="col-md-4">
-        <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="Recherche (action ou détails)">
+        <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="Recherche (action ou détails)" aria-label="Rechercher dans les logs">
       </div>
       <div class="col-md-3">
-        <select name="action_type" class="form-select">
+        <select name="action_type" class="form-select" aria-label="Filtrer par type d'action">
           <option value="">Tous types d'action</option>
           {% for atype in action_types %}
             <option value="{{ atype }}" {% if atype == action_type %}selected{% endif %}>{{ atype }}</option>
@@ -35,11 +59,11 @@
       <table class="table table-striped align-middle">
         <thead class="table-light">
           <tr>
-            <th>Date</th>
-            <th>Utilisateur</th>
-            <th>Action</th>
-            <th>Détails</th>
-            <th class="delete-column d-none">Supprimer</th>
+            <th scope="col">Date</th>
+            <th scope="col">Utilisateur</th>
+            <th scope="col">Action</th>
+            <th scope="col">Détails</th>
+            <th scope="col" class="delete-column d-none">Supprimer</th>
           </tr>
         </thead>
         <tbody>
@@ -63,11 +87,11 @@
     </div>
     
     <!-- Modal de confirmation de suppression -->
-    <div class="modal fade" id="deleteLogModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="deleteLogModal" tabindex="-1" aria-labelledby="deleteLogModalLabel" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Confirmer la suppression</h5>
+            <h5 class="modal-title" id="deleteLogModalLabel">Confirmer la suppression</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
           </div>
           <div class="modal-body">
@@ -86,7 +110,7 @@
     <nav aria-label="Pagination logs">
       <ul class="pagination justify-content-center">
         <li class="page-item {% if not logs.has_prev %}disabled{% endif %}">
-          <a class="page-link" href="{{ url_for('admin.admin_logs', page=logs.prev_num, search=search, action_type=action_type) }}">&laquo;</a>
+          <a class="page-link" href="{{ url_for('admin.admin_logs', page=logs.prev_num, search=search, action_type=action_type) }}" aria-label="Page précédente">&laquo;</a>
         </li>
         {% for p in range(1, logs.pages+1) %}
           <li class="page-item {% if logs.page == p %}active{% endif %}">
@@ -94,138 +118,81 @@
           </li>
         {% endfor %}
         <li class="page-item {% if not logs.has_next %}disabled{% endif %}">
-          <a class="page-link" href="{{ url_for('admin.admin_logs', page=logs.next_num, search=search, action_type=action_type) }}">&raquo;</a>
+          <a class="page-link" href="{{ url_for('admin.admin_logs', page=logs.next_num, search=search, action_type=action_type) }}" aria-label="Page suivante">&raquo;</a>
         </li>
       </ul>
     </nav>
   </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-{{ super() }}
 <script>
-$(document).ready(function() {
+document.addEventListener('DOMContentLoaded', function() {
     let deleteMode = false;
     let currentLogId = null;
-    
-    // Activer/désactiver le mode suppression en cliquant sur l'icône tête de mort
-    $('#activateDeleteMode').on('click', function(e) {
-        console.log('Clic sur la tête de mort détecté');
-        toggleDeleteMode();
+    var csrfToken = '{{ csrf_token() }}';
+
+    var activateBtn = document.getElementById('activateDeleteMode');
+    if (activateBtn) {
+        activateBtn.addEventListener('click', function() { toggleDeleteMode(); });
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (deleteMode && e.key === 'Escape') { e.preventDefault(); toggleDeleteMode(false); }
     });
-    // Échap pour quitter le mode suppression
-    $(document).on('keydown', function(e) {
-        if (deleteMode && e.key === 'Escape') {
-            e.preventDefault();
-            toggleDeleteMode(false);
+
+    var longPressTimer;
+    var h1El = document.querySelector('h1');
+    if (h1El) {
+        h1El.addEventListener('touchstart', function() { longPressTimer = setTimeout(function() { toggleDeleteMode(); }, 1000); });
+        h1El.addEventListener('touchend',   function() { clearTimeout(longPressTimer); });
+        h1El.addEventListener('touchmove',  function() { clearTimeout(longPressTimer); });
+    }
+
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.delete-log-btn');
+        if (btn) {
+            e.stopPropagation();
+            var row = btn.closest('.log-row');
+            currentLogId = row ? row.dataset.logId : null;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteLogModal')).show();
         }
     });
-    
-    // Activer/désactiver le mode suppression sur mobile (appui long sur le titre)
-    let longPressTimer;
-    $('h1').on({
-        'touchstart': function() {
-            longPressTimer = setTimeout(function() {
-                toggleDeleteMode();
-            }, 1000);
-        },
-        'touchend': function() {
-            clearTimeout(longPressTimer);
-        },
-        'touchmove': function() {
-            clearTimeout(longPressTimer);
-        }
-    });
-    
-    // Gérer le clic sur un bouton de suppression
-    $(document).on('click', '.delete-log-btn', function(e) {
-        e.stopPropagation();
-        currentLogId = $(this).closest('.log-row').data('log-id');
-        $('#deleteLogModal').modal('show');
-    });
-    
-    // Confirmer la suppression
-    $('#confirmDeleteLog').on('click', function() {
-        if (!currentLogId) return;
-        
-        $.ajax({
-            url: `/admin/logs/${currentLogId}/delete`,
-            method: 'POST',
-            contentType: 'application/json',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token() }}'
-            },
-            success: function(response) {
-                if (response.success) {
-                    $(`.log-row[data-log-id="${currentLogId}"]`).fadeOut(400, function() {
-                        $(this).remove();
-                    });
+
+    var confirmBtn = document.getElementById('confirmDeleteLog');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            if (!currentLogId) return;
+            fetch('/admin/logs/' + currentLogId + '/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: '{}'
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    var row = document.querySelector('.log-row[data-log-id="' + currentLogId + '"]');
+                    if (row) { row.style.transition = 'opacity 0.4s'; row.style.opacity = '0'; setTimeout(function(){ row.remove(); }, 400); }
                 } else {
-                    alert(response.message || 'Erreur lors de la suppression du log');
+                    alert(data.message || 'Erreur lors de la suppression du log');
                 }
-                $('#deleteLogModal').modal('hide');
-            },
-            error: function(xhr) {
-                const response = xhr.responseJSON || {};
-                alert(response.message || 'Erreur lors de la suppression du log');
-                $('#deleteLogModal').modal('hide');
-            }
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteLogModal')).hide();
+            })
+            .catch(function() {
+                alert('Erreur lors de la suppression du log');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteLogModal')).hide();
+            });
         });
-    });
-    
-    // Quitter le mode suppression
-    $('#exitDeleteMode').on('click', function() {
-        toggleDeleteMode(false);
-    });
-    
-    function toggleDeleteMode(enable = null) {
-        deleteMode = (enable !== null) ? enable : !deleteMode;
-        
-        if (deleteMode) {
-            $('.delete-column').removeClass('d-none');
-            $('.log-row').addClass('delete-mode');
-            $('#deleteModeAlert').removeClass('d-none');
-        } else {
-            $('.delete-column').addClass('d-none');
-            $('.log-row').removeClass('delete-mode');
-            $('#deleteModeAlert').addClass('d-none');
-        }
+    }
+
+    var exitBtn = document.getElementById('exitDeleteMode');
+    if (exitBtn) { exitBtn.addEventListener('click', function() { toggleDeleteMode(false); }); }
+
+    function toggleDeleteMode(enable) {
+        deleteMode = (enable !== undefined && enable !== null) ? enable : !deleteMode;
+        document.querySelectorAll('.delete-column').forEach(function(el) { el.classList.toggle('d-none', !deleteMode); });
+        document.querySelectorAll('.log-row').forEach(function(el) { el.classList.toggle('delete-mode', deleteMode); });
+        var alertEl = document.getElementById('deleteModeAlert');
+        if (alertEl) alertEl.classList.toggle('d-none', !deleteMode);
     }
 });
 </script>
-
-<style>
-.log-row {
-    transition: background-color 0.2s;
-}
-
-.log-row.delete-mode {
-    cursor: pointer;
-}
-
-.log-row.delete-mode:hover {
-    background-color: rgba(220, 53, 69, 0.1);
-}
-
-.delete-column {
-    width: 50px;
-}
-
-#deleteModeAlert {
-    position: sticky;
-    top: 1rem;
-    z-index: 1000;
-}
-
-@media (max-width: 768px) {
-    .delete-column {
-        width: 40px;
-    }
-    
-    .delete-log-btn {
-        padding: 0.15rem 0.4rem;
-    }
-}
-</style>
 {% endblock %}

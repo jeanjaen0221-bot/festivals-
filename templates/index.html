@@ -55,7 +55,7 @@
                   {% if item.category %}
                     {% set icon_info = item.category.get_icon_display() %}
                     {% if icon_info.type == 'image' %}
-                      <img src="{{ icon_info.url }}" class="d-block" alt="Icône catégorie" style="max-height: 160px; max-width: 90%; object-fit: contain;">
+                      <img src="{{ icon_info.url }}" class="d-block" alt="Icône catégorie" style="max-height: 160px; max-width: 90%; object-fit: contain;" loading="lazy">
                     {% else %}
                       <i class="{{ icon_info.class }}" style="font-size:3rem; color:#6c757d;"></i>
                     {% endif %}

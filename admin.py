@@ -1,5 +1,8 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort, make_response
 import os
+import uuid
+import json
+from functools import wraps
 from collections import defaultdict
 from io import BytesIO
 from werkzeug.utils import secure_filename
@@ -11,15 +14,15 @@ ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 # Ancien système d'icônes supprimé - plus besoin d'importer fetch_category_icons
 from flask_login import login_required, current_user
 from app import db
-from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, ConversationParticipant, Message, ConvType, ParticipantRole
-from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm
+from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, ConversationParticipant, Message, ConvType, ParticipantRole, Category
+from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm, CategoryIconForm
 from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from zoneinfo import ZoneInfo
+import sqlalchemy as sa
 
 def admin_required(f):
-    from functools import wraps
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated or not current_user.is_admin:
@@ -65,9 +68,6 @@ def admin_counters_ctx():
 @login_required
 @admin_required
 def category_icons():
-    from models import Category
-    from forms import CategoryIconForm
-    
     categories = Category.query.order_by(Category.name).all()
     csrf_form = SimpleCsrfForm()
     icon_form = CategoryIconForm()
@@ -81,7 +81,6 @@ def category_icons():
 @login_required
 @admin_required
 def delete_category(category_id):
-    from models import Category
     category = db.get_or_404(Category, category_id)
     csrf_form = SimpleCsrfForm()
     if not csrf_form.validate_on_submit():
@@ -95,7 +94,6 @@ def delete_category(category_id):
 # Route pour servir les images personnalisées
 @bp_admin.route('/category-icons/<int:category_id>/icon')
 def category_icon_data(category_id):
-    from models import Category
     category = db.get_or_404(Category, category_id)
     if not category.has_custom_icon:
         return '', 404
@@ -105,10 +103,6 @@ def category_icon_data(category_id):
 @login_required
 @admin_required
 def update_category_icon(category_id):
-    from models import Category
-    from forms import CategoryIconForm
-    import os
-    
     category = db.get_or_404(Category, category_id)
     form = CategoryIconForm()
     
@@ -175,8 +169,6 @@ def update_category_icon(category_id):
 @login_required
 @admin_required
 def remove_custom_icon(category_id):
-    from models import Category
-    
     category = db.get_or_404(Category, category_id)
     csrf_form = SimpleCsrfForm()
     
@@ -236,7 +228,6 @@ def admin_dashboard():
 @admin_required
 def deletion_requests():
     items = Item.query.filter_by(status=Status.PENDING_DELETION).order_by(Item.date_reported.desc()).all()
-    from models import HeadphoneLoan, LoanStatus
     loans = HeadphoneLoan.query.filter_by(status=LoanStatus.PENDING_DELETION).order_by(HeadphoneLoan.loan_date.desc()).all()
     csrf_form = SimpleCsrfForm()
     return render_template('admin/deletion_requests.html', items=items, loans=loans, csrf_form=csrf_form)
@@ -257,8 +248,6 @@ def confirm_deletion(item_id):
 @login_required
 @admin_required
 def confirm_loan_deletion(loan_id):
-    from models import HeadphoneLoan
-    from forms import SimpleCsrfForm
     form = SimpleCsrfForm()
     loan = db.get_or_404(HeadphoneLoan, loan_id)
     if form.validate_on_submit():
@@ -278,8 +267,6 @@ def confirm_loan_deletion(loan_id):
 @login_required
 @admin_required
 def reject_loan_deletion(loan_id):
-    from models import HeadphoneLoan, LoanStatus
-    from forms import SimpleCsrfForm
     form = SimpleCsrfForm()
     loan = db.get_or_404(HeadphoneLoan, loan_id)
     if form.validate_on_submit():
@@ -329,7 +316,6 @@ def admin_users():
 @login_required
 @admin_required
 def user_detail(user_id):
-    from forms import SimpleCsrfForm, HeadphoneLoanForm
     user = db.get_or_404(User, user_id)
     csrf_form = SimpleCsrfForm()
     return render_template('admin/user_detail.html', user=user, csrf_form=csrf_form)
@@ -338,7 +324,6 @@ def user_detail(user_id):
 @login_required
 @admin_required
 def toggle_admin(user_id):
-    from forms import SimpleCsrfForm, HeadphoneLoanForm
     form = SimpleCsrfForm()
     user = db.get_or_404(User, user_id)
     if form.validate_on_submit():
@@ -356,7 +341,6 @@ def toggle_admin(user_id):
 @login_required
 @admin_required
 def delete_user(user_id):
-    from forms import SimpleCsrfForm, HeadphoneLoanForm
     form = SimpleCsrfForm()
     user = db.get_or_404(User, user_id)
     if user.id == current_user.id:
@@ -394,7 +378,6 @@ def export_helmet_rentals():
     rentals = HeadphoneLoan.query.order_by(HeadphoneLoan.loan_date.desc()).all()
     # Format HTML (peut être adapté pour CSV)
     html = render_template('export_helmet_rentals.html', rentals=rentals)
-    from flask import make_response
     response = make_response(html)
     response.headers['Content-Type'] = 'text/html; charset=utf-8'
     response.headers['Content-Disposition'] = 'attachment; filename=export_locations_casques.html'
@@ -522,7 +505,6 @@ def goodies_pos():
         if not csrf_form.validate_on_submit():
             flash('Erreur CSRF.', 'danger')
             return redirect(url_for('admin.goodies_pos'))
-        import json
         try:
             cart_json = request.form.get('cart_json', '[]')
             cart = json.loads(cart_json)
@@ -611,8 +593,6 @@ def goodies_products():
         # Handle optional image upload
         file = form.image.data
         if file and getattr(file, 'filename', ''):
-            from werkzeug.utils import secure_filename
-            import uuid, os
             ext = os.path.splitext(file.filename)[1].lower()
             fname = f"prod_{uuid.uuid4().hex}{ext}"
             safe = secure_filename(fname)
@@ -650,7 +630,6 @@ def goodies_product_edit(pid):
         p.active = bool(form.active.data)
         file = form.image.data
         if file and getattr(file, 'filename', ''):
-            import uuid, os
             ext = os.path.splitext(file.filename)[1].lower()
             fname = f"prod_{uuid.uuid4().hex}{ext}"
             safe = secure_filename(fname)
@@ -906,7 +885,6 @@ def goodies_z_ticket_download(filename):
 @login_required
 @admin_required
 def admin_messages():
-    import sqlalchemy as sa
     convs = (Conversation.query
              .order_by(Conversation.created_at.desc())
              .all())
@@ -1000,6 +978,7 @@ def admin_delete_conversation(conv_id):
 
 @bp_admin.route('/goodies/last_z', methods=['GET'])
 @login_required
+@admin_required
 def goodies_last_z():
     last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
     iso = last.to_ts.isoformat() if last and last.to_ts else ''

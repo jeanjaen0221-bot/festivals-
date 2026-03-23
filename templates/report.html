@@ -38,7 +38,7 @@
                   </div>
                   <div class="mb-2 text-success-emphasis small">
                     Vous avez trouvé un objet ? Remplissez ce formulaire.<br>
-                    <span class="fw-semibold">Attention :</span> Si vous avez perdu un objet, utilisez le formulaire rouge à gauche.
+                    <span class="fw-semibold">Attention :</span> Si vous avez <em>perdu</em> un objet, utilisez le formulaire <strong>Objet perdu</strong>.
                   </div>
                   {% include '_item_form_fields.html' with context %}
 
@@ -83,7 +83,7 @@
                   </div>
                   <div class="mb-2 text-danger-emphasis small">
                     Vous avez perdu un objet ? Remplissez ce formulaire.<br>
-                    <span class="fw-semibold">Attention :</span> Si vous avez trouvé un objet, utilisez le bouton vert à droite.
+                    <span class="fw-semibold">Attention :</span> Si vous avez <em>trouvé</em> un objet, utilisez le formulaire <strong>Objet trouvé</strong> depuis la page de déclaration.
                   </div>
                   {% include '_item_form_fields.html' with context %}
 
@@ -128,7 +128,7 @@ function confirmFoundSubmit() {
   return confirm("Confirmez-vous que vous voulez déclarer un objet TROUVÉ ?\n\nUtilisez ce formulaire uniquement si vous rendez un objet trouvé.");
 }
 document.addEventListener('DOMContentLoaded', function() {
-  var lostForm = document.querySelector('form[action=""], form[action="."]');
+  var lostForm = document.getElementById('itemForm');
   var lostBtn = document.getElementById('submit-lost-btn');
   var foundBtn = document.getElementById('submit-found-btn');
   if(lostForm) {

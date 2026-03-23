@@ -85,10 +85,10 @@
       const row = document.createElement('div'); row.className='list-group-item d-flex justify-content-between align-items-center';
       row.innerHTML = '<div><div class="fw-semibold">'+it.name+'</div><div class="text-muted small">'+fmt(it.price)+'</div></div>'+
         '<div class="d-flex align-items-center gap-2">'+
-        '<button class="btn btn-sm btn-outline-secondary" data-act="minus" data-id="'+it.id+'">−</button>'+
-        '<span class="fw-bold">'+it.qty+'</span>'+
-        '<button class="btn btn-sm btn-outline-secondary" data-act="plus" data-id="'+it.id+'">+</button>'+
-        '<button class="btn btn-sm btn-outline-danger" data-act="rm" data-id="'+it.id+'"><i class="bi bi-x"></i></button>'+
+        '<button class="btn btn-sm btn-outline-secondary" data-act="minus" data-id="'+it.id+'" aria-label="Retirer un '+it.name+'">−</button>'+
+        '<span class="fw-bold" aria-live="polite">'+it.qty+'</span>'+
+        '<button class="btn btn-sm btn-outline-secondary" data-act="plus" data-id="'+it.id+'" aria-label="Ajouter un '+it.name+'">+</button>'+
+        '<button class="btn btn-sm btn-outline-danger" data-act="rm" data-id="'+it.id+'" aria-label="Supprimer '+it.name+' du panier"><i class="bi bi-x"></i></button>'+
         '</div>';
       list.appendChild(row);
     });

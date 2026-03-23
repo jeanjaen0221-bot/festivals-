@@ -9,15 +9,15 @@
       <div class="row g-3">
         <div class="col-md-3">
           {{ form.first_name.label(class="form-label") }}
-          {{ form.first_name(class="form-control") }}
+          {{ form.first_name(class="form-control", autocomplete="given-name") }}
         </div>
         <div class="col-md-3">
           {{ form.last_name.label(class="form-label") }}
-          {{ form.last_name(class="form-control") }}
+          {{ form.last_name(class="form-control", autocomplete="family-name") }}
         </div>
         <div class="col-md-3">
           {{ form.phone.label(class="form-label") }}
-          {{ form.phone(class="form-control") }}
+          {{ form.phone(class="form-control", type="tel", autocomplete="tel") }}
         </div>
         <div class="col-md-3">
           {{ form.deposit_type.label(class="form-label mb-2") }}
@@ -85,16 +85,16 @@
 <table class="table table-hover align-middle">
       <thead class="table-light">
         <tr>
-          <th>Nom</th>
-          <th>Prénom</th>
-          <th>Téléphone</th>
-          <th>Quantité</th>
-          <th>Caution</th>
-          <th>Montant (€)</th>
-          <th>Date prêt</th>
-          <th>Date retour</th>
-          <th>Signature retour</th>
-          <th>Action</th>
+          <th scope="col">Nom</th>
+          <th scope="col">Prénom</th>
+          <th scope="col">Téléphone</th>
+          <th scope="col">Quantité</th>
+          <th scope="col">Caution</th>
+          <th scope="col">Montant (€)</th>
+          <th scope="col">Date prêt</th>
+          <th scope="col">Date retour</th>
+          <th scope="col">Signature retour</th>
+          <th scope="col">Action</th>
         </tr>
       </thead>
       <tbody>

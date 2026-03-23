@@ -11,7 +11,7 @@
           </div>
           <ul class="mb-2 ps-3">
             <li>Remplissez <b>Email</b> et <b>Mot de passe</b> dans l’onglet <b>Créer un compte</b>.</li>
-            <li>Mot de passe&nbsp;: minimum 6 caractères.</li>
+            <li>Mot de passe&nbsp;: minimum 8 caractères.</li>
             <li>Accès immédiat après inscription.</li>
             <li>Organisateur&nbsp;? Cochez “Créer un compte administrateur”.</li>
           </ul>
@@ -62,11 +62,11 @@
         <input type="hidden" name="csrf_token" value="{{ register_form.csrf_token._value() }}" id="register_csrf_token">
         <div class="mb-3">
           {{ register_form.first_name.label(class="form-label", for="register_first_name") }}
-          {{ register_form.first_name(class="form-control", id="register_first_name") }}
+          {{ register_form.first_name(class="form-control", id="register_first_name", autocomplete="given-name") }}
         </div>
         <div class="mb-3">
           {{ register_form.last_name.label(class="form-label", for="register_last_name") }}
-          {{ register_form.last_name(class="form-control", id="register_last_name") }}
+          {{ register_form.last_name(class="form-control", id="register_last_name", autocomplete="family-name") }}
         </div>
         <div class="mb-3">
           {{ register_form.email.label(class="form-label", for="register_email") }}

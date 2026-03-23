@@ -2,8 +2,11 @@
 @media (min-width: 576px) and (max-width: 767.98px) {
   .card-img-top,
   .bg-light[style*='height: 220px;'],
+  .bg-light[style*='height:220px;'],
   .bg-light[style*='height: 200px;'],
-  .bg-light[style*='height: 300px;'] {
+  .bg-light[style*='height:200px;'],
+  .bg-light[style*='height: 300px;'],
+  .bg-light[style*='height:300px;'] {
     height: 150px !important;
   }
   .form-control, .form-select {
@@ -24,8 +27,11 @@
 @media (max-width: 575.98px) {
   .card-img-top,
   .bg-light[style*='height: 220px;'],
+  .bg-light[style*='height:220px;'],
   .bg-light[style*='height: 200px;'],
-  .bg-light[style*='height: 300px;'] {
+  .bg-light[style*='height:200px;'],
+  .bg-light[style*='height: 300px;'],
+  .bg-light[style*='height:300px;'] {
     height: 120px !important;
   }
   .form-control, .form-select, .form-check-input, .btn {

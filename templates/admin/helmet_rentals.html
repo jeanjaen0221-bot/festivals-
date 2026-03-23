@@ -18,16 +18,16 @@
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light">
           <tr>
-            <th>ID</th>
-            <th>Nom</th>
-            <th>Prénom</th>
-            <th>Téléphone</th>
-            <th>Quantité</th>
-            <th>Caution</th>
-            <th>Date prêt</th>
-            <th>Date retour</th>
-            <th>Statut</th>
-            <th>Actions</th>
+            <th scope="col">ID</th>
+            <th scope="col">Nom</th>
+            <th scope="col">Prénom</th>
+            <th scope="col">Téléphone</th>
+            <th scope="col">Quantité</th>
+            <th scope="col">Caution</th>
+            <th scope="col">Date prêt</th>
+            <th scope="col">Date retour</th>
+            <th scope="col">Statut</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -45,7 +45,7 @@
               <span class="badge bg-info">{{ rental.quantity }} casque{{ 's' if rental.quantity > 1 else '' }}</span>
             </td>
             <td>
-              {% if rental.deposit_type == 'id_card' or rental.deposit_type.name == 'ID_CARD' %}
+              {% if rental.deposit_type.name == 'ID_CARD' %}
                 <span class="badge bg-warning text-dark">
                   <i class="bi bi-credit-card-2-front me-1"></i>Carte d'identité
                 </span>

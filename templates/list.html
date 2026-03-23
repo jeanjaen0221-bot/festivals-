@@ -27,10 +27,10 @@
       <input type="text" class="form-control" name="q" placeholder="Rechercher (titre ou description)" value="{{ q or '' }}">
     </div>
     <div class="col-md-2">
-      <input type="date" class="form-control" name="from_date" value="{{ from_date or '' }}" placeholder="Du">
+      <input type="date" class="form-control" name="from_date" value="{{ from_date or '' }}" aria-label="Date de début">
     </div>
     <div class="col-md-2">
-      <input type="date" class="form-control" name="to_date" value="{{ to_date or '' }}" placeholder="Au">
+      <input type="date" class="form-control" name="to_date" value="{{ to_date or '' }}" aria-label="Date de fin">
     </div>
     <div class="col-md-2">
       <button type="submit" class="btn btn-outline-primary w-100">Filtrer</button>

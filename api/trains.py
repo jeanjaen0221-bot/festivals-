@@ -118,7 +118,6 @@ def add_cors_headers(response):
 @bp.route('/departures')
 def get_departures():
     try:
-        from flask import request
         # Paramètres de base
         from_station = request.args.get('from', 'Floreffe')
         destinations = ['Jambe', 'Wavre']

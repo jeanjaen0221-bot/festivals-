@@ -17,7 +17,7 @@
 <div class="d-flex flex-column gap-3">
   {% for d in conv_data %}
   {% set c = d.conv %}
-  <div class="card border-0 shadow-sm rounded-4 {% if c.is_archived %}opacity-60{% endif %}">
+  <div class="card border-0 shadow-sm rounded-4 {% if c.is_archived %}opacity-50{% endif %}">
     <div class="card-body py-3 px-3">
       <div class="d-flex align-items-start gap-3 flex-wrap">
         <!-- Avatar -->
@@ -69,20 +69,21 @@
         <!-- Actions -->
         <div class="d-flex gap-1 flex-shrink-0 align-self-center flex-wrap">
           <a href="{{ url_for('messaging.conversation', conv_id=c.id) }}"
-             class="btn btn-sm btn-outline-primary" title="Voir">
+             class="btn btn-sm btn-outline-primary" title="Voir" aria-label="Voir la conversation">
             <i class="bi bi-eye"></i>
           </a>
           <form method="POST" action="{{ url_for('admin.admin_archive_conversation', conv_id=c.id) }}">
             {{ csrf_form.csrf_token }}
             <button class="btn btn-sm {% if c.is_archived %}btn-outline-success{% else %}btn-outline-warning{% endif %}"
-                    title="{% if c.is_archived %}Restaurer{% else %}Archiver{% endif %}">
+                    title="{% if c.is_archived %}Restaurer{% else %}Archiver{% endif %}"
+                    aria-label="{% if c.is_archived %}Restaurer la conversation{% else %}Archiver la conversation{% endif %}">
               <i class="bi {% if c.is_archived %}bi-archive-fill{% else %}bi-archive{% endif %}"></i>
             </button>
           </form>
           <form method="POST" action="{{ url_for('admin.admin_delete_conversation', conv_id=c.id) }}"
                 onsubmit="return confirm('Supprimer définitivement cette conversation et tous ses messages ?');">
             {{ csrf_form.csrf_token }}
-            <button class="btn btn-sm btn-outline-danger" title="Supprimer définitivement">
+            <button class="btn btn-sm btn-outline-danger" title="Supprimer définitivement" aria-label="Supprimer définitivement la conversation">
               <i class="bi bi-trash3"></i>
             </button>
           </form>

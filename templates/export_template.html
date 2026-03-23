@@ -12,10 +12,10 @@
 <body>
   <!-- Bannière décorative Lost&Found (export) -->
   <div class="img-banner d-flex justify-content-center align-items-center py-2" style="background: linear-gradient(90deg,#f8fafc,#e7f6ff,#f8fafc); border-bottom:1px solid #e0e6ed;">
-    <img src="static/img/boussole.avif" alt="boussole" class="mx-2" style="height:40px; width:auto; opacity:0.93;"/>
-    <img src="static/img/monstera.avif" alt="monstera" class="mx-2" style="height:40px; width:auto; opacity:0.93;"/>
-    <img src="static/img/sous-marin.avif" alt="sous-marin" class="mx-2" style="height:40px; width:auto; opacity:0.93;"/>
-    <img src="static/img/tete-mort-1.avif" alt="tête de mort" class="mx-2" style="height:40px; width:auto; opacity:0.93;"/>
+    <img src="static/img/boussole.avif" alt="boussole" style="height:40px; width:auto; opacity:0.93; margin:0 8px;"/>
+    <img src="static/img/monstera.avif" alt="monstera" style="height:40px; width:auto; opacity:0.93; margin:0 8px;"/>
+    <img src="static/img/sous-marin.avif" alt="sous-marin" style="height:40px; width:auto; opacity:0.93; margin:0 8px;"/>
+    <img src="static/img/tete-mort-1.avif" alt="tête de mort" style="height:40px; width:auto; opacity:0.93; margin:0 8px;"/>
   </div>
   <h1>Export – Objets {{ status.capitalize() }}</h1>
   <div style="overflow-x:auto;"><table>
@@ -43,7 +43,7 @@
             {% elif item.photo_filename %}
               {{ item.photo_filename }}
             {% else %}
-              <span class="text-muted">Pas de photo</span>
+              <span style="color:#6c757d;">Pas de photo</span>
             {% endif %}
           </td>
           <td>{{ item.reporter_name }}</td>
