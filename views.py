@@ -6,7 +6,6 @@ import tempfile
 import matching
 import image_text_matcher as itm
 from io import BytesIO
-from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import wraps
 from types import SimpleNamespace
@@ -489,13 +488,10 @@ def detail_item(item_id):
         flash("Objet marqué comme rendu avec photo de restitution !", "success")
         return redirect(url_for('main.detail_item', item_id=item.id))
 
-    # Préparer les suggestions et formulaire de correspondance pour LOST ↔ FOUND, même catégorie
+    # Préparer les suggestions et formulaire de correspondance pour LOST ↔ FOUND
     if item.status in (Status.LOST, Status.FOUND):
         opposite_status = Status.FOUND if item.status == Status.LOST else Status.LOST
-        candidats = Item.query.filter_by(
-            status=opposite_status,
-            category_id=item.category_id
-        ).all()
+        candidats = Item.query.filter_by(status=opposite_status).all()
         # Construire des suggestions scorées
         def to_matchable(i: Item):
             loc = i.found_location if i.status == Status.FOUND and i.found_location else i.location
@@ -518,7 +514,7 @@ def detail_item(item_id):
             m = to_matchable(c)
             base_score = matching.match_score(current_matchable, m)
             # Bonus/malus
-            bonus = _cfg['bonus_same_category']  # catégorie identique assurée par le filtre
+            bonus = _cfg['bonus_same_category'] if (item.category_id and c.category_id == item.category_id) else 0
             try:
                 dt = abs((item.date_reported - c.date_reported).total_seconds()) if item.date_reported and c.date_reported else None
                 if dt is not None:
@@ -1063,22 +1059,21 @@ def return_headphone_loan(loan_id):
 # ───────────────────────────────────────────────────────────────────────────────
 def get_all_candidate_pairs(seuil=60):
     pairs = []
-    lost_items = Item.query.filter_by(status=Status.LOST).all()
+    lost_items  = Item.query.filter_by(status=Status.LOST).all()
     found_items = Item.query.filter_by(status=Status.FOUND).all()
 
-    found_by_cat = defaultdict(list)
-    for f in found_items:
-        found_by_cat[f.category_id].append(f)
-
     fields_weights = matching.MATCH_CONFIG['fields_weights']
+    _cfg = matching.MATCH_CONFIG
 
     for lost in lost_items:
-        candidats = found_by_cat.get(lost.category_id, [])
-        for found in candidats:
+        for found in found_items:
             score = matching.match_score(lost, found, fields_weights)
+            # Bonus catégorie identique (même logique que detail_item)
+            if lost.category_id and lost.category_id == found.category_id:
+                score = min(100.0, score + _cfg['bonus_same_category'])
             if score >= seuil:
                 explanation = matching.match_explanation(lost, found, fields_weights)
-                pairs.append((lost, found, score, explanation))
+                pairs.append((lost, found, round(score, 2), explanation))
     return pairs
 
 @bp.route('/matches')

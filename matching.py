@@ -163,6 +163,24 @@ def descriptor_bonus(raw1: str, raw2: str) -> float:
     return bonus
 
 
+def _get_location(item) -> str:
+    """
+    Retourne le bon champ lieu selon le statut de l'objet.
+    Les objets FOUND stockent leur lieu dans found_location, pas location.
+    """
+    loc = getattr(item, 'location', '') or ''
+    if not loc:
+        loc = getattr(item, 'found_location', '') or ''
+    return loc
+
+
+def _get_field(item, field: str) -> str:
+    """Lit un champ textuel sur un item, avec gestion spéciale du champ location."""
+    if field == 'location':
+        return _get_location(item)
+    return getattr(item, field, '') or ''
+
+
 def _text_field_score(v1: str, v2: str) -> float:
     """
     Score multi-stratégie pour deux textes normalisés (0-100).
@@ -191,8 +209,11 @@ def match_score(item1, item2, fields_weights=None):
     score = 0.0
     total = 0.0
     for field, weight in fields_weights.items():
-        v1 = normalize_text(getattr(item1, field, '') or '')
-        v2 = normalize_text(getattr(item2, field, '') or '')
+        v1 = normalize_text(_get_field(item1, field))
+        v2 = normalize_text(_get_field(item2, field))
+        # Si les deux sont vides → score neutre, ne pas pénaliser
+        if not v1 and not v2:
+            continue
         s = _text_field_score(v1, v2)
         score += s * weight
         total += weight
@@ -214,8 +235,8 @@ def match_explanation(item1, item2, fields_weights=None):
         fields_weights = MATCH_CONFIG['fields_weights']
     details = {}
     for field, weight in fields_weights.items():
-        raw1 = getattr(item1, field, '') or ''
-        raw2 = getattr(item2, field, '') or ''
+        raw1 = _get_field(item1, field)
+        raw2 = _get_field(item2, field)
         norm1 = normalize_text(raw1)
         norm2 = normalize_text(raw2)
         tokens1 = set(norm1.split())
