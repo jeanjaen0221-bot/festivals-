@@ -57,6 +57,8 @@
 
 <li><a class="dropdown-item d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='found') }}"><i class="bi bi-bag-check"></i> Objets trouvés</a></li>
               <li><a class="dropdown-item d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='returned') }}"><i class="bi bi-arrow-repeat"></i> Objets rendus</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item d-flex align-items-center gap-2" href="{{ url_for('main.list_matches') }}"><i class="bi bi-shuffle"></i> Correspondances</a></li>
             </ul>
           </li>
           <li class="nav-item">
@@ -142,6 +144,7 @@
             <a class="btn btn-outline-secondary d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='lost') }}"><i class="bi bi-bag-x"></i> Objets perdus</a>
             <a class="btn btn-outline-secondary d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='found') }}"><i class="bi bi-bag-check"></i> Objets trouvés</a>
             <a class="btn btn-outline-secondary d-flex align-items-center gap-2" href="{{ url_for('main.list_items', status='returned') }}"><i class="bi bi-arrow-repeat"></i> Objets rendus</a>
+            <a class="btn btn-outline-primary d-flex align-items-center gap-2" href="{{ url_for('main.list_matches') }}"><i class="bi bi-shuffle"></i> Correspondances</a>
           </div>
         </div>
       </div>
@@ -190,6 +193,7 @@
       <a class="nav-link d-flex align-items-center gap-2 {% if request.path.startswith(url_for('main.list_items')) and request.args.get('status') == 'lost' %}active{% endif %}" href="{{ url_for('main.list_items', status='lost') }}"><i class="bi bi-bag-x"></i> Objets perdus</a>
       <a class="nav-link d-flex align-items-center gap-2 {% if request.path.startswith(url_for('main.list_items')) and request.args.get('status') == 'found' %}active{% endif %}" href="{{ url_for('main.list_items', status='found') }}"><i class="bi bi-bag-check"></i> Objets trouvés</a>
       <a class="nav-link d-flex align-items-center gap-2 {% if request.path.startswith(url_for('main.list_items')) and request.args.get('status') == 'returned' %}active{% endif %}" href="{{ url_for('main.list_items', status='returned') }}"><i class="bi bi-arrow-repeat"></i> Objets rendus</a>
+      <a class="nav-link d-flex align-items-center gap-2 {% if request.path == url_for('main.list_matches') %}active{% endif %}" href="{{ url_for('main.list_matches') }}"><i class="bi bi-shuffle"></i> Correspondances</a>
       <div class="text-muted small mt-3 mb-1">Communication</div>
       <a class="nav-link d-flex align-items-center justify-content-between {% if request.path.startswith('/messages') %}active{% endif %}" href="{{ url_for('messaging.inbox') }}">
         <span class="d-flex align-items-center gap-2"><i class="bi bi-chat-dots"></i> Messagerie</span>

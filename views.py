@@ -1078,7 +1078,6 @@ def get_all_candidate_pairs(seuil=60):
 
 @bp.route('/matches')
 @login_required
-@admin_required
 def list_matches():
     try:
         seuil = int(request.args.get('threshold', 60))

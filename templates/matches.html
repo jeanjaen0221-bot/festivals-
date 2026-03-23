@@ -118,7 +118,7 @@
             <i class="bi bi-info-circle"></i> Détails
           </button>
 
-          {% if not pair.is_validated and not pair.is_rejected %}
+          {% if current_user.is_admin and not pair.is_validated and not pair.is_rejected %}
             <form method="post" action="{{ url_for('main.confirm_match') }}" class="d-inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="lost_id" value="{{ pair.lost.id }}">
