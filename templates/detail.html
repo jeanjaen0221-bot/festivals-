@@ -306,26 +306,17 @@ document.addEventListener('DOMContentLoaded', function () {
         if (data.error) {
           container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
         } else {
-          const d = data.details || {};
-          function blockFor(field){
-            if (!d[field]) return '';
-            const common = (d[field].common_words || []).join(', ');
-            const syns = (d[field].synonyms_found || []).map(p=>`${p[1]}→${p[0]}`).join(', ');
-            return `
-              <div class="mb-2">
-                <div class="fw-semibold text-capitalize">${field} — score: ${d[field].score}%</div>
-                ${common ? `<div class="text-muted">Mots communs: ${common}</div>` : ''}
-                ${syns ? `<div class="text-muted">Synonymes: ${syns}</div>` : ''}
-              </div>`;
-          }
+          const w = data.weights || {};
+          const sii = data.image_image_similarity ?? 0;
           const chips = `
             <div class="explain-card mb-3">
               <div class="d-flex flex-wrap gap-2">
-                <span class="chip info"><i class="bi bi-type"></i> Texte: <b>${data.score_base}%</b></span>
-                <span class="chip info"><i class="bi bi-image"></i> Image: <b>${data.image_similarity ?? 0}%</b></span>
-                <span class="chip"><i class="bi bi-sliders"></i> Poids: t=${data.weights?.text ?? 0.6}, i=${data.weights?.image ?? 0.4}</span>
-                <span class="chip ${data.bonus>=0?'success':'warning'}"><i class="bi bi-plus-slash-minus"></i> Bonus: ${data.bonus >= 0 ? '+' : ''}${data.bonus}</span>
-                <span class="chip success"><i class="bi bi-speedometer"></i> Final: <b>${data.score_final}%</b></span>
+                <span class="chip info"><i class="bi bi-type"></i> Texte: <b>${(data.score_base ?? 0).toFixed(1)}%</b></span>
+                <span class="chip" style="background:#ede9fe;color:#5b21b6"><i class="bi bi-image"></i> Texte↔Image: <b>${(data.image_similarity ?? 0).toFixed(1)}%</b></span>
+                ${sii > 0 ? `<span class="chip" style="background:#ccfbf1;color:#134e4a"><i class="bi bi-images"></i> Image↔Image: <b>${sii.toFixed(1)}%</b></span>` : ''}
+                <span class="chip"><i class="bi bi-sliders"></i> Poids: t=${w.text ?? '—'} / i=${w.image ?? '—'}${w.img_img ? ' / ii=' + w.img_img : ''}</span>
+                <span class="chip ${(data.bonus ?? 0) >= 0 ? 'success' : 'warning'}"><i class="bi bi-plus-slash-minus"></i> Bonus: ${(data.bonus ?? 0) >= 0 ? '+' : ''}${data.bonus ?? 0}</span>
+                <span class="chip success"><i class="bi bi-speedometer"></i> Final: <b>${(data.score_final ?? 0).toFixed(1)}%</b></span>
               </div>
             </div>`;
 
@@ -337,20 +328,32 @@ document.addEventListener('DOMContentLoaded', function () {
               if (Array.isArray(p)) { return `<span class='chip warning'>${p[1]} → ${p[0]}</span>`; }
               return `<span class='chip warning'>${p}</span>`;
             }).join(' ');
-            const rawLost = d.raw_lost ? `<div class='text-muted small mt-1'>Perdu: <span class='hl-word'>${d.raw_lost}</span></div>` : '';
-            const rawFound = d.raw_found ? `<div class='text-muted small'>Trouvé: <span class='hl-word'>${d.raw_found}</span></div>` : '';
+            const v1 = d.value1 ? `<div class='text-muted small mt-1'><i class="bi bi-search text-danger"></i> Perdu: <span class='hl-word'>${d.value1}</span></div>` : '';
+            const v2 = d.value2 ? `<div class='text-muted small'>  <i class="bi bi-check2-circle text-primary"></i> Trouvé: <span class='hl-word'>${d.value2}</span></div>` : '';
             return `
               <div class="explain-field">
                 <div class="title">
-                  <span class="text-capitalize">${name}</span>
-                  <span class="badge text-bg-info text-dark">${sc}%</span>
+                  <span class="text-capitalize">${name === 'title' ? 'Titre' : name === 'comments' ? 'Description' : 'Lieu'}</span>
+                  <span class="badge text-bg-info text-dark">${sc.toFixed(1)}%</span>
                 </div>
-                <div class="explain-mini-bar mb-2"><div style="width:${sc}%"></div></div>
+                <div class="explain-mini-bar mb-2"><div style="width:${Math.round(sc)}%"></div></div>
                 ${common ? `<div class='mb-1'><span class='fw-semibold'>Mots communs:</span> ${common}</div>` : ''}
                 ${syns ? `<div class='mb-1'><span class='fw-semibold'>Synonymes:</span> ${syns}</div>` : ''}
-                ${rawLost}${rawFound}
+                ${v1}${v2}
               </div>`;
           };
+
+          const desc = data.details?._descriptors || {};
+          const colorBadges = (desc.shared_colors || []).map(c=>`<span class='chip' style='background:#e0f2fe;color:#0c4a6e'>${c}</span>`).join(' ');
+          const brandBadges = (desc.shared_brands || []).map(b=>`<span class='chip' style='background:#f3e8ff;color:#581c87'>${b}</span>`).join(' ');
+          const dbon = desc.descriptor_bonus ?? 0;
+          const descBlock = (colorBadges || brandBadges || dbon !== 0) ? `
+            <div class="explain-field mt-2" style="background:#fdfaf0;border-color:#fde68a">
+              <div class="title"><span><i class="bi bi-palette2 me-1"></i>Descripteurs (couleurs & marques)</span></div>
+              ${colorBadges ? `<div class='mb-1'><span class='fw-semibold'>Couleurs communes:</span> ${colorBadges}</div>` : ''}
+              ${brandBadges ? `<div class='mb-1'><span class='fw-semibold'>Marques communes:</span> ${brandBadges}</div>` : ''}
+              <div class='text-muted small'>Bonus descripteurs : <b class='${dbon >= 0 ? "text-success" : "text-warning"}'>${dbon >= 0 ? '+' : ''}${dbon}</b></div>
+            </div>` : '';
 
           const global = `
             <div class="mb-3">
@@ -369,6 +372,7 @@ document.addEventListener('DOMContentLoaded', function () {
               ${fld('comments')}
               ${fld('location')}
             </div>
+            ${descBlock}
           `;
         }
         var modal = new bootstrap.Modal(document.getElementById('explainModal'));

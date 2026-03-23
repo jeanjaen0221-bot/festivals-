@@ -4,193 +4,281 @@
 {% endblock %}
 {% block content %}
 
+<div class="matches-header mb-4">
+  <h2 class="mb-3"><i class="bi bi-shuffle text-primary me-2"></i>Correspondances Lost ↔ Found</h2>
 
-  <h2 class="mb-4">Paires potentielles Lost ↔ Found</h2>
+  {# Compteurs #}
+  <div class="matches-stats mb-3">
+    <span class="stat-chip pending"><i class="bi bi-hourglass-split"></i> {{ stats.pending }} à traiter</span>
+    <span class="stat-chip validated"><i class="bi bi-patch-check"></i> {{ stats.validated }} validée{{ 's' if stats.validated != 1 }}</span>
+    <span class="stat-chip rejected"><i class="bi bi-slash-circle"></i> {{ stats.rejected }} rejetée{{ 's' if stats.rejected != 1 }}</span>
+  </div>
 
-  {# Barre de filtrage du seuil #}
-  <form class="row g-3 mb-4" method="get" action="{{ url_for('main.list_matches') }}">
-    <div class="col-md-2">
-      <label class="form-label">Seuil similarité (%)</label>
-      <input type="number" name="threshold" class="form-control" min="0" max="100" value="{{ threshold }}">
+  {# Barre de filtres #}
+  <form class="matches-filters row g-2 align-items-end" method="get" action="{{ url_for('main.list_matches') }}">
+    <div class="col-6 col-md-2">
+      <label class="form-label small fw-semibold mb-1">Seuil (%)</label>
+      <input type="number" name="threshold" class="form-control form-control-sm" min="0" max="100" value="{{ threshold }}">
     </div>
-    <div class="col-md-2 align-self-end">
-      <button type="submit" class="btn btn-primary w-100">Appliquer</button>
+    <div class="col-6 col-md-2 d-flex flex-column gap-1">
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="sw_validated" name="show_validated" value="1" {% if show_validated %}checked{% endif %}>
+        <label class="form-check-label small" for="sw_validated">Validées</label>
+      </div>
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="sw_rejected" name="show_rejected" value="1" {% if show_rejected %}checked{% endif %}>
+        <label class="form-check-label small" for="sw_rejected">Rejetées</label>
+      </div>
+    </div>
+    <div class="col-12 col-md-2">
+      <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel"></i> Appliquer</button>
     </div>
   </form>
+</div>
 
-  {% if pairs %}
-    <div class="table-responsive" style="overflow-x:auto;">
-      <table class="table matches-table table-striped align-middle">
-        <thead>
-          <tr>
-             <th scope="col">Photo (Lost)</th>
-            <th scope="col">Lost ID</th>
-            <th scope="col">Titre (Lost)</th>
-            <th scope="col">Photo (Found)</th>
-            <th scope="col">Found ID</th>
-            <th scope="col">Titre (Found)</th>
-            <th scope="col">Catégorie</th>
-            <th scope="col">Score</th>
-            <th scope="col">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for pair in pairs %}
-            <tr>
-              <td>
-                {% if pair.lost.photos and pair.lost.photos|length > 0 %}
-                  <img src="{{ url_for('main.uploaded_file', filename=pair.lost.photos[0].filename) }}" alt="Photo Lost" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;" loading="lazy">
-                {% elif pair.lost.photo_filename %}
-                  <img src="{{ url_for('main.uploaded_file', filename=pair.lost.photo_filename) }}" alt="Photo Lost" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;" loading="lazy">
-                {% else %}
-                  {% set icon_info = pair.lost.category.get_icon_display() if pair.lost.category else None %}
-                  {% if icon_info and icon_info.type == 'image' %}
-                    <img src="{{ icon_info.url }}" alt="Icône catégorie" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;" loading="lazy">
-                  {% elif icon_info and icon_info.type == 'bootstrap' %}
-                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width: 60px; height: 60px; border-radius: 0.375rem;">
-                      <i class="{{ icon_info.class }}" style="font-size:1.4rem;"></i>
-                    </div>
-                  {% else %}
-                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width: 60px; height: 60px; border-radius: 0.375rem;"><i class="bi bi-box-seam"></i></div>
-                  {% endif %}
-                {% endif %}
-              </td>
-              <td>{{ pair.lost.id }}</td>
-              <td>
-                {{ pair.lost.title }}
-                {% if pair.is_validated %}
-                  <span class="badge bg-success ms-2">✔ Match validé</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if pair.found.photos and pair.found.photos|length > 0 %}
-                  <img src="{{ url_for('main.uploaded_file', filename=pair.found.photos[0].filename) }}" alt="Photo Found" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;" loading="lazy">
-                {% elif pair.found.photo_filename %}
-                  <img src="{{ url_for('main.uploaded_file', filename=pair.found.photo_filename) }}" alt="Photo Found" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;" loading="lazy">
-                {% else %}
-                  {% set icon_info_f = pair.found.category.get_icon_display() if pair.found.category else None %}
-                  {% if icon_info_f and icon_info_f.type == 'image' %}
-                    <img src="{{ icon_info_f.url }}" alt="Icône catégorie" class="img-thumbnail img-fluid" style="width: 60px; height: 60px; object-fit: cover;" loading="lazy">
-                  {% elif icon_info_f and icon_info_f.type == 'bootstrap' %}
-                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width: 60px; height: 60px; border-radius: 0.375rem;">
-                      <i class="{{ icon_info_f.class }}" style="font-size:1.4rem;"></i>
-                    </div>
-                  {% else %}
-                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width: 60px; height: 60px; border-radius: 0.375rem;"><i class="bi bi-box-seam"></i></div>
-                  {% endif %}
-                {% endif %}
-              </td>
-              <td>{{ pair.found.id }}</td>
-              <td>
-                {{ pair.found.title }}
-                {% if pair.is_validated %}
-                  <span class="badge bg-success ms-2">✔ Match validé</span>
-                {% endif %}
-              </td>
-              <td>{{ pair.lost.category.name if pair.lost.category else '—' }}</td>
-              <td>{{ pair.score }}%</td>
-              <td>
-  <div class="matches-action-btns d-flex flex-column flex-md-row align-items-center gap-1">
-    <!-- Bouton détails dans un modal -->
-    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#explanationModal-{{ pair.lost.id }}-{{ pair.found.id }}" title="Voir explication du matching">
-      <i class="bi bi-info-circle"></i> Détails
-    </button>
-    {% if not pair.is_validated %}
-      <form method="post" action="{{ url_for('main.confirm_match') }}" style="display:inline-block;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="lost_id" value="{{ pair.lost.id }}">
-        <input type="hidden" name="found_id" value="{{ pair.found.id }}">
-        <button type="submit" class="btn btn-success btn-sm" title="Valider la correspondance"><i class="bi bi-check-circle"></i> Valider</button>
-      </form>
-      <a href="{{ url_for('main.list_matches') }}" class="btn btn-secondary btn-sm" title="Ignorer"><i class="bi bi-x-circle"></i> Ignorer</a>
-    {% else %}
-      <span class="badge bg-success matches-badge"><i class="bi bi-patch-check"></i> Validé</span>
-    {% endif %}
-  </div>
-  <!-- Modal explication -->
-  <div class="modal fade matches-modal" id="explanationModal-{{ pair.lost.id }}-{{ pair.found.id }}" tabindex="-1" aria-labelledby="explanationModalLabel-{{ pair.lost.id }}-{{ pair.found.id }}" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title matches-explanation-title" id="explanationModalLabel-{{ pair.lost.id }}-{{ pair.found.id }}">
-            <i class="bi bi-search"></i> Détails du matching
-          </h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+{% if pairs %}
+  <div class="matches-grid-cards">
+    {% for pair in pairs %}
+      <div class="match-pair-card {% if pair.is_validated %}is-validated{% elif pair.is_rejected %}is-rejected{% endif %}">
+
+        {# Bande score #}
+        <div class="mpc-score-band
+          {% if pair.score >= 80 %}score-high
+          {% elif pair.score >= 60 %}score-mid
+          {% else %}score-low{% endif %}">
+          <span class="mpc-score-value">{{ pair.score }}%</span>
+          <div class="mpc-score-bar"><div style="width:{{ pair.score|int }}%"></div></div>
+          <span class="mpc-category text-truncate"><i class="bi bi-tag"></i> {{ pair.lost.category.name if pair.lost.category else '—' }}</span>
+          {% if pair.is_validated %}<span class="mpc-status-badge validated"><i class="bi bi-patch-check-fill"></i> Validé</span>
+          {% elif pair.is_rejected %}<span class="mpc-status-badge rejected"><i class="bi bi-slash-circle-fill"></i> Rejeté</span>
+          {% endif %}
         </div>
-        <div class="modal-body">
-          <div class="mb-2">
-            <span class="fw-bold">Score global :</span>
-            <div class="progress matches-progress mb-2" style="height:1.2rem;">
-              <div class="progress-bar matches-progress-bar js-score" role="progressbar" data-width="{{ pair.score|default(0)|int }}" aria-valuenow="{{ pair.score|default(0)|round(1) }}" aria-valuemin="0" aria-valuemax="100">{{ pair.score|default(0)|round(1) }}%</div>
+
+        {# Corps : deux colonnes #}
+        <div class="mpc-body">
+
+          {# Colonne LOST #}
+          <div class="mpc-col lost">
+            <div class="mpc-col-label"><i class="bi bi-search text-danger"></i> Perdu <span class="text-muted">#{{ pair.lost.id }}</span></div>
+            <div class="mpc-thumb">
+              {% if pair.lost.photos and pair.lost.photos|length > 0 %}
+                <img src="{{ url_for('main.uploaded_file', filename=pair.lost.photos[0].filename) }}" alt="Photo" loading="lazy">
+              {% elif pair.lost.photo_filename %}
+                <img src="{{ url_for('main.uploaded_file', filename=pair.lost.photo_filename) }}" alt="Photo" loading="lazy">
+              {% else %}
+                {% set ii = pair.lost.category.get_icon_display() if pair.lost.category else None %}
+                {% if ii and ii.type == 'image' %}<img src="{{ ii.url }}" alt="" loading="lazy">
+                {% elif ii and ii.type == 'bootstrap' %}<i class="{{ ii.class }}"></i>
+                {% else %}<i class="bi bi-box-seam"></i>{% endif %}
+              {% endif %}
+            </div>
+            <div class="mpc-title">
+              <a href="{{ url_for('main.detail_item', item_id=pair.lost.id) }}" target="_blank">{{ pair.lost.title }}</a>
+            </div>
+            <div class="mpc-meta text-muted small">
+              {% if pair.lost.location %}<i class="bi bi-geo-alt"></i> {{ pair.lost.location }}<br>{% endif %}
+              <i class="bi bi-calendar3"></i> {{ pair.lost.date_reported.strftime('%d/%m/%Y') }}
             </div>
           </div>
-          <ul class="matches-explanation-list list-unstyled">
-            {% for champ, detail in pair.explanation.items() %}
-              <li><b>{{ champ|capitalize }}</b> :
-                <div class="mb-1">
-                  <span class="fw-bold">Score :</span>
-                  <span class="badge bg-info text-dark ms-1">{{ detail.score }}%</span>
-                </div>
-                {% if detail.common_words %}
-                  <span class="fw-bold">Mots communs :</span>
-                  {% for word in detail.common_words %}
-                    <span class="matches-highlight">{{ word }}</span>
-                  {% endfor %}
-                  <br>
-                {% endif %}
-                {% if detail.synonyms %}
-                  <span class="fw-bold">Synonymes détectés :</span>
-                  {% for syn in detail.synonyms %}
-                    <span class="badge bg-warning text-dark ms-1">{{ syn }}</span>
-                  {% endfor %}
-                  <br>
-                {% endif %}
-                <span class="text-muted small">Comparé : <span class="fst-italic">{{ detail.raw_lost }}</span> ↔ <span class="fst-italic">{{ detail.raw_found }}</span></span>
-              </li>
-            {% endfor %}
-          </ul>
+
+          <div class="mpc-vs"><i class="bi bi-arrow-left-right"></i></div>
+
+          {# Colonne FOUND #}
+          <div class="mpc-col found">
+            <div class="mpc-col-label"><i class="bi bi-check2-circle text-primary"></i> Trouvé <span class="text-muted">#{{ pair.found.id }}</span></div>
+            <div class="mpc-thumb">
+              {% if pair.found.photos and pair.found.photos|length > 0 %}
+                <img src="{{ url_for('main.uploaded_file', filename=pair.found.photos[0].filename) }}" alt="Photo" loading="lazy">
+              {% elif pair.found.photo_filename %}
+                <img src="{{ url_for('main.uploaded_file', filename=pair.found.photo_filename) }}" alt="Photo" loading="lazy">
+              {% else %}
+                {% set ii2 = pair.found.category.get_icon_display() if pair.found.category else None %}
+                {% if ii2 and ii2.type == 'image' %}<img src="{{ ii2.url }}" alt="" loading="lazy">
+                {% elif ii2 and ii2.type == 'bootstrap' %}<i class="{{ ii2.class }}"></i>
+                {% else %}<i class="bi bi-box-seam"></i>{% endif %}
+              {% endif %}
+            </div>
+            <div class="mpc-title">
+              <a href="{{ url_for('main.detail_item', item_id=pair.found.id) }}" target="_blank">{{ pair.found.title }}</a>
+            </div>
+            <div class="mpc-meta text-muted small">
+              {% if pair.found.found_location %}<i class="bi bi-geo-alt"></i> {{ pair.found.found_location }}<br>{% endif %}
+              <i class="bi bi-calendar3"></i> {{ pair.found.date_reported.strftime('%d/%m/%Y') }}
+            </div>
+          </div>
         </div>
+
+        {# Actions #}
+        <div class="mpc-actions">
+          <button class="btn btn-outline-secondary btn-sm btn-explain-match"
+                  data-lost-id="{{ pair.lost.id }}"
+                  data-found-id="{{ pair.found.id }}"
+                  data-api-url="{{ url_for('main.api_match_explain') }}"
+                  title="Voir le détail du score">
+            <i class="bi bi-info-circle"></i> Détails
+          </button>
+
+          {% if not pair.is_validated and not pair.is_rejected %}
+            <form method="post" action="{{ url_for('main.confirm_match') }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="lost_id" value="{{ pair.lost.id }}">
+              <input type="hidden" name="found_id" value="{{ pair.found.id }}">
+              <button type="submit" class="btn btn-success btn-sm" title="Valider la correspondance">
+                <i class="bi bi-check-circle"></i> Valider
+              </button>
+            </form>
+            <form method="post" action="{{ url_for('main.reject_match') }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="lost_id" value="{{ pair.lost.id }}">
+              <input type="hidden" name="found_id" value="{{ pair.found.id }}">
+              <input type="hidden" name="threshold" value="{{ threshold }}">
+              <input type="hidden" name="show_validated" value="{{ '1' if show_validated else '0' }}">
+              <input type="hidden" name="show_rejected" value="{{ '1' if show_rejected else '0' }}">
+              <button type="submit" class="btn btn-outline-danger btn-sm" title="Rejeter cette paire">
+                <i class="bi bi-x-circle"></i> Rejeter
+              </button>
+            </form>
+          {% endif %}
+        </div>
+
+      </div>
+    {% endfor %}
+  </div>
+
+{% else %}
+  <div class="alert alert-secondary">
+    <i class="bi bi-search me-2"></i>Aucune paire à afficher avec le seuil de {{ threshold }}%.
+    {% if not show_validated or not show_rejected %}
+      <span class="text-muted small">Les paires validées/rejetées sont masquées par défaut.</span>
+    {% endif %}
+  </div>
+{% endif %}
+
+{# Modal explication AJAX (unique, réutilisé pour toutes les paires) #}
+<div class="modal fade" id="matchExplainModal" tabindex="-1" aria-labelledby="matchExplainModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="matchExplainModalLabel">
+          <i class="bi bi-bar-chart-line text-primary me-2"></i>Détail du score
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body" id="matchExplainBody">
+        <div class="text-center py-4 text-muted">
+          <div class="spinner-border spinner-border-sm me-2" role="status"></div>Chargement…
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>
       </div>
     </div>
   </div>
-
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="text-muted">Aucune paire potentielle supérieure au seuil {{ threshold }} %.</p>
-  {% endif %}
+</div>
 
 <script>
-  (function(){
-    function applyWidths(){
-      document.querySelectorAll('.js-score').forEach(function(el){
-        var w = el.getAttribute('data-width');
-        if (w != null) {
-          el.style.width = String(w) + '%';
-        }
-      });
-    }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', applyWidths);
-    } else {
-      applyWidths();
-    }
-    // Re-appliquer lorsqu'un modal s'ouvre (contenu parfois recalculé)
-    if (window.bootstrap) {
-      document.querySelectorAll('.matches-modal').forEach(function(modalEl){
-        modalEl.addEventListener('shown.bs.modal', function(){
-          applyWidths();
+(function(){
+  var apiUrl = null;
+  var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {content:''}).content || '';
+
+  document.querySelectorAll('.btn-explain-match').forEach(function(btn){
+    btn.addEventListener('click', async function(){
+      var lostId  = this.dataset.lostId;
+      var foundId = this.dataset.foundId;
+      apiUrl = this.dataset.apiUrl;
+
+      var body = document.getElementById('matchExplainBody');
+      body.innerHTML = '<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2" role="status"></div>Chargement…</div>';
+
+      var modal = new bootstrap.Modal(document.getElementById('matchExplainModal'));
+      modal.show();
+
+      try {
+        var resp = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json','X-CSRFToken': csrfToken},
+          body: JSON.stringify({item_id: parseInt(lostId), candidate_id: parseInt(foundId)})
         });
-      });
-    } else {
-      document.querySelectorAll('.matches-modal').forEach(function(modalEl){
-        modalEl.addEventListener('shown', applyWidths);
-      });
+        var data = await resp.json();
+        if (data.error) {
+          body.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
+          return;
+        }
+        body.innerHTML = buildExplainHtml(data);
+      } catch(e) {
+        body.innerHTML = '<div class="alert alert-danger">Erreur réseau : ' + e + '</div>';
+      }
+    });
+  });
+
+  function score2class(s){ return s >= 80 ? 'success' : s >= 60 ? 'info' : s >= 40 ? 'warning' : 'danger'; }
+
+  function buildExplainHtml(data){
+    var sf = (data.score_final ?? 0);
+    var st = (data.score_base ?? 0);
+    var si = (data.image_similarity ?? 0);
+    var sii = (data.image_image_similarity ?? 0);
+    var bon = (data.bonus ?? 0);
+    var w = data.weights || {};
+
+    var global = `
+      <div class="mb-3">
+        <div class="d-flex justify-content-between fw-semibold mb-1">
+          <span>Score final</span><span>${sf.toFixed(1)}%</span>
+        </div>
+        <div class="explain-global-bar"><div class="explain-global-fill bg-${score2class(sf)}" style="width:${Math.round(sf)}%"></div></div>
+      </div>`;
+
+    var chips = `
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <span class="exp-chip info"><i class="bi bi-type"></i> Texte <b>${st.toFixed(1)}%</b></span>
+        <span class="exp-chip purple"><i class="bi bi-image"></i> Texte↔Image <b>${si.toFixed(1)}%</b></span>
+        ${sii > 0 ? `<span class="exp-chip teal"><i class="bi bi-images"></i> Image↔Image <b>${sii.toFixed(1)}%</b></span>` : ''}
+        <span class="exp-chip ${bon >= 0 ? 'success' : 'warning'}"><i class="bi bi-plus-slash-minus"></i> Bonus ${bon >= 0 ? '+' : ''}${bon}</span>
+        <span class="exp-chip muted"><i class="bi bi-sliders"></i> Poids t=${w.text ?? '—'} / i=${w.image ?? '—'}${w.img_img ? ' / ii=' + w.img_img : ''}</span>
+      </div>`;
+
+    var fields = ['title','comments','location'].map(function(f){
+      var d = (data.details || {})[f] || {};
+      var sc = d.score ?? 0;
+      var common = (d.common_words || []).map(w => `<span class="exp-word">${w}</span>`).join(' ');
+      var syns = (d.synonyms_found || []).map(function(p){
+        return Array.isArray(p) ? `<span class="exp-syn">${p[1]} → ${p[0]}</span>` : `<span class="exp-syn">${p}</span>`;
+      }).join(' ');
+      var v1 = d.value1 ? `<span class="text-danger-emphasis">${d.value1}</span>` : '<em class="text-muted">—</em>';
+      var v2 = d.value2 ? `<span class="text-primary-emphasis">${d.value2}</span>` : '<em class="text-muted">—</em>';
+      return `
+        <div class="exp-field mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="fw-semibold text-capitalize">${f === 'title' ? 'Titre' : f === 'comments' ? 'Description' : 'Lieu'}</span>
+            <span class="badge text-bg-${score2class(sc)}">${sc.toFixed(1)}%</span>
+          </div>
+          <div class="exp-mini-bar mb-2"><div style="width:${Math.round(sc)}%;background:var(--exp-${score2class(sc)})"></div></div>
+          <div class="small text-muted mb-1"><i class="bi bi-search text-danger"></i> Perdu : ${v1}</div>
+          <div class="small text-muted mb-1"><i class="bi bi-check2-circle text-primary"></i> Trouvé : ${v2}</div>
+          ${common ? `<div class="small mb-1"><span class="fw-semibold">Mots communs :</span> ${common}</div>` : ''}
+          ${syns   ? `<div class="small mb-1"><span class="fw-semibold">Synonymes :</span> ${syns}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    var desc = (data.details || {})._descriptors || {};
+    var descHtml = '';
+    if (desc.shared_colors && desc.shared_colors.length > 0 || desc.shared_brands && desc.shared_brands.length > 0 || desc.descriptor_bonus) {
+      var colorBadges = (desc.shared_colors || []).map(c => `<span class="exp-word color">${c}</span>`).join(' ');
+      var brandBadges = (desc.shared_brands || []).map(b => `<span class="exp-word brand">${b}</span>`).join(' ');
+      var dbon = desc.descriptor_bonus ?? 0;
+      descHtml = `
+        <div class="exp-field desc-field mb-3">
+          <div class="fw-semibold mb-1"><i class="bi bi-palette2 me-1"></i>Descripteurs (couleurs & marques)</div>
+          ${colorBadges ? `<div class="small mb-1"><span class="fw-semibold">Couleurs communes :</span> ${colorBadges}</div>` : ''}
+          ${brandBadges ? `<div class="small mb-1"><span class="fw-semibold">Marques communes :</span> ${brandBadges}</div>` : ''}
+          <div class="small text-muted">Bonus descripteurs : <b class="${dbon >= 0 ? 'text-success' : 'text-warning'}">${dbon >= 0 ? '+' : ''}${dbon}</b></div>
+        </div>`;
     }
-  })();
-  </script>
+
+    return global + chips + '<hr class="my-2">' + fields + (descHtml ? '<hr class="my-2">' + descHtml : '');
+  }
+})();
+</script>
 
 {% endblock %}

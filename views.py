@@ -20,7 +20,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
 from app import app, db, limiter
-from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, Product
+from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product
 from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm
 from ocr_utils import extract_id_card_data
 from flask_wtf.csrf import validate_csrf
@@ -1089,24 +1089,91 @@ def list_matches():
         seuil = int(request.args.get('threshold', 60))
     except ValueError:
         seuil = 60
+    show_validated = request.args.get('show_validated', '0') == '1'
+    show_rejected  = request.args.get('show_rejected',  '0') == '1'
 
-    pairs = get_all_candidate_pairs(seuil=seuil)
-    pairs = sorted(pairs, key=lambda x: x[2], reverse=True)
+    all_pairs = get_all_candidate_pairs(seuil=seuil)
+    all_pairs = sorted(all_pairs, key=lambda x: x[2], reverse=True)
 
-    # Ajout d'un booléen is_validated pour chaque paire (via la table Match)
+    # Ensembles pour lookup rapide
+    validated_set = set()
+    for m in Match.query.all():
+        validated_set.add((m.lost_id, m.found_id))
+        validated_set.add((m.found_id, m.lost_id))
+
+    rejected_set = set()
+    for r in RejectedPair.query.all():
+        rejected_set.add((r.lost_id, r.found_id))
+        rejected_set.add((r.found_id, r.lost_id))
+
     pairs_with_status = []
-    for lost, found, score, explanation in pairs:
-        is_validated = Match.query.filter_by(lost_id=lost.id, found_id=found.id).first() is not None or \
-                      Match.query.filter_by(lost_id=found.id, found_id=lost.id).first() is not None
+    n_pending = n_validated = n_rejected = 0
+    for lost, found, score, explanation in all_pairs:
+        key = (lost.id, found.id)
+        is_validated = key in validated_set
+        is_rejected  = key in rejected_set
+
+        if is_validated:
+            n_validated += 1
+        elif is_rejected:
+            n_rejected += 1
+        else:
+            n_pending += 1
+
+        if is_validated and not show_validated:
+            continue
+        if is_rejected and not show_rejected:
+            continue
+
         pairs_with_status.append({
             'lost': lost,
             'found': found,
             'score': score,
             'is_validated': is_validated,
-            'explanation': explanation
+            'is_rejected': is_rejected,
+            'explanation': explanation,
         })
 
-    return render_template('matches.html', pairs=pairs_with_status, threshold=seuil)
+    stats = {'pending': n_pending, 'validated': n_validated, 'rejected': n_rejected}
+    return render_template(
+        'matches.html',
+        pairs=pairs_with_status,
+        threshold=seuil,
+        show_validated=show_validated,
+        show_rejected=show_rejected,
+        stats=stats,
+    )
+
+
+@bp.route('/matches/reject', methods=['POST'])
+@login_required
+@admin_required
+def reject_match():
+    try:
+        lost_id  = int(request.form.get('lost_id'))
+        found_id = int(request.form.get('found_id'))
+    except (TypeError, ValueError):
+        flash("Identifiants invalides.", "danger")
+        return redirect(url_for('main.list_matches'))
+    try:
+        validate_csrf(request.form.get('csrf_token'))
+    except Exception:
+        abort(400, description="CSRF token invalide.")
+    existing = RejectedPair.query.filter_by(lost_id=lost_id, found_id=found_id).first()
+    if not existing:
+        rp = RejectedPair(
+            lost_id=lost_id,
+            found_id=found_id,
+            rejected_by=current_user.id,
+        )
+        db.session.add(rp)
+        db.session.commit()
+        log_action(current_user.id, 'reject_match', f'Paire rejetée Lost:{lost_id} Found:{found_id}')
+        flash(f"Paire Lost #{lost_id} ↔ Found #{found_id} rejetée.", "info")
+    return redirect(url_for('main.list_matches',
+                            threshold=request.form.get('threshold', 60),
+                            show_validated=request.form.get('show_validated', 0),
+                            show_rejected=request.form.get('show_rejected', 0)))
 
 
 @bp.route('/matches/confirm', methods=['POST'])

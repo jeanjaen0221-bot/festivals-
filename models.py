@@ -200,6 +200,19 @@ class Match(db.Model):
     def __repr__(self):
         return f'<Match Lost:{self.lost_id} Found:{self.found_id}>'
 
+class RejectedPair(db.Model):
+    __tablename__ = 'rejected_pairs'
+    id = db.Column(db.Integer, primary_key=True)
+    lost_id = db.Column(db.Integer, db.ForeignKey('items.id', ondelete='CASCADE'), nullable=False, index=True)
+    found_id = db.Column(db.Integer, db.ForeignKey('items.id', ondelete='CASCADE'), nullable=False, index=True)
+    rejected_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    rejected_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (db.UniqueConstraint('lost_id', 'found_id', name='uq_rejected_pair'),)
+
+    def __repr__(self):
+        return f'<RejectedPair Lost:{self.lost_id} Found:{self.found_id}>'
+
+
 class ItemPhoto(db.Model):
     __tablename__ = 'item_photos'
     id = db.Column(db.Integer, primary_key=True)
