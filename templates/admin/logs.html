@@ -1,41 +1,8 @@
 {% extends 'admin/base.html' %}
 {% block admin_title %}Logs{% endblock %}
-{% block extra_head %}{{ super() }}
-<style>
-.log-row {
-    transition: background-color 0.2s;
-}
-.log-row.delete-mode {
-    cursor: pointer;
-}
-.log-row.delete-mode:hover {
-    background-color: rgba(220, 53, 69, 0.1);
-}
-.delete-column {
-    width: 50px;
-}
-#deleteModeAlert {
-    position: sticky;
-    top: 1rem;
-    z-index: 1000;
-}
-@media (max-width: 768px) {
-    .delete-column { width: 40px; }
-    .delete-log-btn { padding: 0.15rem 0.4rem; }
-}
-</style>
-{% endblock %}
 {% block admin_content %}
 <div class="card shadow-sm border-0 mb-4">
   <div class="card-body">
-      <div class="text-end mb-2">
-        <img src="{{ url_for('static', filename='img/tete-mort-1.avif') }}" id="activateDeleteMode" alt="Activer mode suppression" title="Activer le mode suppression" style="height: 32px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7" loading="lazy">
-      </div>
-    <div class="alert alert-warning d-none" id="deleteModeAlert">
-      <i class="bi bi-exclamation-triangle-fill me-2"></i>
-      Mode suppression activé - Appuyez sur les logs pour les supprimer
-      <button type="button" class="btn-close float-end" id="exitDeleteMode"></button>
-    </div>
     <form class="row g-2 mb-3" method="get">
       <div class="col-md-4">
         <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="Recherche (action ou détails)" aria-label="Rechercher dans les logs">
@@ -63,7 +30,6 @@
             <th scope="col">Utilisateur</th>
             <th scope="col">Action</th>
             <th scope="col">Détails</th>
-            <th scope="col" class="delete-column d-none">Supprimer</th>
           </tr>
         </thead>
         <tbody>
@@ -73,37 +39,12 @@
             <td>{% if log.user %}{{ log.user.email }}{% else %}<i>System</i>{% endif %}</td>
             <td>{{ log.action_type }}</td>
             <td>{{ log.details }}</td>
-            <td class="delete-column d-none text-center">
-              <button class="btn btn-sm btn-outline-danger delete-log-btn">
-                <i class="bi bi-trash"></i>
-              </button>
-            </td>
           </tr>
           {% else %}
           <tr><td colspan="4" class="text-center">Aucun log trouvé</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
-    
-    <!-- Modal de confirmation de suppression -->
-    <div class="modal fade" id="deleteLogModal" tabindex="-1" aria-labelledby="deleteLogModalLabel" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="deleteLogModalLabel">Confirmer la suppression</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
-          </div>
-          <div class="modal-body">
-            <p>Êtes-vous sûr de vouloir supprimer ce log ? Cette action est irréversible.</p>
-            <p class="text-muted"><small>Note : Les logs de moins d'une heure ne peuvent pas être supprimés.</small></p>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-            <button type="button" class="btn btn-danger" id="confirmDeleteLog">Supprimer</button>
-          </div>
-        </div>
-      </div>
     </div>
     
     <!-- Pagination -->
@@ -124,75 +65,4 @@
     </nav>
   </div>
 </div>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    let deleteMode = false;
-    let currentLogId = null;
-    var csrfToken = '{{ csrf_token() }}';
-
-    var activateBtn = document.getElementById('activateDeleteMode');
-    if (activateBtn) {
-        activateBtn.addEventListener('click', function() { toggleDeleteMode(); });
-    }
-
-    document.addEventListener('keydown', function(e) {
-        if (deleteMode && e.key === 'Escape') { e.preventDefault(); toggleDeleteMode(false); }
-    });
-
-    var longPressTimer;
-    var h1El = document.querySelector('h1');
-    if (h1El) {
-        h1El.addEventListener('touchstart', function() { longPressTimer = setTimeout(function() { toggleDeleteMode(); }, 1000); });
-        h1El.addEventListener('touchend',   function() { clearTimeout(longPressTimer); });
-        h1El.addEventListener('touchmove',  function() { clearTimeout(longPressTimer); });
-    }
-
-    document.addEventListener('click', function(e) {
-        var btn = e.target.closest('.delete-log-btn');
-        if (btn) {
-            e.stopPropagation();
-            var row = btn.closest('.log-row');
-            currentLogId = row ? row.dataset.logId : null;
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteLogModal')).show();
-        }
-    });
-
-    var confirmBtn = document.getElementById('confirmDeleteLog');
-    if (confirmBtn) {
-        confirmBtn.addEventListener('click', function() {
-            if (!currentLogId) return;
-            fetch('/admin/logs/' + currentLogId + '/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: '{}'
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    var row = document.querySelector('.log-row[data-log-id="' + currentLogId + '"]');
-                    if (row) { row.style.transition = 'opacity 0.4s'; row.style.opacity = '0'; setTimeout(function(){ row.remove(); }, 400); }
-                } else {
-                    alert(data.message || 'Erreur lors de la suppression du log');
-                }
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteLogModal')).hide();
-            })
-            .catch(function() {
-                alert('Erreur lors de la suppression du log');
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteLogModal')).hide();
-            });
-        });
-    }
-
-    var exitBtn = document.getElementById('exitDeleteMode');
-    if (exitBtn) { exitBtn.addEventListener('click', function() { toggleDeleteMode(false); }); }
-
-    function toggleDeleteMode(enable) {
-        deleteMode = (enable !== undefined && enable !== null) ? enable : !deleteMode;
-        document.querySelectorAll('.delete-column').forEach(function(el) { el.classList.toggle('d-none', !deleteMode); });
-        document.querySelectorAll('.log-row').forEach(function(el) { el.classList.toggle('delete-mode', deleteMode); });
-        var alertEl = document.getElementById('deleteModeAlert');
-        if (alertEl) alertEl.classList.toggle('d-none', !deleteMode);
-    }
-});
-</script>
 {% endblock %}

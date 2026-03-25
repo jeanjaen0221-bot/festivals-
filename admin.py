@@ -471,36 +471,6 @@ def admin_logs():
         action_types=action_types
     )
 
-@bp_admin.route('/logs/<int:log_id>/delete', methods=['POST'])
-@login_required
-@admin_required
-def delete_log(log_id):
-    if not request.is_json:
-        return jsonify({'error': 'Invalid request'}), 400
-
-    log = db.get_or_404(ActionLog, log_id)
-    # Ne pas permettre de supprimer des logs de moins d'une heure
-    diff = datetime.utcnow() - log.timestamp
-    if diff < timedelta(hours=1):
-        return jsonify({
-            'success': False,
-            'message': 'Impossible de supprimer un log de moins d\'une heure'
-        }), 400
-
-    try:
-        db.session.delete(log)
-        db.session.commit()
-        return jsonify({
-            'success': True,
-            'message': 'Log supprimé avec succès'
-        })
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'success': False,
-            'message': f'Erreur lors de la suppression du log: {str(e)}'
-        }), 500
-
 # --- Goodies sales module ---
 
 def _quantize(amount: Decimal) -> Decimal:
