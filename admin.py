@@ -16,7 +16,7 @@ from flask_login import login_required, current_user
 from app import db
 from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, ConversationParticipant, Message, ConvType, ParticipantRole, Category
 from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm, CategoryIconForm
-from datetime import datetime, timedelta
+from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from zoneinfo import ZoneInfo

@@ -34,7 +34,7 @@
         </thead>
         <tbody>
           {% for log in logs.items %}
-          <tr class="log-row" data-log-id="{{ log.id }}" data-timestamp="{{ log.timestamp.timestamp() }}">
+          <tr>
             <td>{{ log.timestamp.strftime('%d/%m/%Y %H:%M') }}</td>
             <td>{% if log.user %}{{ log.user.email }}{% else %}<i>System</i>{% endif %}</td>
             <td>{{ log.action_type }}</td>
