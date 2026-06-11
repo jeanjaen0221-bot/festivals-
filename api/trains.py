@@ -40,6 +40,59 @@ def _cache_set(key: str, data, ttl: int):
     except Exception:
         pass
 
+@bp.route('/vehicle')
+def get_vehicle():
+    """Retourne les arrêts d'un train donné (iRail /vehicle/).
+    Paramètre : id=<vehicle_id> ex: BE.NMBS.IC1234
+    Réponse : { stops: [ { name, time, delay, platform, passed } ] }
+    """
+    vehicle_id = request.args.get('id', '').strip()
+    if not vehicle_id:
+        return jsonify({'error': 'Paramètre id manquant'}), 400
+
+    cache_key = f'vehicle:{vehicle_id}'
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
+    try:
+        r = requests.get(
+            'https://api.irail.be/vehicle/',
+            params={'id': vehicle_id, 'format': 'json', 'lang': 'fr', 'alerts': 'false'},
+            headers=IRAIL_HEADERS,
+            timeout=8,
+        )
+        if r.status_code == 429:
+            ra = int(r.headers.get('Retry-After', '30') or 30)
+            return jsonify({'error': 'rate_limited', 'retry_after': ra}), 429
+        r.raise_for_status()
+        data = r.json()
+
+        raw_stops = data.get('stops', {}).get('stop', []) or []
+        now_ts = time.time()
+        stops = []
+        for s in raw_stops:
+            try:
+                t = int(s.get('time', 0) or 0)
+                delay = int(s.get('delay', 0) or 0)
+                arrived_ts = t + delay
+                stops.append({
+                    'name': (s.get('station') or s.get('stationinfo', {}).get('standardname') or ''),
+                    'time': t,
+                    'delay': delay,
+                    'platform': s.get('platform') or s.get('platforminfo', {}).get('name') or '',
+                    'passed': arrived_ts < now_ts,
+                })
+            except Exception:
+                continue
+
+        result = {'stops': stops}
+        _cache_set(cache_key, result, 90)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 def _normalize(s: str) -> str:
     if not s:
         return ''

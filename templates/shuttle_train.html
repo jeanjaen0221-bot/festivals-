@@ -15,6 +15,20 @@
   @media (max-width: 576px) { .flap-header, .flap-row { grid-template-columns: 74px 1fr 64px 64px 74px; } .flap-cell { font-size:.95rem; padding:6px 8px; } }
   .train-autorefresh { color:#6c757d; font-size:.9rem; margin-top:6px; }
   .station-title { color:#e9ecef; }
+  .clickable-dest { cursor:pointer; text-decoration:underline dotted #6c757d; transition:background .15s; }
+  .clickable-dest:hover { background:#1c2535 !important; }
+  .stops-row { background:#0d1117; padding:10px 14px; border-top:1px solid rgba(255,255,255,.05); animation:flap-in .25s ease; }
+  .stops-inline { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:.85rem; }
+  .stop-arrow { color:#4a5568; padding:0 2px; }
+  .stop-chip { background:#11151a; border:1px solid #2b3340; border-radius:6px; padding:3px 10px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Courier New",monospace; white-space:nowrap; }
+  .stop-chip b { color:#e9ecef; }
+  .stop-chip .stop-time { color:#6c757d; font-size:.8em; margin-left:4px; }
+  .stop-chip .stop-delay { color:#ffd166; font-size:.8em; margin-left:2px; }
+  .stop-chip.passed { opacity:.4; }
+  .stop-chip.origin { border-color:#0dcaf0; }
+  .stop-chip.dest { border-color:#198754; }
+  .stops-label { color:#6c757d; font-size:.8rem; margin-right:4px; white-space:nowrap; }
+  .stops-err { color:#ffd166; font-size:.85rem; }
 </style>
 {% endblock %}
 {% block content %}
@@ -38,5 +52,5 @@
     <div class="alert alert-info">Veuillez rechercher une gare pour afficher les prochains départs.</div>
   </div>
 </div>
-<script src="{{ url_for('static', filename='js/train_schedule.js') }}?v=20260103-2"></script>
+<script src="{{ url_for('static', filename='js/train_schedule.js') }}?v=20260611-1"></script>
 {% endblock %}

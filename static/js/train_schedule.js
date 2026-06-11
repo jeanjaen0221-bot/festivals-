@@ -6,6 +6,7 @@ let currentStationName = null; // display name for UI
 let allStations = [];
 let selectedStationId = null;
 let rateRetryId = null;
+const openStopsSet = new Set(); // vehicle IDs with expanded stops panel
 
 function showSuggestions(list) {
   const suggDiv = document.getElementById('station-suggestions');
@@ -52,6 +53,100 @@ function fmtDateDDMMYYFromEpoch(tsSec){
   return `${dd}${mm}${yy}`;
 }
 
+function fmtEpochHHMM(tsSec, delaySec) {
+  if (!tsSec) return '';
+  return new Date((tsSec + (delaySec || 0)) * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+function normalizeStopName(s) {
+  return normalizeStr(s);
+}
+
+async function toggleStops(vehicleId, destName, rowEl) {
+  // Remove any other open stops rows (only one open at a time)
+  document.querySelectorAll('.stops-row').forEach(el => {
+    if (el.dataset.vehicle !== vehicleId) {
+      openStopsSet.delete(el.dataset.vehicle);
+      el.remove();
+    }
+  });
+
+  // Toggle: if already open, close it
+  const existing = rowEl.nextElementSibling;
+  if (existing && existing.classList.contains('stops-row') && existing.dataset.vehicle === vehicleId) {
+    openStopsSet.delete(vehicleId);
+    existing.remove();
+    return;
+  }
+
+  // Create placeholder row
+  const stopsRow = document.createElement('div');
+  stopsRow.className = 'stops-row';
+  stopsRow.dataset.vehicle = vehicleId;
+  stopsRow.innerHTML = `<div class="stops-inline"><span class="stops-label"><i class="bi bi-signpost-split"></i> Arrêts :</span><span class="text-muted" style="font-size:.85rem"><span class="spinner-border spinner-border-sm me-1" role="status"></span>Chargement…</span></div>`;
+  rowEl.insertAdjacentElement('afterend', stopsRow);
+  openStopsSet.add(vehicleId);
+
+  try {
+    const resp = await fetch(`/api/trains/vehicle?id=${encodeURIComponent(vehicleId)}`);
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}));
+      if (resp.status === 429) {
+        stopsRow.innerHTML = `<span class="stops-err"><i class="bi bi-hourglass-split"></i> API saturée, réessayez dans ${d.retry_after || 30} s.</span>`;
+      } else {
+        stopsRow.innerHTML = `<span class="stops-err"><i class="bi bi-exclamation-triangle"></i> Impossible de charger les arrêts.</span>`;
+      }
+      return;
+    }
+    const data = await resp.json();
+    if (data.error) { stopsRow.innerHTML = `<span class="stops-err">${data.error}</span>`; return; }
+
+    const allStops = data.stops || [];
+    const normOrigin = normalizeStopName(currentStationName);
+    const normDest   = normalizeStopName(destName);
+
+    // Find origin and destination indices
+    const idxOrigin = allStops.findIndex(s => normalizeStopName(s.name) === normOrigin);
+    const idxDest   = allStops.findIndex(s => normalizeStopName(s.name) === normDest);
+
+    let slice;
+    if (idxOrigin >= 0 && idxDest > idxOrigin) {
+      // Origin found before destination: show stops after origin up to and including destination
+      slice = allStops.slice(idxOrigin, idxDest + 1);
+    } else if (idxDest >= 0) {
+      // Couldn't pin origin precisely — show all stops up to destination
+      slice = allStops.slice(0, idxDest + 1);
+    } else {
+      // Fallback: show all stops
+      slice = allStops;
+    }
+
+    if (!slice.length) {
+      stopsRow.innerHTML = `<span class="stops-label">Aucun arrêt intermédiaire trouvé.</span>`;
+      return;
+    }
+
+    const chips = slice.map((s, i) => {
+      const isOrigin = i === 0 && idxOrigin >= 0;
+      const isDest   = i === slice.length - 1;
+      const timeStr  = fmtEpochHHMM(s.time, s.delay);
+      const delayStr = s.delay > 0 ? `<span class="stop-delay">+${Math.round(s.delay/60)}'</span>` : '';
+      const cls = ['stop-chip', s.passed ? 'passed' : '', isOrigin ? 'origin' : '', isDest ? 'dest' : ''].filter(Boolean).join(' ');
+      return `<span class="${cls}"><b>${s.name}</b>${timeStr ? `<span class="stop-time">${timeStr}</span>` : ''}${delayStr}</span>`;
+    });
+
+    const parts = [];
+    chips.forEach((chip, i) => {
+      parts.push(chip);
+      if (i < chips.length - 1) parts.push(`<span class="stop-arrow">›</span>`);
+    });
+
+    stopsRow.innerHTML = `<div class="stops-inline"><span class="stops-label"><i class="bi bi-signpost-split"></i> Arrêts :</span>${parts.join('')}</div>`;
+  } catch (e) {
+    stopsRow.innerHTML = `<span class="stops-err"><i class="bi bi-exclamation-triangle"></i> Erreur réseau.</span>`;
+  }
+}
+
 function renderFlapBoard(container, stationName, departures, bannerText, opts={}) {
   const animate = opts.animate !== undefined ? opts.animate : true;
   let html = `
@@ -61,6 +156,9 @@ function renderFlapBoard(container, stationName, departures, bannerText, opts={}
         <div class='train-autorefresh'>MAJ auto 30 s</div>
       </div>
       ${bannerText ? `<div class='px-1 pb-2 text-warning small'>${bannerText}</div>` : ''}
+      <div class='d-flex gap-1 align-items-center px-1 pb-1' style='font-size:.8rem;color:#6c757d'>
+        <i class='bi bi-hand-index-thumb'></i> Cliquer sur une destination pour voir les gares intermédiaires
+      </div>
       <div class='flap-header'>
         <div class='flap-cell center muted'>Heure</div>
         <div class='flap-cell muted'>Destination</div>
@@ -75,10 +173,13 @@ function renderFlapBoard(container, stationName, departures, bannerText, opts={}
     const type = (dep.vehicle || '').replace('BE.NMBS.', '');
     const delay = dep.delay ? '+' + Math.round(dep.delay/60) + ' min' : '';
     const dest = dep.destination || dep.station || '';
+    const vehicleId = dep.vehicle || '';
+    const destAttr = dest.replace(/'/g, '&apos;');
+    const hasVehicle = vehicleId ? '' : ' style="pointer-events:none;text-decoration:none;opacity:.7"';
     html += `
-      <div class='flap-row'>
+      <div class='flap-row' data-vehicle='${vehicleId}' data-dest='${destAttr}'>
         <div class='flap-cell center ${animate ? 'flip' : ''}'>${time}</div>
-        <div class='flap-cell ${animate ? 'flip' : ''}'>${dest}</div>
+        <div class='flap-cell ${animate ? 'flip' : ''} ${vehicleId ? 'clickable-dest' : ''}' title='${vehicleId ? 'Cliquer pour voir les gares intermédiaires' : ''}' data-vehicle='${vehicleId}' data-dest='${destAttr}'${hasVehicle}>${dest}</div>
         <div class='flap-cell center ${animate ? 'flip' : ''}'>${platform}</div>
         <div class='flap-cell center ${animate ? 'flip' : ''}'>${type}</div>
         <div class='flap-cell center ${animate ? 'flip' : ''} ${delay ? 'delay' : ''}'>${delay}</div>
@@ -91,6 +192,26 @@ function renderFlapBoard(container, stationName, departures, bannerText, opts={}
   if (prev !== html) {
     container.innerHTML = html;
     container.setAttribute('data-flap-html', html);
+    // Attach click handlers to destination cells
+    container.querySelectorAll('.clickable-dest').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const vid = cell.dataset.vehicle;
+        const dname = cell.dataset.dest;
+        if (!vid) return;
+        const row = cell.closest('.flap-row');
+        toggleStops(vid, dname, row);
+      });
+    });
+    // Re-open previously expanded stops after a refresh
+    if (openStopsSet.size > 0) {
+      container.querySelectorAll('.flap-row[data-vehicle]').forEach(row => {
+        const vid = row.dataset.vehicle;
+        if (vid && openStopsSet.has(vid)) {
+          const dname = row.dataset.dest || '';
+          toggleStops(vid, dname, row);
+        }
+      });
+    }
   }
 }
 

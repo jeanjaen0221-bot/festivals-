@@ -322,7 +322,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
           const fld = (name) => {
             const d = data.details?.[name] || {};
-            const sc = d.score ?? 0;
+            const isNa = d.score_na === true || d.score === null || d.score === undefined;
+            const sc = isNa ? 0 : (d.score ?? 0);
             const common = (d.common_words || []).map(w=>`<span class='chip'>${w}</span>`).join(' ');
             const syns = (d.synonyms_found || d.synonyms || []).map(p=>{
               if (Array.isArray(p)) { return `<span class='chip warning'>${p[1]} → ${p[0]}</span>`; }
@@ -330,13 +331,16 @@ document.addEventListener('DOMContentLoaded', function () {
             }).join(' ');
             const v1 = d.value1 ? `<div class='text-muted small mt-1'><i class="bi bi-search text-danger"></i> Perdu: <span class='hl-word'>${d.value1}</span></div>` : '';
             const v2 = d.value2 ? `<div class='text-muted small'>  <i class="bi bi-check2-circle text-primary"></i> Trouvé: <span class='hl-word'>${d.value2}</span></div>` : '';
+            const scoreBadge = isNa
+              ? `<span class="badge bg-secondary">—</span>`
+              : `<span class="badge text-bg-info text-dark">${sc.toFixed(1)}%</span>`;
             return `
               <div class="explain-field">
                 <div class="title">
                   <span class="text-capitalize">${name === 'title' ? 'Titre' : name === 'comments' ? 'Description' : 'Lieu'}</span>
-                  <span class="badge text-bg-info text-dark">${sc.toFixed(1)}%</span>
+                  ${scoreBadge}
                 </div>
-                <div class="explain-mini-bar mb-2"><div style="width:${Math.round(sc)}%"></div></div>
+                ${isNa ? '' : `<div class="explain-mini-bar mb-2"><div style="width:${Math.round(sc)}%"></div></div>`}
                 ${common ? `<div class='mb-1'><span class='fw-semibold'>Mots communs:</span> ${common}</div>` : ''}
                 ${syns ? `<div class='mb-1'><span class='fw-semibold'>Synonymes:</span> ${syns}</div>` : ''}
                 ${v1}${v2}

@@ -187,7 +187,7 @@ def _text_field_score(v1: str, v2: str) -> float:
     Combine token_sort_ratio, partial_ratio, WRatio et token_set_ratio.
     """
     if not v1 and not v2:
-        return 100.0
+        return 0.0
     if not v1 or not v2:
         return 0.0
     best = max(
@@ -239,6 +239,17 @@ def match_explanation(item1, item2, fields_weights=None):
         raw2 = _get_field(item2, field)
         norm1 = normalize_text(raw1)
         norm2 = normalize_text(raw2)
+        # Si les deux champs sont vides, on ne peut pas les comparer (N/A)
+        if not norm1 and not norm2:
+            details[field] = {
+                'score': None,
+                'score_na': True,
+                'common_words': [],
+                'synonyms_found': [],
+                'value1': raw1,
+                'value2': raw2,
+            }
+            continue
         tokens1 = set(norm1.split())
         tokens2 = set(norm2.split())
         common = sorted(tokens1 & tokens2)
@@ -251,6 +262,7 @@ def match_explanation(item1, item2, fields_weights=None):
                     syns.append((main, syn))
         details[field] = {
             'score': round(score, 2),
+            'score_na': False,
             'common_words': common,
             'synonyms_found': syns,
             'value1': raw1,

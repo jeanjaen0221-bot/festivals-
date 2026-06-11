@@ -244,20 +244,24 @@
 
     var fields = ['title','comments','location'].map(function(f){
       var d = (data.details || {})[f] || {};
-      var sc = d.score ?? 0;
+      var isNa = d.score_na === true || d.score === null || d.score === undefined;
+      var sc = isNa ? 0 : (d.score ?? 0);
       var common = (d.common_words || []).map(w => `<span class="exp-word">${w}</span>`).join(' ');
       var syns = (d.synonyms_found || []).map(function(p){
         return Array.isArray(p) ? `<span class="exp-syn">${p[1]} → ${p[0]}</span>` : `<span class="exp-syn">${p}</span>`;
       }).join(' ');
       var v1 = d.value1 ? `<span class="text-danger-emphasis">${d.value1}</span>` : '<em class="text-muted">—</em>';
       var v2 = d.value2 ? `<span class="text-primary-emphasis">${d.value2}</span>` : '<em class="text-muted">—</em>';
+      var scoreBadge = isNa
+        ? `<span class="badge bg-secondary">—</span>`
+        : `<span class="badge text-bg-${score2class(sc)}">${sc.toFixed(1)}%</span>`;
       return `
         <div class="exp-field mb-3">
           <div class="d-flex justify-content-between align-items-center mb-1">
             <span class="fw-semibold text-capitalize">${f === 'title' ? 'Titre' : f === 'comments' ? 'Description' : 'Lieu'}</span>
-            <span class="badge text-bg-${score2class(sc)}">${sc.toFixed(1)}%</span>
+            ${scoreBadge}
           </div>
-          <div class="exp-mini-bar mb-2"><div style="width:${Math.round(sc)}%;background:var(--exp-${score2class(sc)})"></div></div>
+          ${isNa ? '' : `<div class="exp-mini-bar mb-2"><div style="width:${Math.round(sc)}%;background:var(--exp-${score2class(sc)})"></div></div>`}
           <div class="small text-muted mb-1"><i class="bi bi-search text-danger"></i> Perdu : ${v1}</div>
           <div class="small text-muted mb-1"><i class="bi bi-check2-circle text-primary"></i> Trouvé : ${v2}</div>
           ${common ? `<div class="small mb-1"><span class="fw-semibold">Mots communs :</span> ${common}</div>` : ''}

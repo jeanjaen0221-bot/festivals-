@@ -169,12 +169,43 @@ def _cleanup_tmp_images() -> None:
         except Exception:
             pass
 
-def find_similar_items(titre, category_id, seuil=70):
+
+def _item_pair_bonus(lost, found) -> float:
+    """Bonus/malus catégorie + date pour une paire Lost↔Found (utilisé partout de façon identique)."""
+    _cfg = matching.MATCH_CONFIG
+    bonus = 0.0
+    if lost.category_id and lost.category_id == found.category_id:
+        bonus += _cfg['bonus_same_category']
+    try:
+        if lost.date_reported and found.date_reported:
+            days = abs((lost.date_reported - found.date_reported).total_seconds()) / 86400.0
+            if days <= 2:
+                bonus += _cfg['bonus_date_close']
+            elif days > 14:
+                bonus -= _cfg['malus_date_far']
+    except Exception:
+        pass
+    return bonus
+
+
+def _compute_weighted_score(base_score: float, img_sim_pct: float,
+                            img_img_pct: float, bonus: float) -> float:
+    """Formule de pondération unifiée — identique dans detail_item, list_matches et api_match_explain."""
+    _cfg = matching.MATCH_CONFIG
+    tw, iw, iiw = _cfg['text_weight'], _cfg['image_weight'], _cfg['img_img_weight']
+    if img_img_pct > 0:
+        combined = tw * base_score + iw * img_sim_pct + iiw * img_img_pct
+    else:
+        combined = (tw + iiw) * base_score + iw * img_sim_pct
+    return max(0.0, min(100.0, round(combined + bonus, 2)))
+
+
+def find_similar_items(titre, category_id, seuil=70, location=''):
     """Retourne des objets similaires (même catégorie) triés par score descendant.
     Utilise le score complet (titre + description + lieu) via matching.match_score.
     """
     similaires = []
-    probe = SimpleNamespace(title=titre or '', comments='', location='')
+    probe = SimpleNamespace(title=titre or '', comments='', location=location or '')
     candidats = Item.query.filter(
         Item.category_id == category_id,
         Item.status.in_([Status.LOST, Status.FOUND])
@@ -519,6 +550,35 @@ def detail_item(item_id):
     # Définit toujours has_match par défaut pour tous les autres chemins
     has_match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first() is not None
 
+    # POST prioritaire : correspondance directe (court-circuite le calcul des suggestions)
+    if request.method == 'POST' and 'submit_match' in request.form:
+        csrf_guard = SimpleCsrfForm()
+        if not csrf_guard.validate_on_submit():
+            flash("Formulaire invalide.", "danger")
+            return redirect(url_for('main.detail_item', item_id=item.id))
+        other_id = request.form.get('match_with_id', type=int) or request.form.get('match_with', type=int)
+        if other_id and other_id != 0:
+            other = db.get_or_404(Item, other_id)
+            # B1 : assigner lost_id/found_id selon le statut réel
+            if item.status == Status.LOST:
+                lid, fid = item.id, other.id
+            else:
+                lid, fid = other.id, item.id
+            # B5 : vérifier les deux ordres pour éviter les doublons
+            exists = Match.query.filter(
+                ((Match.lost_id == lid) & (Match.found_id == fid)) |
+                ((Match.lost_id == fid) & (Match.found_id == lid))
+            ).first()
+            if not exists:
+                db.session.add(Match(lost_id=lid, found_id=fid))
+                db.session.commit()
+                flash(f"Objets #{item.id} et #{other.id} liés par correspondance.", "success")
+            else:
+                flash("Cette correspondance existe déjà.", "info")
+        else:
+            flash("Veuillez sélectionner un objet valide pour la correspondance.", "warning")
+        return redirect(url_for('main.detail_item', item_id=item.id))
+
     # Restitution : si FOUND, proposer le formulaire de restitution
     if item.status == Status.FOUND and confirm_return_form.validate_on_submit() and 'submit_return' in request.form:
         f = confirm_return_form.return_photo.data
@@ -556,26 +616,13 @@ def detail_item(item_id):
                 return i.photo_filename
             return None
 
-        _cfg = matching.MATCH_CONFIG
-        TEXT_WEIGHT   = _cfg['text_weight']
-        IMG_WEIGHT    = _cfg['image_weight']
-        IMG_IMG_WEIGHT = _cfg['img_img_weight']
-
         for c in candidats:
             m = to_matchable(c)
             base_score = matching.match_score(current_matchable, m)
-            # Bonus/malus
-            bonus = _cfg['bonus_same_category'] if (item.category_id and c.category_id == item.category_id) else 0
-            try:
-                dt = abs((item.date_reported - c.date_reported).total_seconds()) if item.date_reported and c.date_reported else None
-                if dt is not None:
-                    days = dt / 86400.0
-                    if days <= 2:
-                        bonus += _cfg['bonus_date_close']
-                    elif days > 14:
-                        bonus -= _cfg['malus_date_far']
-            except Exception:
-                pass
+            # Bonus catégorie + date via helper partagé
+            lost_item  = item if item.status == Status.LOST else c
+            found_item = c    if item.status == Status.LOST else item
+            bonus = _item_pair_bonus(lost_item, found_item)
             # Chemins d'images (LOST item vs FOUND candidate)
             img_lost_path = None
             img_found_path = None
@@ -604,13 +651,8 @@ def detail_item(item_id):
                     img_img_pct = round(100.0 * float(sim2), 2)
             except Exception:
                 img_img_pct = 0.0
-            # Score final pondéré
-            if img_img_pct > 0:
-                combined = TEXT_WEIGHT * base_score + IMG_WEIGHT * img_sim_pct + IMG_IMG_WEIGHT * img_img_pct
-            else:
-                effective_text = TEXT_WEIGHT + IMG_IMG_WEIGHT
-                combined = effective_text * base_score + IMG_WEIGHT * img_sim_pct
-            final_score = max(0, min(100, round(combined + bonus, 2)))
+            # Score final pondéré via helper partagé
+            final_score = _compute_weighted_score(base_score, img_sim_pct, img_img_pct, bonus)
             # Photo principale
             if hasattr(c, 'photos') and c.photos and len(c.photos) > 0:
                 photo_url = url_for('main.uploaded_file', filename=c.photos[0].filename)
@@ -660,24 +702,6 @@ def detail_item(item_id):
             choices = [(0, "— Sélectionner —")] + [(c.id, f"[{c.id}] {c.title} ({c.location or '—'})") for c in candidats]
             match_form = MatchForm()
             match_form.match_with.choices = choices
-
-    # POST : correspondance prioritaire
-    if ('submit_match' in request.form) and match_form and match_form.validate_on_submit():
-        other_id = request.form.get('match_with_id', type=int) or match_form.match_with.data
-        if other_id and other_id != 0:
-            other = db.get_or_404(Item, other_id)
-
-            # Créer un match validé
-            if not Match.query.filter_by(lost_id=min(item.id, other.id), found_id=max(item.id, other.id)).first():
-                new_match = Match(lost_id=min(item.id, other.id), found_id=max(item.id, other.id))
-                db.session.add(new_match)
-                db.session.commit()
-                flash(f"Objets #{item.id} et #{other.id} liés par correspondance.", "success")
-            else:
-                flash("Cette correspondance existe déjà.", "info")
-            return redirect(url_for('main.detail_item', item_id=item.id))
-        else:
-            flash("Veuillez sélectionner un objet valide pour la correspondance.", "warning")
 
     # POST : réclamation classique
     if form.validate_on_submit() and 'submit' in request.form:
@@ -891,7 +915,8 @@ def api_check_similar():
     cat_id = request.form.get('category_id', type=int)
     if not titre or not cat_id:
         return {'similars': []}
-    similars = find_similar_items(titre, cat_id, seuil=70)
+    location = request.form.get('location', '')
+    similars = find_similar_items(titre, cat_id, seuil=70, location=location)
     return jsonify({'similars': similars})
 
 @bp.route('/api/match_explain', methods=['POST'])
@@ -914,6 +939,8 @@ def api_match_explain():
                 cand_id = int(cand_id)
         if not item_id or not cand_id:
             return jsonify({'error': 'item_id et candidate_id sont requis'}), 400
+        if item_id == cand_id:
+            return jsonify({'error': 'Les deux identifiants doivent être différents.'}), 400
 
         i1 = db.get_or_404(Item, item_id)
         i2 = db.get_or_404(Item, cand_id)
@@ -932,29 +959,16 @@ def api_match_explain():
         m1 = to_matchable(i1)
         m2 = to_matchable(i2)
 
+        fields_weights = matching.MATCH_CONFIG['fields_weights']
         _cfg = matching.MATCH_CONFIG
-        fields_weights = _cfg['fields_weights']
-        TEXT_WEIGHT    = _cfg['text_weight']
-        IMG_WEIGHT     = _cfg['image_weight']
-        IMG_IMG_WEIGHT = _cfg['img_img_weight']
 
         score_text = matching.match_score(m1, m2, fields_weights=fields_weights)
         details = matching.match_explanation(m1, m2, fields_weights=fields_weights)
 
-        # Bonus/malus (catégorie identique et proximité temporelle)
-        bonus = 0
-        if i1.category_id == i2.category_id:
-            bonus += _cfg['bonus_same_category']
-        try:
-            dt = abs((i1.date_reported - i2.date_reported).total_seconds()) if i1.date_reported and i2.date_reported else None
-            if dt is not None:
-                days = dt / 86400.0
-                if days <= 2:
-                    bonus += _cfg['bonus_date_close']
-                elif days > 14:
-                    bonus -= _cfg['malus_date_far']
-        except Exception:
-            pass
+        # Bonus catégorie + date via helper partagé (même logique que detail_item)
+        lost_i  = i1 if i1.status == Status.LOST else i2
+        found_i = i2 if i1.status == Status.LOST else i1
+        bonus = _item_pair_bonus(lost_i, found_i)
 
         def primary_photo_filename(i: Item):
             if hasattr(i, 'photos') and i.photos and len(i.photos) > 0:
@@ -996,12 +1010,8 @@ def api_match_explain():
 
         _cleanup_tmp_images()
 
-        if img_img_pct > 0:
-            combined = TEXT_WEIGHT * score_text + IMG_WEIGHT * img_sim_pct + IMG_IMG_WEIGHT * img_img_pct
-        else:
-            effective_text = TEXT_WEIGHT + IMG_IMG_WEIGHT
-            combined = effective_text * score_text + IMG_WEIGHT * img_sim_pct
-        final_score = max(0, min(100, round(combined + bonus, 2)))
+        # Score final via helper partagé (formule identique à detail_item)
+        final_score = _compute_weighted_score(score_text, img_sim_pct, img_img_pct, bonus)
 
         return jsonify({
             'item_id': i1.id,
@@ -1011,7 +1021,11 @@ def api_match_explain():
             'score_final': final_score,
             'image_similarity': img_sim_pct,
             'image_image_similarity': img_img_pct,
-            'weights': {'text': TEXT_WEIGHT, 'image': IMG_WEIGHT, 'img_img': IMG_IMG_WEIGHT},
+            'weights': {
+                'text': _cfg['text_weight'],
+                'image': _cfg['image_weight'],
+                'img_img': _cfg['img_img_weight'],
+            },
             'details': details
         })
     except Exception as e:
@@ -1102,20 +1116,23 @@ def return_headphone_loan(loan_id):
 # ───────────────────────────────────────────────────────────────────────────────
 # Routes de correspondance globale Lost↔Found (nouvelles)
 # ───────────────────────────────────────────────────────────────────────────────
-def get_all_candidate_pairs(seuil=60):
+def get_all_candidate_pairs(seuil=60, skip_set=None):
+    """Calcule toutes les paires Lost↔Found dont le score >= seuil.
+    skip_set: ensemble de tuples (lost_id, found_id) à ignorer (déjà validés/rejetés si non affichés).
+    Utilise _compute_weighted_score pour que les scores soient identiques à ceux de detail_item.
+    """
     pairs = []
     lost_items  = Item.query.filter_by(status=Status.LOST).all()
     found_items = Item.query.filter_by(status=Status.FOUND).all()
-
     fields_weights = matching.MATCH_CONFIG['fields_weights']
-    _cfg = matching.MATCH_CONFIG
 
     for lost in lost_items:
         for found in found_items:
-            score = matching.match_score(lost, found, fields_weights)
-            # Bonus catégorie identique (même logique que detail_item)
-            if lost.category_id and lost.category_id == found.category_id:
-                score = min(100.0, score + _cfg['bonus_same_category'])
+            if skip_set and (lost.id, found.id) in skip_set:
+                continue
+            base_score = matching.match_score(lost, found, fields_weights)
+            bonus = _item_pair_bonus(lost, found)
+            score = _compute_weighted_score(base_score, 0.0, 0.0, bonus)
             if score >= seuil:
                 explanation = matching.match_explanation(lost, found, fields_weights)
                 pairs.append((lost, found, round(score, 2), explanation))
@@ -1131,10 +1148,7 @@ def list_matches():
     show_validated = request.args.get('show_validated', '0') == '1'
     show_rejected  = request.args.get('show_rejected',  '0') == '1'
 
-    all_pairs = get_all_candidate_pairs(seuil=seuil)
-    all_pairs = sorted(all_pairs, key=lambda x: x[2], reverse=True)
-
-    # Ensembles pour lookup rapide
+    # Précharger les sets validés/rejetés AVANT le scoring pour éviter les calculs inutiles
     validated_set = set()
     for m in Match.query.all():
         validated_set.add((m.lost_id, m.found_id))
@@ -1144,6 +1158,16 @@ def list_matches():
     for r in RejectedPair.query.all():
         rejected_set.add((r.lost_id, r.found_id))
         rejected_set.add((r.found_id, r.lost_id))
+
+    # Sauter les paires masquées (non affichées) pour éviter O(N×M) inutile
+    skip_set: set[tuple] = set()
+    if not show_validated:
+        skip_set |= {(lid, fid) for lid, fid in validated_set if lid < fid}
+    if not show_rejected:
+        skip_set |= {(lid, fid) for lid, fid in rejected_set if lid < fid}
+
+    all_pairs = get_all_candidate_pairs(seuil=seuil, skip_set=skip_set if skip_set else None)
+    all_pairs = sorted(all_pairs, key=lambda x: x[2], reverse=True)
 
     pairs_with_status = []
     n_pending = n_validated = n_rejected = 0
@@ -1228,8 +1252,11 @@ def confirm_match():
         flash("Objet introuvable pour correspondance.", "danger")
         return redirect(url_for('main.list_matches'))
 
-    # Vérifier si déjà validé (champ matched_with_id ou Match existant)
-    match_exists = Match.query.filter_by(lost_id=lost_id, found_id=found_id).first()
+    # Vérifier si déjà validé (les deux ordres, pour robustesse)
+    match_exists = Match.query.filter(
+        ((Match.lost_id == lost_id) & (Match.found_id == found_id)) |
+        ((Match.lost_id == found_id) & (Match.found_id == lost_id))
+    ).first()
     if match_exists:
         flash("Cette paire a déjà été validée.", "info")
         return redirect(url_for('main.list_matches'))
@@ -1237,6 +1264,14 @@ def confirm_match():
     if lost.status != Status.LOST or found.status != Status.FOUND:
         flash("L’objet n’est plus disponible pour correspondance.", "warning")
         return redirect(url_for('main.list_matches'))
+
+    # Supprimer le RejectedPair s'il existait (la paire ne doit pas être à la fois rejetée et validée)
+    stale_rejection = RejectedPair.query.filter(
+        ((RejectedPair.lost_id == lost_id) & (RejectedPair.found_id == found_id)) |
+        ((RejectedPair.lost_id == found_id) & (RejectedPair.found_id == lost_id))
+    ).first()
+    if stale_rejection:
+        db.session.delete(stale_rejection)
 
     # Créer l'entrée Match
     new_match = Match(lost_id=lost_id, found_id=found_id)
