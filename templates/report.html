@@ -120,7 +120,7 @@
       </div>
     </div>
   </div>
-<script>
+<script nonce="{{ csp_nonce }}">
 function confirmLostSubmit() {
   return confirm("Confirmez-vous que vous voulez déclarer un objet PERDU ?\n\nAssurez-vous d'utiliser ce formulaire uniquement si vous êtes le propriétaire de l'objet perdu.");
 }
@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
   // LOST
   var prefix = "";

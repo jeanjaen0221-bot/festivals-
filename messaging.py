@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, abort
 from flask_login import login_required, current_user
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db, limiter
 import sqlalchemy as sa
 from models import (User, Conversation, ConversationParticipant, Message,
@@ -17,7 +17,7 @@ def _get_participant(conv_id, user_id):
 def _mark_read(conv_id, user_id):
     part = _get_participant(conv_id, user_id)
     if part:
-        part.last_read_at = datetime.utcnow()
+        part.last_read_at = datetime.now(timezone.utc)
         db.session.commit()
 
 
@@ -149,8 +149,8 @@ def new_group():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         member_ids = request.form.getlist('members', type=int)
-        if not name:
-            flash("Le nom du groupe est obligatoire.", "danger")
+        if not name or len(name) > 120:
+            flash("Le nom du groupe doit comporter entre 1 et 120 caractères.", "danger")
             return render_template('messages/new_group.html', all_users=all_users,
                                    name_val=name, selected_ids=member_ids), 400
         if not member_ids:
@@ -249,6 +249,7 @@ def send_message(conv_id):
 
 @bp_msg.route('/<int:conv_id>/delete/<int:msg_id>', methods=['POST'])
 @login_required
+@limiter.limit('20 per minute')
 def delete_message(conv_id, msg_id):
     msg = db.get_or_404(Message, msg_id)
     if msg.conversation_id != conv_id:
@@ -266,6 +267,7 @@ def delete_message(conv_id, msg_id):
 
 @bp_msg.route('/<int:conv_id>/pin/<int:msg_id>', methods=['POST'])
 @login_required
+@limiter.limit('20 per minute')
 def pin_message(conv_id, msg_id):
     msg = db.get_or_404(Message, msg_id)
     if msg.conversation_id != conv_id:
@@ -283,6 +285,7 @@ def pin_message(conv_id, msg_id):
 
 @bp_msg.route('/<int:conv_id>/leave', methods=['POST'])
 @login_required
+@limiter.limit('10 per minute')
 def leave_group(conv_id):
     conv = db.get_or_404(Conversation, conv_id)
     if conv.type != ConvType.GROUP:
@@ -307,6 +310,7 @@ def leave_group(conv_id):
 
 @bp_msg.route('/<int:conv_id>/add-member', methods=['POST'])
 @login_required
+@limiter.limit('20 per minute')
 def add_member(conv_id):
     conv = db.get_or_404(Conversation, conv_id)
     if conv.type != ConvType.GROUP:
@@ -333,6 +337,7 @@ def add_member(conv_id):
 
 @bp_msg.route('/<int:conv_id>/remove-member/<int:uid>', methods=['POST'])
 @login_required
+@limiter.limit('20 per minute')
 def remove_member(conv_id, uid):
     conv = db.get_or_404(Conversation, conv_id)
     if conv.type != ConvType.GROUP:
@@ -352,6 +357,7 @@ def remove_member(conv_id, uid):
 
 @bp_msg.route('/<int:conv_id>/rename', methods=['POST'])
 @login_required
+@limiter.limit('10 per minute')
 def rename_group(conv_id):
     conv = db.get_or_404(Conversation, conv_id)
     if conv.type != ConvType.GROUP:
@@ -360,8 +366,8 @@ def rename_group(conv_id):
     if not part or (part.role != ParticipantRole.ADMIN and not current_user.is_admin):
         abort(403)
     name = request.form.get('name', '').strip()
-    if not name:
-        flash("Le nom ne peut pas être vide.", "danger")
+    if not name or len(name) > 120:
+        flash("Le nom doit comporter entre 1 et 120 caractères.", "danger")
         return redirect(url_for('messaging.conversation', conv_id=conv_id))
     conv.name = name
     db.session.commit()
@@ -373,6 +379,7 @@ def rename_group(conv_id):
 
 @bp_msg.route('/<int:conv_id>/promote/<int:uid>', methods=['POST'])
 @login_required
+@limiter.limit('20 per minute')
 def promote_member(conv_id, uid):
     conv = db.get_or_404(Conversation, conv_id)
     part = _get_participant(conv_id, current_user.id)
@@ -403,6 +410,7 @@ def api_unread():
 
 @bp_msg.route('/<int:conv_id>/api/since/<int:last_id>')
 @login_required
+@limiter.limit('10 per minute')
 def api_since(conv_id, last_id):
     part = _get_participant(conv_id, current_user.id)
     if not part and not current_user.is_admin:

@@ -156,7 +156,7 @@
 </div>
 
 <!-- JavaScript pour l'interface dynamique -->
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
   // Gestion des formulaires d'icônes
   document.querySelectorAll('.icon-form').forEach(form => {

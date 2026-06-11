@@ -8,6 +8,17 @@ from io import BytesIO
 from werkzeug.utils import secure_filename
 from decimal import Decimal, ROUND_HALF_UP
 
+
+def _check_image_magic_bytes_admin(file_stream) -> bool:
+    """Vérifie les magic bytes JPEG/PNG."""
+    header = file_stream.read(16)
+    file_stream.seek(0)
+    if header[:3] == b'\xff\xd8\xff':
+        return True
+    if header[:8] == b'\x89PNG\r\n\x1a\n':
+        return True
+    return False
+
 ALLOWED_ICON_EXTENSIONS = {"svg", "png", "jpg", "jpeg"}
 ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 
@@ -15,8 +26,8 @@ ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 from flask_login import login_required, current_user
 from app import db
 from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, ConversationParticipant, Message, ConvType, ParticipantRole, Category
-from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm, CategoryIconForm
-from datetime import datetime
+from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm, CategoryIconForm, RegisterForm
+from datetime import datetime, timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from zoneinfo import ZoneInfo
@@ -42,6 +53,11 @@ def admin_counters_ctx():
         'deletions_total': 0,
         'sales_today_count': 0,
     }
+    try:
+        if not current_user.is_authenticated or not current_user.is_admin:
+            return {'admin_counts': counts}
+    except Exception:
+        return {'admin_counts': counts}
     try:
         counts['deletions_items'] = Item.query.filter_by(status=Status.PENDING_DELETION).count()
     except Exception:
@@ -159,9 +175,7 @@ def update_category_icon(category_id):
         db.session.commit()
         
     else:
-        for field, errors in form.errors.items():
-            for error in errors:
-                flash(f"Erreur dans {field}: {error}", "danger")
+        flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
     
     return redirect(url_for('admin.category_icons'))
 
@@ -236,6 +250,10 @@ def deletion_requests():
 @login_required
 @admin_required
 def confirm_deletion(item_id):
+    form = SimpleCsrfForm()
+    if not form.validate_on_submit():
+        flash("Erreur de validation du formulaire.", "danger")
+        return redirect(url_for('admin.deletion_requests'))
     item = db.get_or_404(Item, item_id)
     db.session.delete(item)
     db.session.commit()
@@ -579,6 +597,9 @@ def goodies_products():
         # Handle optional image upload
         file = form.image.data
         if file and getattr(file, 'filename', ''):
+            if not _check_image_magic_bytes_admin(file):
+                flash('L\'image doit être un fichier JPEG ou PNG valide.', 'danger')
+                return redirect(url_for('admin.goodies_products'))
             ext = os.path.splitext(file.filename)[1].lower()
             fname = f"prod_{uuid.uuid4().hex}{ext}"
             safe = secure_filename(fname)
@@ -616,6 +637,9 @@ def goodies_product_edit(pid):
         p.active = bool(form.active.data)
         file = form.image.data
         if file and getattr(file, 'filename', ''):
+            if not _check_image_magic_bytes_admin(file):
+                flash('L\'image doit être un fichier JPEG ou PNG valide.', 'danger')
+                return redirect(url_for('admin.goodies_product_edit', pid=pid))
             ext = os.path.splitext(file.filename)[1].lower()
             fname = f"prod_{uuid.uuid4().hex}{ext}"
             safe = secure_filename(fname)
@@ -812,7 +836,7 @@ def goodies_z_close():
         return redirect(url_for('admin.goodies_z'))
     last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
     from_ts = last.to_ts if last else None
-    to_ts = datetime.utcnow()
+    to_ts = datetime.now(timezone.utc)
     z = ZClosure(from_ts=from_ts, to_ts=to_ts)
     db.session.add(z)
     db.session.commit()
@@ -1045,3 +1069,32 @@ def goodies_last_z():
     last = ZClosure.query.order_by(ZClosure.to_ts.desc()).first()
     iso = last.to_ts.isoformat() if last and last.to_ts else ''
     return jsonify({'last_z_iso': iso})
+
+
+@bp_admin.route('/users/create', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def create_user():
+    form = RegisterForm()
+    if form.validate_on_submit():
+        if User.query.filter_by(email=form.email.data.lower()).first():
+            flash('Cet email est déjà utilisé.', 'danger')
+        else:
+            user = User(
+                first_name=form.first_name.data.strip(),
+                last_name=form.last_name.data.strip(),
+                email=form.email.data.lower(),
+            )
+            user.set_password(form.password.data)
+            user.is_admin = bool(form.is_admin.data)
+            db.session.add(user)
+            db.session.commit()
+            db.session.add(ActionLog(
+                user_id=current_user.id,
+                action_type='admin_create_user',
+                details=f'Création compte: {user.email}'
+            ))
+            db.session.commit()
+            flash(f'Compte créé pour {user.email}.', 'success')
+            return redirect(url_for('admin.admin_users'))
+    return render_template('admin/create_user.html', form=form)

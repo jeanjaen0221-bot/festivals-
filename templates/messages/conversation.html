@@ -261,7 +261,7 @@
 </div>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
   initConversation({{ conv.id }}, {{ last_msg_id }}, {{ current_user.id }});
 </script>
 {% endblock %}

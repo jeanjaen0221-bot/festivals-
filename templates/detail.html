@@ -27,7 +27,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
   var photoModal = document.getElementById('photoModal');
   var modalPhoto = document.getElementById('modalPhoto');
@@ -269,7 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
  </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function () {
   // Associer directement
   document.querySelectorAll('.btn-associate').forEach(function(btn){

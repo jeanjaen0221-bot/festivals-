@@ -8,7 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import matching
 import image_text_matcher as itm
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from types import SimpleNamespace
 from werkzeug.datastructures import FileStorage
@@ -24,7 +24,6 @@ from app import app, db, limiter
 from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure
 from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm, SimpleCsrfForm
 from ocr_utils import extract_id_card_data
-from flask_wtf.csrf import validate_csrf
 from admin import admin_required
 
 bp = Blueprint('main', __name__)
@@ -83,6 +82,17 @@ def ocr_id_card():
 def allowed_file(filename):
     allowed_ext = {'png', 'jpg', 'jpeg'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_ext
+
+
+def _check_image_magic_bytes(file_stream) -> bool:
+    """Vérifie les magic bytes pour s'assurer que le fichier est bien une image JPEG ou PNG."""
+    header = file_stream.read(16)
+    file_stream.seek(0)
+    if header[:3] == b'\xff\xd8\xff':
+        return True
+    if header[:8] == b'\x89PNG\r\n\x1a\n':
+        return True
+    return False
 
 
 def _guess_mime_from_ext(filename: str) -> str | None:
@@ -228,6 +238,7 @@ def auth():
     # Vérifie s'il existe déjà un admin
     admin_exists = User.query.filter_by(is_admin=True).first() is not None
     show_admin_checkbox = not admin_exists
+    registration_open = not admin_exists  # L'inscription publique est fermée dès qu'un admin existe
 
     # Gestion connexion
     if request.method == 'POST':
@@ -245,7 +256,9 @@ def auth():
                 flash('Identifiants invalides.', 'danger')
         elif 'submit_register' in request.form:
             active_tab = 'register'
-            if register_form.validate_on_submit():
+            if not registration_open:
+                flash("L'inscription est fermée. Contactez un administrateur pour obtenir un compte.", 'danger')
+            elif register_form.validate_on_submit():
                 if User.query.filter_by(email=register_form.email.data.lower()).first():
                     flash('Cet email existe déjà.', 'danger')
                 else:
@@ -264,10 +277,10 @@ def auth():
                     log_action(user.id, 'register', f"Inscription utilisateur : {user.first_name} {user.last_name}")
                     flash('Compte créé. Connectez-vous.', 'success')
                     return redirect(url_for('main.auth', tab='login'))
-    return render_template('auth.html', login_form=login_form, register_form=register_form, active_tab=active_tab, show_admin_checkbox=show_admin_checkbox)
+    return render_template('auth.html', login_form=login_form, register_form=register_form, active_tab=active_tab, show_admin_checkbox=show_admin_checkbox, registration_open=registration_open)
 
 
-@bp.route('/logout')
+@bp.route('/logout', methods=['POST'])
 @login_required
 def logout():
     logout_user()
@@ -447,7 +460,6 @@ def report_item():
             reporter_phone=getattr(current_user, 'phone', None)
         )
         db.session.add(item)
-        db.session.flush()
         db.session.commit()
         log_action(current_user.id, 'create_item', f'Ajout objet perdu ID:{item.id}')
         flash("Objet perdu enregistré !", "success")
@@ -477,7 +489,6 @@ def report_item():
             reporter_phone=getattr(current_user, 'phone', None)
         )
         db.session.add(item)
-        db.session.flush()
         db.session.commit()
         log_action(current_user.id, 'create_item', f'Ajout objet trouvé ID:{item.id}')
         flash("Objet trouvé enregistré !", "success")
@@ -511,7 +522,10 @@ def detail_item(item_id):
     # Restitution : si FOUND, proposer le formulaire de restitution
     if item.status == Status.FOUND and confirm_return_form.validate_on_submit() and 'submit_return' in request.form:
         f = confirm_return_form.return_photo.data
-        if f:
+        if f and f.filename:
+            if not allowed_file(f.filename) or not _check_image_magic_bytes(f):
+                flash("Le fichier photo doit être une image JPEG ou PNG valide.", "danger")
+                return redirect(url_for('main.detail_item', item_id=item.id))
             ext = os.path.splitext(f.filename)[1].lower()
             filename = f"rest_{item.id}_{uuid.uuid4().hex}{ext}"
             item.return_photo_filename = secure_filename(filename)
@@ -519,7 +533,7 @@ def detail_item(item_id):
             item.return_photo_original_filename = f.filename
             item.return_photo_mime_type = getattr(f, 'mimetype', None) or _guess_mime_from_ext(item.return_photo_filename)
         item.status = Status.RETURNED
-        item.return_date = datetime.utcnow()
+        item.return_date = datetime.now(timezone.utc)
         item.return_comment = confirm_return_form.return_comment.data
         db.session.commit()
         flash("Objet marqué comme rendu avec photo de restitution !", "success")
@@ -671,10 +685,10 @@ def detail_item(item_id):
         item.claimant_name = form.claimant_name.data
         item.claimant_email = form.claimant_email.data
         item.claimant_phone = form.claimant_phone.data
-        item.return_date = datetime.utcnow()
+        item.return_date = datetime.now(timezone.utc)
         if form.photos.data:
             for f in form.photos.data:
-                if isinstance(f, FileStorage) and f and allowed_file(f.filename):
+                if isinstance(f, FileStorage) and f and f.filename and allowed_file(f.filename) and _check_image_magic_bytes(f):
                     ext = os.path.splitext(f.filename)[1].lower()
                     filename = f"{uuid.uuid4().hex}{ext}"
                     safe_name = secure_filename(filename)
@@ -724,8 +738,8 @@ def detail_item(item_id):
 
 @bp.route('/item/<int:item_id>/edit', methods=['GET', 'POST'])
 @login_required
+@admin_required
 def edit_item(item_id):
-    # Suppression de la restriction admin : tout utilisateur connecté peut modifier
     item = db.get_or_404(Item, item_id)
     form = ItemForm()
     form.category.choices = [(c.id, c.name) for c in Category.query.order_by(Category.name).all()]
@@ -797,13 +811,7 @@ def delete_item(item_id):
         if old_status in ['lost', 'found', 'returned']:
             return redirect(url_for('main.list_items', status=old_status))
         return redirect(url_for('main.index'))
-    # Affiche les erreurs du formulaire si la suppression échoue
-    if delete_form.errors:
-        for field, errors in delete_form.errors.items():
-            for error in errors:
-                flash(f"Erreur {field} : {error}", 'danger')
-    else:
-        flash('Erreur lors de la suppression.', 'danger')
+    flash('Formulaire invalide. Vérifiez les champs saisis.', 'danger')
     return redirect(url_for('main.detail_item', item_id=item_id))
 
 @bp.route('/export/<status>')
@@ -815,7 +823,8 @@ def export_items(status):
     except ValueError:
         st = Status.LOST
 
-    items = Item.query.filter_by(status=st).filter(Item.status != Status.PENDING_DELETION).order_by(Item.date_reported.desc()).all()
+    EXPORT_LIMIT = 1000
+    items = Item.query.filter_by(status=st).filter(Item.status != Status.PENDING_DELETION).order_by(Item.date_reported.desc()).limit(EXPORT_LIMIT).all()
     items_export = []
     for item in items:
         photo_b64 = None
@@ -860,6 +869,7 @@ def export_items(status):
 
 
 @bp.route('/uploads/<filename>')
+@login_required
 def uploaded_file(filename):
     try:
         return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
@@ -1030,6 +1040,9 @@ def headphone_loans():
         if form.deposit_type.data == 'id_card' and 'id_card_photo' in request.files:
             file = request.files['id_card_photo']
             if file and file.filename:
+                if not allowed_file(file.filename) or not _check_image_magic_bytes(file):
+                    flash("La photo de carte d'identité doit être une image JPEG ou PNG valide.", "danger")
+                    return redirect(url_for('main.headphone_loans'))
                 img_bytes = file.read()
                 id_card_photo_b64 = 'data:' + file.mimetype + ';base64,' + base64.b64encode(img_bytes).decode('utf-8')
         loan = HeadphoneLoan(
@@ -1064,11 +1077,6 @@ def request_loan_deletion(loan_id):
     if loan.status == LoanStatus.PENDING_DELETION:
         flash("Ce prêt est déjà en attente de suppression.", "warning")
         return redirect(url_for('main.headphone_loans'))
-    # CSRF protection
-    try:
-        validate_csrf(request.form.get('csrf_token'))
-    except Exception:
-        abort(400, description="CSRF token invalide.")
     # Stocke le statut original
     if not loan.previous_status:
         loan.previous_status = loan.status
@@ -1087,7 +1095,7 @@ def return_headphone_loan(loan_id):
         return jsonify({'success': False, 'error': 'Signature manquante'}), 400
     signature = data.get('signature')
     loan.signature = signature
-    loan.return_date = datetime.utcnow()
+    loan.return_date = datetime.now(timezone.utc)
     db.session.commit()
     return {'success': True}
 
@@ -1186,10 +1194,6 @@ def reject_match():
     except (TypeError, ValueError):
         flash("Identifiants invalides.", "danger")
         return redirect(url_for('main.list_matches'))
-    try:
-        validate_csrf(request.form.get('csrf_token'))
-    except Exception:
-        abort(400, description="CSRF token invalide.")
     existing = RejectedPair.query.filter_by(lost_id=lost_id, found_id=found_id).first()
     if not existing:
         rp = RejectedPair(
@@ -1238,7 +1242,7 @@ def confirm_match():
     new_match = Match(lost_id=lost_id, found_id=found_id)
     db.session.add(new_match)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     # lost.status = Status.RETURNED  # On ne change plus le statut
     lost.claimant_name = found.reporter_name
     lost.claimant_email = found.reporter_email

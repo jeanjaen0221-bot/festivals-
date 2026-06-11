@@ -83,7 +83,7 @@
      data-last-z-url="{{ url_for('main.caisse_last_z') }}"
      class="d-none"></div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 (function(){
   const fmt = n => n.toFixed(2).replace('.', ',') + ' \u20ac';
   const q2  = n => Number((Math.round(n * 100) / 100).toFixed(2));

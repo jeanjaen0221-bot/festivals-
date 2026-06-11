@@ -176,7 +176,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 (function(){
   document.querySelectorAll('.mpc-score-bar [data-pct]').forEach(function(el){
     el.style.width = (el.dataset.pct || 0) + '%';

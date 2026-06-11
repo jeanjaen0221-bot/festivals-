@@ -54,7 +54,7 @@
     </div>
   </div>
 </div>
-<script>
+<script nonce="{{ csp_nonce }}">
   document.getElementById('selectAll').addEventListener('click', function() {
     document.querySelectorAll('input[name="members"]').forEach(cb => cb.checked = true);
   });

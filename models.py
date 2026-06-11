@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -141,7 +141,7 @@ class ShuttleSettings(db.Model):
     constrain_to_today_slots = db.Column(db.Boolean, nullable=False, default=False)
     display_direction = db.Column(db.String(10), nullable=False, default='forward')  # 'forward'|'backward'
     display_base_stop_sequence = db.Column(db.Integer, nullable=True)  # sequence du stop de départ
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     def __repr__(self):
         return f'<ShuttleSettings mean_leg_minutes={self.mean_leg_minutes}>'
@@ -162,7 +162,7 @@ class Item(db.Model):
     location = db.Column(db.String(100), nullable=True)  # Lieu de perte (pour objets perdus)
     found_location = db.Column(db.String(100), nullable=True)  # Lieu où l'objet a été trouvé (pour objets trouvés)
     storage_location = db.Column(db.String(100), nullable=True)  # Lieu où l'objet est stocké (pour objets trouvés)
-    date_reported = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    date_reported = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=False, index=True)
     category = db.relationship('Category', backref=db.backref('items', lazy=True))
     reporter_name = db.Column(db.String(100), nullable=False)
@@ -192,7 +192,7 @@ class Match(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     lost_id = db.Column(db.Integer, db.ForeignKey('items.id', ondelete='CASCADE'), nullable=False, index=True)
     found_id = db.Column(db.Integer, db.ForeignKey('items.id', ondelete='CASCADE'), nullable=False, index=True)
-    date_validated = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    date_validated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     lost = db.relationship('Item', foreign_keys=[lost_id])
     found = db.relationship('Item', foreign_keys=[found_id])
@@ -206,7 +206,7 @@ class RejectedPair(db.Model):
     lost_id = db.Column(db.Integer, db.ForeignKey('items.id', ondelete='CASCADE'), nullable=False, index=True)
     found_id = db.Column(db.Integer, db.ForeignKey('items.id', ondelete='CASCADE'), nullable=False, index=True)
     rejected_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    rejected_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    rejected_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     __table_args__ = (db.UniqueConstraint('lost_id', 'found_id', name='uq_rejected_pair'),)
 
     def __repr__(self):
@@ -244,7 +244,7 @@ class ActionLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     action_type = db.Column(db.String(50), nullable=False)
     details = db.Column(db.Text, nullable=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 # --- Goodies sales (Belgium-ready TVA) ---
 class PaymentMethod(enum.Enum):
@@ -262,8 +262,8 @@ class Product(db.Model):
     image_data = db.Column(db.LargeBinary, nullable=True)
     image_mime_type = db.Column(db.String(100), nullable=True)
     image_original_filename = db.Column(db.String(200), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     def __repr__(self):
         return f'<Product {self.name} {self.price}€ TVA {self.vat_rate}%>'
@@ -271,7 +271,7 @@ class Product(db.Model):
 class Sale(db.Model):
     __tablename__ = 'sales'
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     payment_method = db.Column(db.Enum(PaymentMethod), nullable=False)
     total_amount = db.Column(db.Numeric(10, 2), nullable=False)  # total TTC avant arrondi cash
     total_vat_amount = db.Column(db.Numeric(10, 2), nullable=False)  # somme des TVA lignes
@@ -300,7 +300,7 @@ class SaleItem(db.Model):
 class ZClosure(db.Model):
     __tablename__ = 'z_closures'
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     from_ts = db.Column(db.DateTime, nullable=True)
     to_ts = db.Column(db.DateTime, nullable=False)
     tickets = db.relationship('ZTicketPDF', backref='closure', cascade='all, delete-orphan', lazy=True)
@@ -315,7 +315,7 @@ class ZTicketPDF(db.Model):
     filename = db.Column(db.String(200), nullable=False)
     pdf_data = db.Column(db.LargeBinary, nullable=False)
     size_bytes = db.Column(db.Integer, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     def __repr__(self):
         return f'<ZTicketPDF {self.filename}>'
@@ -336,7 +336,7 @@ class Conversation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     type = db.Column(db.Enum(ConvType), nullable=False, default=ConvType.DIRECT)
     name = db.Column(db.String(120), nullable=True)  # groupes uniquement
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
     participants = db.relationship('ConversationParticipant', backref='conversation',
@@ -378,7 +378,7 @@ class ConversationParticipant(db.Model):
     conversation_id = db.Column(db.Integer, db.ForeignKey('conversations.id'), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     role = db.Column(db.Enum(ParticipantRole), nullable=False, default=ParticipantRole.MEMBER)
-    joined_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    joined_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     last_read_at = db.Column(db.DateTime, nullable=True)
     user = db.relationship('User', lazy=True)
 
@@ -392,7 +392,7 @@ class Message(db.Model):
     conversation_id = db.Column(db.Integer, db.ForeignKey('conversations.id'), nullable=False, index=True)
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     body = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
     pinned = db.Column(db.Boolean, nullable=False, default=False)
     pinned_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)

@@ -87,7 +87,7 @@
 {% endif %}
 
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
   var prefix = "{{ prefix }}";
   // LOST
@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', function() {
   <div id="{{ prefix }}existing-category-group">
     {{ form.category.label(class="form-label") }}
     <input type="text" class="form-control mb-2" id="{{ prefix }}category-search" placeholder="Rechercher une catégorie…" autocomplete="off" style="font-size:1.15rem;">
-    <script>
+    <script nonce="{{ csp_nonce }}">
       document.addEventListener('DOMContentLoaded', function() {
         var search = document.getElementById('{{ prefix }}category-search');
         var select = document.getElementById('{{ prefix }}category-select');
@@ -244,7 +244,7 @@ document.addEventListener('DOMContentLoaded', function() {
     ) }}
     <div class="form-text">La catégorie sera créée et disponible pour les prochaines déclarations.</div>
 </div>
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
   var prefix = "{{ prefix }}";
   var toggle = document.getElementById(prefix + 'new-category-toggle');

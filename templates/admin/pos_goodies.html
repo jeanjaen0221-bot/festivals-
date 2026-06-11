@@ -59,7 +59,7 @@
     </form>
   </div>
 </div>
-<script>
+<script nonce="{{ csp_nonce }}">
 (function(){
   const fmt = n=> (n).toFixed(2).replace('.',',') + ' €';
   const q2 = n=> Number((Math.round(n*100)/100).toFixed(2));

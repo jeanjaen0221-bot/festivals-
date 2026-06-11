@@ -53,7 +53,7 @@ function appendMessage(m, currentUserId) {
   if (document.getElementById('msg-' + m.id)) return;
 
   var isMe = m.is_me || m.sender_id === currentUserId;
-  var initials = m.sender_name ? m.sender_name.charAt(0).toUpperCase() : '?';
+  var initials = m.sender_name ? escHtml(m.sender_name.charAt(0).toUpperCase()) : '?';
   var avatarStyle = isMe
     ? 'background:linear-gradient(135deg,#0d6efd,#0dcaf0);'
     : 'background:linear-gradient(135deg,#6c757d,#adb5bd);';

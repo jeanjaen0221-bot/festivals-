@@ -1,7 +1,8 @@
 import os
 import sys
-from datetime import datetime, timedelta
-from flask import Flask
+import secrets
+from datetime import datetime, timedelta, timezone
+from flask import Flask, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager
@@ -44,9 +45,21 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 app.config['WTF_CSRF_TIME_LIMIT'] = 3600
 
+# Génération du nonce CSP par requête
+@app.before_request
+def generate_csp_nonce():
+    g.csp_nonce = secrets.token_urlsafe(16)
+
+
+@app.context_processor
+def inject_csp_nonce():
+    return {'csp_nonce': getattr(g, 'csp_nonce', '')}
+
+
 # Headers HTTP de sécurité
 @app.after_request
 def set_security_headers(response):
+    nonce = getattr(g, 'csp_nonce', '')
     response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -54,7 +67,7 @@ def set_security_headers(response):
     response.headers['Permissions-Policy'] = 'camera=(), microphone=(), usb=(), payment=(), geolocation=()'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        f"script-src 'self' 'nonce-{nonce}' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
         "img-src 'self' data:; "
@@ -76,12 +89,12 @@ limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     default_limits=["300 per minute"],
-    storage_uri="memory://",
+    storage_uri=os.environ.get('REDIS_URL', 'memory://'),
 )
 
 @app.context_processor
 def inject_current_year():
-    return {'current_year': datetime.utcnow().year}
+    return {'current_year': datetime.now(timezone.utc).year}
 
 @app.context_processor
 def inject_unread_count():

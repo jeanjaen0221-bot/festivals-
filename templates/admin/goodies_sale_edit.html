@@ -119,7 +119,7 @@
   </div>
 </form>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.querySelectorAll('.qty-input').forEach(function(input) {
   input.addEventListener('input', function() {
     const unit = parseFloat(this.dataset.unit) || 0;

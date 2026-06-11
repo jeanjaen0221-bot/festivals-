@@ -4,8 +4,6 @@ from admin import admin_required
 from app import db
 from models import ShuttleScheduleDay, ShuttleScheduleSlot, ShuttleRouteStop, ShuttleSettings
 from forms import ShuttleScheduleDayForm, ShuttleScheduleSlotForm, ShuttleRouteStopForm, ShuttleSettingsForm, SimpleCsrfForm
-from datetime import datetime
-
 bp = Blueprint('admin_shuttle', __name__, url_prefix='/admin/shuttle')
 
 @bp.route('/')
