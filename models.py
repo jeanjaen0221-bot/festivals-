@@ -168,6 +168,9 @@ class Item(db.Model):
     reporter_name = db.Column(db.String(100), nullable=False)
     reporter_email = db.Column(db.String(150), nullable=True)
     reporter_phone = db.Column(db.String(50), nullable=True)
+    item_color = db.Column(db.String(150), nullable=True)         # Couleurs CSV ex: "noir,rouge"
+    item_brand = db.Column(db.String(100), nullable=True)         # Marque/modèle visible
+    item_distinctive = db.Column(db.String(200), nullable=True)   # Flags CSV ex: "a_document_id,a_argent"
     photo_filename = db.Column(db.String(200), nullable=True)  # Pour compatibilité
     photo_data = db.Column(db.LargeBinary, nullable=True)
     photo_mime_type = db.Column(db.String(100), nullable=True)

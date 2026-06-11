@@ -21,10 +21,16 @@ MATCH_CONFIG = {
     'text_weight':    0.55,   # part du score texte dans le score final
     'image_weight':   0.30,   # part texte↔image
     'img_img_weight': 0.15,   # part image↔image (quand les deux ont une photo)
-    'bonus_same_category': 10,
-    'bonus_date_close':    10,  # ≤ 2 jours
-    'malus_date_far':      10,  # > 14 jours
-    'threshold_default':   60,
+    'bonus_same_category':      10,
+    'bonus_date_close':         10,  # ≤ 2 jours
+    'malus_date_far':           10,  # > 14 jours
+    'threshold_default':        60,
+    # Champs structurés (item_color / item_brand / item_distinctive CSV)
+    'bonus_color_match':        15,  # par couleur commune
+    'malus_color_conflict':      8,  # couleurs présentes ET aucune commune
+    'bonus_brand_match':        20,  # même marque normalisée
+    'bonus_distinctive_match':  12,  # par flag commun (a_document_id, a_argent…)
+    'threshold_structured_low': 45,  # seuil si signal structuré fort (≥15 pts)
 }
 
 # ── Stopwords ─────────────────────────────────────────────────────────────────
@@ -282,3 +288,62 @@ def match_explanation(item1, item2, fields_weights=None):
         'descriptor_bonus': descriptor_bonus(raw1_full, raw2_full),
     }
     return details
+
+
+def _parse_csv_field(value: str) -> set:
+    """Retourne un set depuis un champ CSV (ex: 'noir,rouge' → {'noir','rouge'})."""
+    if not value:
+        return set()
+    return {v.strip() for v in value.split(',') if v.strip()}
+
+
+def structured_field_bonus(item1, item2) -> float:
+    """
+    Bonus/malus basé sur les champs structurés item_color, item_brand, item_distinctive.
+    Ces champs sont remplis par coches → pas de variabilité de vocabulaire.
+
+    Retourne un float (peut être négatif en cas de conflit couleur).
+    """
+    cfg = MATCH_CONFIG
+    bonus = 0.0
+
+    # ── Couleurs ──────────────────────────────────────────────────────────────
+    colors1 = _parse_csv_field(getattr(item1, 'item_color', '') or '')
+    colors2 = _parse_csv_field(getattr(item2, 'item_color', '') or '')
+    # Exclure 'inconnu' des comparaisons réelles
+    real1 = colors1 - {'inconnu'}
+    real2 = colors2 - {'inconnu'}
+    shared_colors = real1 & real2
+    if shared_colors:
+        bonus += cfg['bonus_color_match'] * len(shared_colors)
+    elif real1 and real2:
+        # Les deux ont des couleurs mais aucune commune → conflit explicite
+        bonus -= cfg['malus_color_conflict']
+
+    # ── Marque ────────────────────────────────────────────────────────────────
+    brand1 = unidecode((getattr(item1, 'item_brand', '') or '').lower().strip())
+    brand2 = unidecode((getattr(item2, 'item_brand', '') or '').lower().strip())
+    if brand1 and brand2 and brand1 != 'inconnu' and brand2 != 'inconnu':
+        # Correspondance exacte ou très proche (fuzz ≥ 85)
+        if brand1 == brand2 or fuzz.ratio(brand1, brand2) >= 85:
+            bonus += cfg['bonus_brand_match']
+
+    # ── Signes distinctifs ────────────────────────────────────────────────────
+    dist1 = _parse_csv_field(getattr(item1, 'item_distinctive', '') or '')
+    dist2 = _parse_csv_field(getattr(item2, 'item_distinctive', '') or '')
+    shared_dist = dist1 & dist2
+    if shared_dist:
+        bonus += cfg['bonus_distinctive_match'] * len(shared_dist)
+
+    return round(bonus, 2)
+
+
+def effective_threshold(structured_bonus: float) -> float:
+    """
+    Retourne le seuil de matching effectif.
+    Si le signal structuré est fort (≥15 pts), abaisse le seuil à threshold_structured_low.
+    """
+    cfg = MATCH_CONFIG
+    if structured_bonus >= 15:
+        return cfg['threshold_structured_low']
+    return cfg['threshold_default']

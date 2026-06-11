@@ -377,6 +377,27 @@ with app.app_context():
             except Exception as e_vendor:
                 print(f"[WARN] Impossible d'ajouter la colonne users.is_vendor_goodies: {e_vendor}", file=sys.stderr)
 
+            # --- Ensure items structured matching columns exist ---
+            for col_def in [
+                ("item_color",       "VARCHAR(150)"),
+                ("item_brand",       "VARCHAR(100)"),
+                ("item_distinctive", "VARCHAR(200)"),
+            ]:
+                col_name, col_type = col_def
+                try:
+                    res = conn.execute(sqlalchemy.text(
+                        "SELECT column_name FROM information_schema.columns "
+                        f"WHERE table_name='items' AND column_name='{col_name}'"
+                    ))
+                    if res.fetchone() is None:
+                        conn.execute(sqlalchemy.text(
+                            f"ALTER TABLE items ADD COLUMN {col_name} {col_type};"
+                        ))
+                        conn.execute(sqlalchemy.text("COMMIT;"))
+                        print(f"[INFO] Colonne items.{col_name} ajoutée.", file=sys.stderr)
+                except Exception as e_col:
+                    print(f"[WARN] Impossible d'ajouter items.{col_name}: {e_col}", file=sys.stderr)
+
     except Exception as e:
         print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)
 

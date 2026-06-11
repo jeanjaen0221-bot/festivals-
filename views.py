@@ -171,7 +171,7 @@ def _cleanup_tmp_images() -> None:
 
 
 def _item_pair_bonus(lost, found) -> float:
-    """Bonus/malus catégorie + date pour une paire Lost↔Found (utilisé partout de façon identique)."""
+    """Bonus/malus catégorie + date + champs structurés pour une paire Lost↔Found."""
     _cfg = matching.MATCH_CONFIG
     bonus = 0.0
     if lost.category_id and lost.category_id == found.category_id:
@@ -185,6 +185,7 @@ def _item_pair_bonus(lost, found) -> float:
                 bonus -= _cfg['malus_date_far']
     except Exception:
         pass
+    bonus += matching.structured_field_bonus(lost, found)
     return bonus
 
 
@@ -488,7 +489,10 @@ def report_item():
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
-            reporter_phone=getattr(current_user, 'phone', None)
+            reporter_phone=getattr(current_user, 'phone', None),
+            item_color=','.join(lost_form.item_color.data) if lost_form.item_color.data else None,
+            item_brand=(lost_form.item_brand.data or '').strip() or None,
+            item_distinctive=','.join(lost_form.item_distinctive.data) if lost_form.item_distinctive.data else None,
         )
         db.session.add(item)
         db.session.commit()
@@ -517,7 +521,10 @@ def report_item():
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
-            reporter_phone=getattr(current_user, 'phone', None)
+            reporter_phone=getattr(current_user, 'phone', None),
+            item_color=','.join(found_form.item_color.data) if found_form.item_color.data else None,
+            item_brand=(found_form.item_brand.data or '').strip() or None,
+            item_distinctive=','.join(found_form.item_distinctive.data) if found_form.item_distinctive.data else None,
         )
         db.session.add(item)
         db.session.commit()
@@ -914,10 +921,47 @@ def api_check_similar():
     titre = request.form.get('title', '')
     cat_id = request.form.get('category_id', type=int)
     if not titre or not cat_id:
-        return {'similars': []}
+        return {'similars': [], 'candidates': []}
     location = request.form.get('location', '')
+    colors_raw = request.form.get('colors', '')
+    brand_raw  = request.form.get('brand', '').strip()
+    dist_raw   = request.form.get('distinctive', '')
+    current_status = request.form.get('status', '')  # 'lost' ou 'found'
+
+    # Doublons (même statut)
     similars = find_similar_items(titre, cat_id, seuil=70, location=location)
-    return jsonify({'similars': similars})
+
+    # Correspondances croisées (statut opposé) — preview temps réel
+    candidates = []
+    if current_status in ('lost', 'found'):
+        opposite = Status.FOUND if current_status == 'lost' else Status.LOST
+        probe = SimpleNamespace(
+            title=titre, comments='', location=location or '',
+            item_color=colors_raw, item_brand=brand_raw, item_distinctive=dist_raw
+        )
+        opp_items = Item.query.filter(
+            Item.category_id == cat_id,
+            Item.status == opposite,
+        ).order_by(Item.date_reported.desc()).limit(200).all()
+        for obj in opp_items:
+            struct_b = matching.structured_field_bonus(probe, obj)
+            threshold = matching.effective_threshold(struct_b)
+            base = matching.match_score(probe, obj)
+            score = max(0.0, min(100.0, round(base + struct_b, 2)))
+            if score >= threshold:
+                candidates.append({
+                    'id': obj.id,
+                    'title': obj.title,
+                    'category': obj.category.name if obj.category else '',
+                    'score': score,
+                    'date': obj.date_reported.strftime('%d/%m/%Y') if obj.date_reported else '',
+                    'item_color': obj.item_color or '',
+                    'item_brand': obj.item_brand or '',
+                })
+        candidates.sort(key=lambda x: -x['score'])
+        candidates = candidates[:5]
+
+    return jsonify({'similars': similars, 'candidates': candidates})
 
 @bp.route('/api/match_explain', methods=['POST'])
 @limiter.limit("20 per minute")

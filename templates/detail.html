@@ -110,7 +110,39 @@ document.addEventListener('DOMContentLoaded', function() {
     <p class="mb-2"><i class="bi bi-geo-alt text-danger"></i> <strong>Lieu :</strong> {{ item.location or '—' }}</p>
   {% endif %}
   <p class="mb-2"><i class="bi bi-calendar-event text-info"></i> <strong>Date signalement :</strong> {{ item.date_reported.strftime('%d/%m/%Y %H:%M') }}</p>
-  <p class="mb-0"><i class="bi bi-chat-left-text text-success"></i> <strong>Description :</strong><br> {{ item.comments or '—' }}</p>
+  <p class="mb-2"><i class="bi bi-chat-left-text text-success"></i> <strong>Description :</strong><br> {{ item.comments or '—' }}</p>
+  {% if item.item_color or item.item_brand or item.item_distinctive %}
+  <hr class="my-2">
+  {% if item.item_color %}
+  {% set color_labels = {'noir':'Noir','blanc':'Blanc','gris':'Gris','rouge':'Rouge','rose':'Rose','orange':'Orange','jaune':'Jaune','vert':'Vert','bleu':'Bleu','violet':'Violet','marron':'Marron/Beige','dore':'Doré','argent':'Argenté','multicolore':'Multicolore','inconnu':'Inconnu'} %}
+  {% set color_bg = {'noir':'#111','blanc':'#fff','gris':'#9ca3af','rouge':'#ef4444','rose':'#f472b6','orange':'#f97316','jaune':'#fbbf24','vert':'#22c55e','bleu':'#3b82f6','violet':'#a855f7','marron':'#92400e','dore':'#d97706','argent':'#94a3b8','multicolore':'','inconnu':'#e5e7eb'} %}
+  <p class="mb-2"><i class="bi bi-palette text-secondary"></i> <strong>Couleur(s) :</strong>
+    {% for c in item.item_color.split(',') %}{% set c = c.strip() %}
+      <span class="d-inline-flex align-items-center gap-1 me-1 px-2 py-1 rounded-pill border" style="font-size:.8rem;background:#fff;">
+        {% if c == 'multicolore' %}
+          <span style="width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.15);display:inline-block;background:linear-gradient(135deg,#ef4444,#3b82f6,#22c55e);"></span>
+        {% else %}
+          <span style="width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.15);display:inline-block;background:{{ color_bg.get(c, '#e5e7eb') }};"></span>
+        {% endif %}
+        {{ color_labels.get(c, c) }}
+      </span>
+    {% endfor %}
+  </p>
+  {% endif %}
+  {% if item.item_brand %}
+  <p class="mb-2"><i class="bi bi-tag text-secondary"></i> <strong>Marque / Modèle :</strong>
+    <span class="badge bg-light text-dark border">{{ item.item_brand }}</span>
+  </p>
+  {% endif %}
+  {% if item.item_distinctive %}
+  {% set dist_labels = {'a_document_id':"Doc. d'identité",'a_carte_bancaire':'Carte bancaire','a_argent':'Argent liquide','a_badge':'Badge festival','a_cle':'Clés','a_medicament':'Médicaments','personnalise':'Personnalisé/gravé','a_photo_enfant':'Lié à un enfant'} %}
+  <p class="mb-0"><i class="bi bi-star-fill text-warning"></i> <strong>Contenu particulier :</strong>
+    {% for f in item.item_distinctive.split(',') %}
+      <span class="badge bg-warning text-dark me-1">{{ dist_labels.get(f.strip(), f.strip()) }}</span>
+    {% endfor %}
+  </p>
+  {% endif %}
+  {% endif %}
 </div>
 
       <hr>

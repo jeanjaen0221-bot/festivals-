@@ -75,6 +75,97 @@
   <div class="form-text small">Donnez le plus de détails possibles (marque, couleur, contenu, état, particularités visibles…)</div>
 </div>
 
+{# ── Signes distinctifs structurés ────────────────────────────────────────── #}
+<div class="card border-2 mb-3" style="border-color:#6366f1!important;background:linear-gradient(135deg,#f5f3ff 0%,#ede9fe 100%);">
+  <div class="card-body py-3">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <span class="fs-4">🎯</span>
+      <div>
+        <div class="fw-bold" style="color:#4f46e5">Signes distinctifs — <span class="text-danger">important !</span></div>
+        <div class="small text-muted">Ces informations permettent de retrouver l'objet même si la description est formulée différemment. <strong>Plus vous êtes précis, plus la correspondance est fiable.</strong></div>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-semibold"><i class="bi bi-palette"></i> Couleur(s) principale(s) <span class="text-danger">*</span></label>
+      <div class="d-flex flex-wrap gap-2" id="{{ prefix }}color-grid">
+        {% for value, label in form.item_color.choices %}
+          <label class="color-chip{% if value == 'inconnu' %} color-chip-unknown{% endif %}" title="{{ label }}">
+            <input type="checkbox" name="{{ form.item_color.name }}" value="{{ value }}"
+                   class="d-none color-check"
+                   {% if form.item_color.data and value in form.item_color.data %}checked{% endif %}>
+            <span class="chip-dot" data-color="{{ value }}"></span>
+            <span class="chip-label">{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="form-text small text-muted mt-1">Cochez toutes les couleurs visibles sur l'objet.</div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-semibold"><i class="bi bi-tag"></i> Marque / Modèle visible</label>
+      {{ form.item_brand(class="form-control", placeholder="Ex: Nike, Samsung, Eastpak… (laisser vide si inconnu)", id=prefix ~ 'item-brand', autocomplete="off") }}
+    </div>
+
+    <div class="mb-1">
+      <label class="form-label fw-semibold"><i class="bi bi-star-fill text-warning"></i> Contenu / Signes particuliers</label>
+      <div class="row g-2">
+        {% for value, label in form.item_distinctive.choices %}
+          <div class="col-12 col-sm-6">
+            <div class="form-check">
+              <input class="form-check-input distinctive-check" type="checkbox"
+                     name="{{ form.item_distinctive.name }}" value="{{ value }}"
+                     id="{{ prefix }}dist-{{ value }}"
+                     {% if form.item_distinctive.data and value in form.item_distinctive.data %}checked{% endif %}>
+              <label class="form-check-label" for="{{ prefix }}dist-{{ value }}">{{ label }}</label>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+.color-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;border:2px solid #dee2e6;background:#fff;font-size:.85rem;transition:all .15s;cursor:pointer;user-select:none;}
+.color-chip:hover{border-color:#6366f1;}
+.color-chip.selected{border-color:#6366f1;background:#ede9fe;font-weight:600;}
+.color-chip-unknown{font-style:italic;color:#6c757d;}
+.chip-dot{width:16px;height:16px;border-radius:50%;border:1px solid rgba(0,0,0,.12);flex-shrink:0;}
+[data-color="noir"]{background:#111;}
+[data-color="blanc"]{background:#fff;border-color:#aaa!important;}
+[data-color="gris"]{background:#9ca3af;}
+[data-color="rouge"]{background:#ef4444;}
+[data-color="rose"]{background:#f472b6;}
+[data-color="orange"]{background:#f97316;}
+[data-color="jaune"]{background:#fbbf24;}
+[data-color="vert"]{background:#22c55e;}
+[data-color="bleu"]{background:#3b82f6;}
+[data-color="violet"]{background:#a855f7;}
+[data-color="marron"]{background:#92400e;}
+[data-color="dore"]{background:#d97706;}
+[data-color="argent"]{background:#94a3b8;}
+[data-color="multicolore"]{background:linear-gradient(135deg,#ef4444,#3b82f6,#22c55e);}
+[data-color="inconnu"]{background:#e5e7eb;}
+</style>
+<script nonce="{{ csp_nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('#{{ prefix }}color-grid .color-chip').forEach(function(chip) {
+    var cb = chip.querySelector('.color-check');
+    function sync() { chip.classList.toggle('selected', cb.checked); }
+    sync();
+    chip.addEventListener('click', function(e) {
+      if (e.target === cb) return;
+      cb.checked = !cb.checked; sync();
+      document.dispatchEvent(new CustomEvent('structuredFieldChange'));
+    });
+    cb.addEventListener('change', function() { sync(); document.dispatchEvent(new CustomEvent('structuredFieldChange')); });
+  });
+  document.querySelectorAll('.distinctive-check').forEach(function(cb) {
+    cb.addEventListener('change', function() { document.dispatchEvent(new CustomEvent('structuredFieldChange')); });
+  });
+});
+</script>
+
 {# Photos: seulement pour FOUND. Pour LOST, pas nécessaire. #}
 {% if prefix == 'found-' %}
   <div class="mb-3">

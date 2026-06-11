@@ -1,5 +1,6 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SelectField, SubmitField, PasswordField, BooleanField, DateField, TimeField, MultipleFileField, RadioField, DecimalField, IntegerField
+from wtforms import StringField, TextAreaField, SelectField, SelectMultipleField, SubmitField, PasswordField, BooleanField, DateField, TimeField, MultipleFileField, RadioField, DecimalField, IntegerField
+from wtforms.widgets import ListWidget, CheckboxInput
 from wtforms.validators import DataRequired, Length, Email, Optional, EqualTo
 from flask_wtf.file import FileField, FileAllowed, FileRequired
 
@@ -41,6 +42,50 @@ class ItemForm(FlaskForm):
         Optional(),
         Length(max=50, message='Le nom de la catégorie ne doit pas dépasser 50 caractères')
     ])
+    # ── Champs structurés pour matching infaillible ─────────────────────────
+    COLORS_CHOICES = [
+        ('noir',    'Noir'),
+        ('blanc',   'Blanc'),
+        ('gris',    'Gris'),
+        ('rouge',   'Rouge'),
+        ('rose',    'Rose'),
+        ('orange',  'Orange'),
+        ('jaune',   'Jaune'),
+        ('vert',    'Vert'),
+        ('bleu',    'Bleu'),
+        ('violet',  'Violet'),
+        ('marron',  'Marron / Beige'),
+        ('dore',    'Doré / Or'),
+        ('argent',  'Argenté / Gris métal'),
+        ('multicolore', 'Multicolore'),
+        ('inconnu', 'Je ne sais pas'),
+    ]
+    DISTINCTIVE_CHOICES = [
+        ('a_document_id',  "Contient un document d'identité (carte ID, passeport…)"),
+        ('a_carte_bancaire', 'Contient une carte bancaire'),
+        ('a_argent',       'Contient de l’argent liquide'),
+        ('a_badge',        'Contient/est un badge festival'),
+        ('a_cle',          'Contient des clés'),
+        ('a_medicament',   'Contient des médicaments'),
+        ('personnalise',   'Personnalisé / gravé / unique'),
+        ('a_photo_enfant', 'Lié à un enfant'),
+    ]
+    item_color = SelectMultipleField(
+        'Couleur(s) principale(s)',
+        choices=COLORS_CHOICES,
+        validators=[Optional()],
+        widget=ListWidget(prefix_label=False),
+        option_widget=CheckboxInput(),
+    )
+    item_brand = StringField('Marque / Modèle visible', validators=[Optional(), Length(max=100)])
+    item_distinctive = SelectMultipleField(
+        'Signes distinctifs / Contenu particulier',
+        choices=DISTINCTIVE_CHOICES,
+        validators=[Optional()],
+        widget=ListWidget(prefix_label=False),
+        option_widget=CheckboxInput(),
+    )
+    # ─────────────────────────────────────────────────────────────────────────
     reporter_name = StringField('Nom du déclarant', validators=[DataRequired(), Length(max=100)])
     reporter_email = StringField('Email du déclarant', validators=[Optional(), Email(), Length(max=150)])
     reporter_phone = StringField('Téléphone du déclarant', validators=[Length(max=50)])
