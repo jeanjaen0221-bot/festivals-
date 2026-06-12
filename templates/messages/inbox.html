@@ -30,9 +30,9 @@
 </div>
 
 {% if convs %}
-<div class="list-group shadow-sm rounded-4 overflow-hidden">
+<div class="list-group shadow-sm rounded-4">
   {% for c in convs %}
-  <div class="list-group-item d-flex align-items-center gap-2 py-3 px-3 {% if c.unread > 0 %}bg-light fw-semibold{% endif %}">
+  <div class="list-group-item d-flex align-items-center gap-2 py-3 px-3 {% if c.unread > 0 %}bg-light fw-semibold{% endif %} {% if loop.first %}rounded-top-4{% endif %} {% if loop.last %}rounded-bottom-4{% endif %}">
     <a href="{{ url_for('messaging.conversation', conv_id=c.conv.id) }}" class="d-flex align-items-center gap-3 flex-grow-1 min-width-0 text-decoration-none text-reset">
     <div class="flex-shrink-0">
       {% if c.conv.type.value == 'group' %}
