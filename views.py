@@ -457,12 +457,8 @@ def report_item():
     if current_user.is_authenticated:
         lost_form.reporter_name.data = f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email
         lost_form.reporter_email.data = current_user.email
-        if hasattr(current_user, 'phone'):
-            lost_form.reporter_phone.data = current_user.phone
         found_form.reporter_name.data = f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email
         found_form.reporter_email.data = current_user.email
-        if hasattr(current_user, 'phone'):
-            found_form.reporter_phone.data = current_user.phone
 
     # Charger les catégories existantes
     categories = [(c.id, c.name) for c in Category.query.order_by(Category.name).all()]
@@ -489,7 +485,7 @@ def report_item():
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
-            reporter_phone=getattr(current_user, 'phone', None),
+            reporter_phone=(lost_form.reporter_phone.data or '').strip() or None,
             item_color=','.join(lost_form.item_color.data) if lost_form.item_color.data else None,
             item_brand=(lost_form.item_brand.data or '').strip() or None,
             item_distinctive=','.join(lost_form.item_distinctive.data) if lost_form.item_distinctive.data else None,
@@ -516,12 +512,12 @@ def report_item():
             status=Status.FOUND,
             title=found_form.title.data,
             comments=found_form.comments.data,
-            found_location=(found_form.found_location_other.data.strip() if found_form.found_location_other.data else ''),
+            found_location=(found_form.found_location_other.data.strip() if found_form.found_location.data == 'autre' else dict(found_form.found_location.choices).get(found_form.found_location.data, '')),
             storage_location=found_form.storage_location_other.data.strip() if found_form.storage_location.data == 'autre' else (dict(found_form.storage_location.choices).get(found_form.storage_location.data) if found_form.storage_location.data else ''),
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
-            reporter_phone=getattr(current_user, 'phone', None),
+            reporter_phone=(found_form.reporter_phone.data or '').strip() or None,
             item_color=','.join(found_form.item_color.data) if found_form.item_color.data else None,
             item_brand=(found_form.item_brand.data or '').strip() or None,
             item_distinctive=','.join(found_form.item_distinctive.data) if found_form.item_distinctive.data else None,
@@ -785,6 +781,9 @@ def edit_item(item_id):
         form.reporter_phone.data = item.reporter_phone
         if item.status.name == 'FOUND':
             form.found_location_other.data = item.found_location or ''
+        form.item_color.data = item.item_color.split(',') if item.item_color else []
+        form.item_brand.data = item.item_brand or ''
+        form.item_distinctive.data = item.item_distinctive.split(',') if item.item_distinctive else []
 
     if form.validate_on_submit():
         item.title = form.title.data
@@ -795,6 +794,9 @@ def edit_item(item_id):
         item.reporter_email = form.reporter_email.data
         item.reporter_phone = form.reporter_phone.data
         # Correction : lieux stockage/découverte
+        item.item_color = ','.join(form.item_color.data) if form.item_color.data else None
+        item.item_brand = (form.item_brand.data or '').strip() or None
+        item.item_distinctive = ','.join(form.item_distinctive.data) if form.item_distinctive.data else None
         if item.status.name == 'FOUND':
             item.found_location = form.found_location_other.data.strip() if form.found_location_other.data else ''
             item.storage_location = form.storage_location_other.data.strip() if form.storage_location.data == 'autre' else (dict(form.storage_location.choices).get(form.storage_location.data) if form.storage_location.data else '')

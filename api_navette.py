@@ -1,10 +1,12 @@
 from flask import Blueprint, jsonify
 from datetime import date
 from models import ShuttleScheduleDay, ShuttleScheduleSlot, ShuttleRouteStop, ShuttleSettings
+from app import limiter
 
 api_navette_bp = Blueprint('api_navette', __name__)
 
 @api_navette_bp.route('/api/navette/schedule')
+@limiter.limit("60 per minute")
 def navette_schedule():
     days = ShuttleScheduleDay.query.order_by(ShuttleScheduleDay.date).all()
     result = []
@@ -28,6 +30,7 @@ def navette_schedule():
     return jsonify(result)
 
 @api_navette_bp.route('/api/navette/route')
+@limiter.limit("60 per minute")
 def navette_route():
     stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
     return jsonify([
@@ -41,6 +44,7 @@ def navette_route():
     ])
 
 @api_navette_bp.route('/api/navette/settings')
+@limiter.limit("60 per minute")
 def navette_settings():
     settings = ShuttleSettings.query.first()
     if not settings:
@@ -55,6 +59,7 @@ def navette_settings():
     })
 
 @api_navette_bp.route('/api/navette/today')
+@limiter.limit("60 per minute")
 def navette_today():
     today = date.today()
     day = ShuttleScheduleDay.query.filter_by(date=today).first()

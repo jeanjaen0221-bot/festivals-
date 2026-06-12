@@ -109,6 +109,7 @@ def delete_category(category_id):
 
 # Route pour servir les images personnalisées
 @bp_admin.route('/category-icons/<int:category_id>/icon')
+@login_required
 def category_icon_data(category_id):
     category = db.get_or_404(Category, category_id)
     if not category.has_custom_icon:
@@ -144,6 +145,10 @@ def update_category_icon(category_id):
             file = form.custom_icon.data
             
             if file and file.filename:
+                ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+                if ext in ('png', 'jpg', 'jpeg') and not _check_image_magic_bytes_admin(file):
+                    flash("L'image doit être un fichier JPEG ou PNG valide.", "danger")
+                    return redirect(url_for('admin.category_icons'))
                 # Validation de la taille (max 2MB)
                 file.seek(0, os.SEEK_END)
                 file_size = file.tell()
@@ -310,6 +315,10 @@ def reject_loan_deletion(loan_id):
 @login_required
 @admin_required
 def reject_deletion(item_id):
+    form = SimpleCsrfForm()
+    if not form.validate_on_submit():
+        flash("Erreur de validation du formulaire.", "danger")
+        return redirect(url_for('admin.deletion_requests'))
     item = db.get_or_404(Item, item_id)
     # Restaure le statut original si connu, sinon LOST par défaut
     if item.previous_status:

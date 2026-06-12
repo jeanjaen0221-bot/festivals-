@@ -3,6 +3,8 @@ import requests
 from datetime import datetime
 import time
 import unicodedata
+from flask_login import login_required
+from app import limiter
 
 bp = Blueprint('trains', __name__, url_prefix='/api/trains')
 
@@ -41,6 +43,8 @@ def _cache_set(key: str, data, ttl: int):
         pass
 
 @bp.route('/vehicle')
+@login_required
+@limiter.limit('60 per minute')
 def get_vehicle():
     """Retourne les arrêts d'un train donné (iRail /vehicle/).
     Paramètre : id=<vehicle_id> ex: BE.NMBS.IC1234
@@ -139,6 +143,8 @@ def get_stations(lang: str = 'fr'):
     return stations
 
 @bp.route('/stations')
+@login_required
+@limiter.limit('30 per minute')
 def stations_endpoint():
     try:
         lang = request.args.get('lang', 'fr')
@@ -159,16 +165,15 @@ def stations_endpoint():
         return jsonify({'error': str(e)}), 500
  
 
-# CORS pour API Railway
 @bp.after_request
 def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
+    response.headers['Access-Control-Allow-Origin'] = 'same-origin'
     return response
 
 
 @bp.route('/departures')
+@login_required
+@limiter.limit('30 per minute')
 def get_departures():
     try:
         # Paramètres de base
@@ -235,6 +240,8 @@ def get_departures():
         }), 500
 
 @bp.route('/liveboard')
+@login_required
+@limiter.limit('60 per minute')
 def get_liveboard():
     station = request.args.get('station', 'Wavre')
     fast = request.args.get('fast', 'true')

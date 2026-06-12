@@ -22,6 +22,7 @@
     <thead>
       <tr>
         <th>ID</th><th>Catégorie</th><th>Titre</th><th>Description</th>
+        <th>Couleur(s)</th><th>Marque</th><th>Contenu particulier</th>
         <th>Lieu</th><th>Date signalement</th><th>Photo (fichier)</th>
         <th>Nom déclarant</th><th>Email déclarant</th><th>Téléphone déclarant</th>
         <th>Nom réclamant</th><th>Email réclamant</th><th>Téléphone réclamant</th>
@@ -35,6 +36,9 @@
           <td>{{ item.category.name }}</td>
           <td>{{ item.title }}</td>
           <td>{{ item.comments or '' }}</td>
+          <td>{{ item.item_color or '' }}</td>
+          <td>{{ item.item_brand or '' }}</td>
+          <td>{{ item.item_distinctive or '' }}</td>
           <td>{{ item.location or '' }}</td>
           <td>{{ item.date_reported.strftime('%d/%m/%Y %H:%M') }}</td>
           <td>

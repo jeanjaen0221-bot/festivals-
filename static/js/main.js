@@ -54,7 +54,13 @@ document.addEventListener('DOMContentLoaded', function() {
     var titre = titreEl ? titreEl.value : '';
     var cat   = catEl   ? catEl.value   : '';
     if (!titre || !cat) { renderPreview([]); return; }
-    var key = titre + '|' + cat + '|' + getFormStatus();
+    var colorCb2 = itemForm.querySelector('input[type="checkbox"][value="noir"]');
+    var distCb2  = itemForm.querySelector('input.distinctive-check');
+    var brandEl2 = itemForm.querySelector('[id$="item-brand"]');
+    var structKey = (colorCb2 ? getCheckedValues(colorCb2.getAttribute('name')) : '')
+                  + '|' + (brandEl2 ? brandEl2.value.trim() : '')
+                  + '|' + (distCb2 ? getCheckedValues(distCb2.getAttribute('name')) : '');
+    var key = titre + '|' + cat + '|' + getFormStatus() + '|' + structKey;
     if (key === lastPreviewKey) return;
     clearTimeout(previewTimer);
     previewTimer = setTimeout(function() {

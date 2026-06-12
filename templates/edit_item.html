@@ -34,6 +34,71 @@
         {{ form.storage_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
       </div>
     {% endif %}
+    {# ── Signes distinctifs ── #}
+    <div class="card border-2 mb-3" style="border-color:#6366f1!important;background:linear-gradient(135deg,#f5f3ff 0%,#ede9fe 100%);">
+      <div class="card-body py-3">
+        <div class="fw-bold mb-2" style="color:#4f46e5"><i class="bi bi-palette me-1"></i>Signes distinctifs</div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Couleur(s) principale(s)</label>
+          <div class="d-flex flex-wrap gap-2" id="edit-color-grid">
+            {% for value, label in form.item_color.choices %}
+              <label class="color-chip{% if form.item_color.data and value in form.item_color.data %} selected{% endif %}" title="{{ label }}">
+                <input type="checkbox" name="{{ form.item_color.name }}" value="{{ value }}"
+                       class="d-none color-check"
+                       {% if form.item_color.data and value in form.item_color.data %}checked{% endif %}>
+                <span class="chip-dot" data-color="{{ value }}"></span>
+                <span class="chip-label">{{ label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small"><i class="bi bi-tag"></i> Marque / Modèle visible</label>
+          {{ form.item_brand(class="form-control form-control-sm", placeholder="Ex: Nike, Samsung… (vide si inconnu)", id="edit-item-brand", autocomplete="off") }}
+        </div>
+        <div class="mb-1">
+          <label class="form-label fw-semibold small"><i class="bi bi-star-fill text-warning"></i> Contenu / Signes particuliers</label>
+          <div class="row g-1">
+            {% for value, label in form.item_distinctive.choices %}
+              <div class="col-12 col-sm-6">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox"
+                         name="{{ form.item_distinctive.name }}" value="{{ value }}"
+                         id="edit-dist-{{ value }}"
+                         {% if form.item_distinctive.data and value in form.item_distinctive.data %}checked{% endif %}>
+                  <label class="form-check-label small" for="edit-dist-{{ value }}">{{ label }}</label>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <style>
+    .color-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:20px;border:2px solid #dee2e6;background:#fff;font-size:.82rem;cursor:pointer;user-select:none;}
+    .color-chip.selected{border-color:#6366f1;background:#ede9fe;font-weight:600;}
+    .chip-dot{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.12);flex-shrink:0;}
+    [data-color="noir"]{background:#111;}[data-color="blanc"]{background:#fff;border-color:#aaa!important;}
+    [data-color="gris"]{background:#9ca3af;}[data-color="rouge"]{background:#ef4444;}
+    [data-color="rose"]{background:#f472b6;}[data-color="orange"]{background:#f97316;}
+    [data-color="jaune"]{background:#fbbf24;}[data-color="vert"]{background:#22c55e;}
+    [data-color="bleu"]{background:#3b82f6;}[data-color="violet"]{background:#a855f7;}
+    [data-color="marron"]{background:#92400e;}[data-color="dore"]{background:#d97706;}
+    [data-color="argent"]{background:#94a3b8;}[data-color="multicolore"]{background:linear-gradient(135deg,#ef4444,#3b82f6,#22c55e);}
+    [data-color="inconnu"]{background:#e5e7eb;}
+    </style>
+    <script nonce="{{ csp_nonce }}">
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('#edit-color-grid .color-chip').forEach(function(chip) {
+        var cb = chip.querySelector('.color-check');
+        function sync() { chip.classList.toggle('selected', cb.checked); }
+        sync();
+        chip.addEventListener('click', function(e) { if (e.target === cb) return; cb.checked = !cb.checked; sync(); });
+        cb.addEventListener('change', sync);
+      });
+    });
+    </script>
+
     <div class="mb-3">
       <label class="form-label"><i class="bi bi-person"></i> {{ form.reporter_name.label.text }}</label>
       {{ form.reporter_name(class="form-control", placeholder="Votre nom ou pseudo", autocomplete="name") }}
