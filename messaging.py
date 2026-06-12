@@ -48,6 +48,25 @@ def total_unread(user_id):
 @login_required
 def inbox():
     uid = current_user.id
+    show_archived = current_user.is_admin and request.args.get('show_archived') == '1'
+
+    if show_archived:
+        archived_convs = Conversation.query.filter_by(is_archived=True).order_by(Conversation.created_at.desc()).all()
+        convs = []
+        for conv in archived_convs:
+            last_msg = (Message.query
+                        .filter_by(conversation_id=conv.id, is_deleted=False)
+                        .order_by(Message.created_at.desc()).first())
+            convs.append({
+                'conv': conv,
+                'unread': 0,
+                'last_msg': last_msg,
+                'display_name': conv.display_name(uid),
+                'last_ts': last_msg.created_at if last_msg else conv.created_at,
+            })
+        all_users = User.query.filter(User.id != uid).order_by(User.first_name).all()
+        return render_template('messages/inbox.html', convs=convs, all_users=all_users,
+                               show_archived=True)
 
     parts = (ConversationParticipant.query
              .filter_by(user_id=uid)
@@ -57,7 +76,8 @@ def inbox():
 
     if not parts:
         all_users = User.query.filter(User.id != uid).order_by(User.first_name).all()
-        return render_template('messages/inbox.html', convs=[], all_users=all_users)
+        return render_template('messages/inbox.html', convs=[], all_users=all_users,
+                               show_archived=False)
 
     conv_ids = [p.conversation_id for p in parts]
 
@@ -103,7 +123,8 @@ def inbox():
         })
     convs.sort(key=lambda x: x['last_ts'], reverse=True)
     all_users = User.query.filter(User.id != uid).order_by(User.first_name).all()
-    return render_template('messages/inbox.html', convs=convs, all_users=all_users)
+    return render_template('messages/inbox.html', convs=convs, all_users=all_users,
+                           show_archived=False)
 
 
 # ── Nouvelle conv directe ────────────────────────────────────────────────────
@@ -396,6 +417,35 @@ def promote_member(conv_id, uid):
         db.session.commit()
         flash("Rôle mis à jour.", "success")
     return redirect(url_for('messaging.conversation', conv_id=conv_id))
+
+
+# ── Archiver une conversation (admin) ────────────────────────────────────────
+
+@bp_msg.route('/<int:conv_id>/archive', methods=['POST'])
+@login_required
+def archive_conversation(conv_id):
+    if not current_user.is_admin:
+        abort(403)
+    conv = db.get_or_404(Conversation, conv_id)
+    conv.is_archived = not conv.is_archived
+    db.session.commit()
+    state = "archivée" if conv.is_archived else "désarchivée"
+    flash(f"Conversation {state}.", "info")
+    return redirect(url_for('messaging.inbox'))
+
+
+# ── Supprimer définitivement une conversation (admin) ─────────────────────────
+
+@bp_msg.route('/<int:conv_id>/delete', methods=['POST'])
+@login_required
+def delete_conversation(conv_id):
+    if not current_user.is_admin:
+        abort(403)
+    conv = db.get_or_404(Conversation, conv_id)
+    db.session.delete(conv)
+    db.session.commit()
+    flash("Conversation supprimée définitivement.", "success")
+    return redirect(url_for('messaging.inbox'))
 
 
 # ── API unread count ─────────────────────────────────────────────────────────

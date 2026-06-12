@@ -36,7 +36,7 @@
     {% endif %}
   </div>
   <!-- Actions -->
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 flex-wrap">
     {% if conv.type == ConvType.GROUP %}
       <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="offcanvas" data-bs-target="#groupPanel">
         <i class="bi bi-gear"></i> Groupe
@@ -48,6 +48,35 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-right"></i> Quitter</button>
       </form>
+    {% endif %}
+    {% if current_user.is_admin %}
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions admin">
+          <i class="bi bi-shield-check text-warning"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:.9rem;min-width:200px;">
+          <li><span class="dropdown-item-text text-muted small fw-semibold">Actions admin</span></li>
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <form method="POST" action="{{ url_for('messaging.archive_conversation', conv_id=conv.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="dropdown-item">
+                <i class="bi bi-archive me-2 {% if conv.is_archived %}text-success{% else %}text-warning{% endif %}"></i>
+                {% if conv.is_archived %}Désarchiver{% else %}Archiver{% endif %}
+              </button>
+            </form>
+          </li>
+          <li>
+            <form method="POST" action="{{ url_for('messaging.delete_conversation', conv_id=conv.id) }}"
+                  onsubmit="return confirm('Supprimer définitivement cette conversation et tous ses messages ? Cette action est irréversible.')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="dropdown-item text-danger">
+                <i class="bi bi-trash3 me-2"></i>Supprimer définitivement
+              </button>
+            </form>
+          </li>
+        </ul>
+      </div>
     {% endif %}
   </div>
 </div>
