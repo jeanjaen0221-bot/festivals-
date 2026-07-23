@@ -1,7 +1,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, SelectField, SelectMultipleField, SubmitField, PasswordField, BooleanField, DateField, TimeField, MultipleFileField, RadioField, DecimalField, IntegerField
 from wtforms.widgets import ListWidget, CheckboxInput
-from wtforms.validators import DataRequired, Length, Email, Optional, EqualTo
+from wtforms.validators import DataRequired, Length, Email, Optional, EqualTo, NumberRange
 from flask_wtf.file import FileField, FileAllowed, FileRequired
 
 class HeadphoneLoanForm(FlaskForm):
@@ -9,11 +9,18 @@ class HeadphoneLoanForm(FlaskForm):
     last_name = StringField('Nom', validators=[DataRequired(), Length(max=100)])
     phone = StringField('Téléphone', validators=[DataRequired(), Length(max=50)])
     deposit_type = RadioField('Type de caution', choices=[('id_card', "Carte d'identité"), ('cash', 'Caution en argent')], validators=[DataRequired()])
-    deposit_amount = DecimalField('Montant de la caution (€)', places=2, validators=[Optional()])
-    quantity = IntegerField('Nombre de casques prêtés', default=1, validators=[DataRequired()])
+    deposit_amount = DecimalField('Montant de la caution (€)', places=2, validators=[Optional(), NumberRange(min=0)])
+    quantity = IntegerField('Nombre de casques prêtés', default=1, validators=[DataRequired(), NumberRange(min=1)])
     deposit_details = StringField('Détails de la caution', validators=[Length(max=200)])
     id_card_photo = FileField("Photo de la carte d'identité", validators=[FileAllowed(['jpg', 'jpeg', 'png'], "Images uniquement")])
     submit = SubmitField('Enregistrer le prêt')
+
+    def validate(self, extra_validators=None):
+        valid = super().validate(extra_validators=extra_validators)
+        if self.deposit_type.data == 'cash' and self.deposit_amount.data is None:
+            self.deposit_amount.errors.append('Le montant de la caution est requis pour une caution en argent.')
+            return False
+        return valid
 
 class SimpleCsrfForm(FlaskForm):
     pass
@@ -272,23 +279,23 @@ class ShuttleScheduleSlotForm(FlaskForm):
 
 class ShuttleRouteStopForm(FlaskForm):
     name = StringField('Nom de l\'arrêt', validators=[DataRequired(), Length(max=120)])
-    sequence = IntegerField('Ordre sur le parcours', validators=[DataRequired()])
-    dwell_minutes = IntegerField('Temps d\'arrêt (minutes)', default=0, validators=[DataRequired()])
+    sequence = IntegerField('Ordre sur le parcours', validators=[DataRequired(), NumberRange(min=1)])
+    dwell_minutes = IntegerField('Temps d\'arrêt (minutes)', default=0, validators=[DataRequired(), NumberRange(min=0)])
     note = StringField('Note (optionnelle)', validators=[Optional(), Length(max=200)])
     submit = SubmitField('Enregistrer l\'arrêt')
 
 class ShuttleSettingsForm(FlaskForm):
-    mean_leg_minutes = IntegerField('Temps moyen entre 2 arrêts (minutes)', validators=[DataRequired()])
+    mean_leg_minutes = IntegerField('Temps moyen entre 2 arrêts (minutes)', validators=[DataRequired(), NumberRange(min=1)])
     loop_enabled = BooleanField('Activer le mode boucle (repart de l\'arrêt final vers le premier)')
     bidirectional_enabled = BooleanField('Activer le sens bidirectionnel (aller/retour)')
     constrain_to_today_slots = BooleanField('Limiter le calcul aux créneaux du jour')
     display_direction = SelectField('Direction d\'affichage', choices=[('forward', 'Aller'), ('backward', 'Retour')])
-    display_base_stop_sequence = IntegerField('Séquence de l\'arrêt de départ pour l\'affichage', validators=[Optional()])
+    display_base_stop_sequence = IntegerField('Séquence de l\'arrêt de départ pour l\'affichage', validators=[Optional(), NumberRange(min=1)])
     submit = SubmitField('Enregistrer les réglages')
 
 class ProductForm(FlaskForm):
     name = StringField('Nom de l\'article', validators=[DataRequired(), Length(max=120)])
-    price = DecimalField('Prix TTC (€)', places=2, validators=[DataRequired()])
+    price = DecimalField('Prix TTC (€)', places=2, validators=[DataRequired(), NumberRange(min=0)])
     vat_rate = SelectField('TVA (%)', choices=[('21', '21%'), ('12', '12%'), ('6', '6%'), ('0', '0%')], validators=[DataRequired()])
     active = BooleanField('Actif', default=True)
     image = FileField('Image (jpg/png)', validators=[Optional(), FileAllowed(['jpg','jpeg','png'], 'Images uniquement')])

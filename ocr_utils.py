@@ -39,8 +39,8 @@ def extract_id_card_data(image_b64: str, credentials_path: str = None):
 
         image = vision.Image(content=image_bytes)
         response = client.text_detection(image=image)
-    except Exception as e:
-        return {'error': f'Erreur Google Vision : {e}'}
+    except Exception:
+        return {'error': 'Le service OCR est temporairement indisponible.'}
 
     texts = response.text_annotations
     if not texts:
