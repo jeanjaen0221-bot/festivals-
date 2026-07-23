@@ -93,8 +93,8 @@ def get_vehicle():
         result = {'stops': stops}
         _cache_set(cache_key, result, 90)
         return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return jsonify({'error': 'Impossible de récupérer les arrêts du train.'}), 502
 
 
 def _normalize(s: str) -> str:
@@ -161,8 +161,8 @@ def stations_endpoint():
             res = [s for s in stations if (s['is_be'] or not only_be)]
         # Return lean payload
         return jsonify({'stations': [{'id': s['id'], 'name': s['name']} for s in res]})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return jsonify({'error': 'Impossible de récupérer les gares.'}), 502
  
 
 @bp.after_request
@@ -233,11 +233,10 @@ def get_departures():
             }
         alternated_enriched = [enrich_conn(c) for c in alternated]
         return jsonify({'connection': alternated_enriched})
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.RequestException:
         return jsonify({
             'error': 'Impossible de récupérer les horaires',
-            'details': str(e)
-        }), 500
+        }), 502
 
 @bp.route('/liveboard')
 @login_required
@@ -373,5 +372,5 @@ def get_liveboard():
             except Exception:
                 pass
         return jsonify({'departures': departures})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return jsonify({'error': 'Impossible de récupérer les départs.'}), 502

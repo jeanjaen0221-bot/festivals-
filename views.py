@@ -68,7 +68,7 @@ def _round_cash_0_05(amount: Decimal) -> Decimal:
 @limiter.limit("3 per minute")
 @login_required
 def ocr_id_card():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     image_b64 = data.get('image_b64')
     if not image_b64:
         return jsonify({'error': 'Aucune image transmise'}), 400
@@ -76,8 +76,9 @@ def ocr_id_card():
     try:
         result = extract_id_card_data(image_b64)
         return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        current_app.logger.exception('Échec du traitement OCR')
+        return jsonify({'error': 'Le traitement OCR a échoué. Réessayez plus tard.'}), 500
 
 def allowed_file(filename):
     allowed_ext = {'png', 'jpg', 'jpeg'}
@@ -562,7 +563,16 @@ def detail_item(item_id):
         other_id = request.form.get('match_with_id', type=int) or request.form.get('match_with', type=int)
         if other_id and other_id != 0:
             other = db.get_or_404(Item, other_id)
-            # B1 : assigner lost_id/found_id selon le statut réel
+            if {item.status, other.status} != {Status.LOST, Status.FOUND}:
+                flash("Une correspondance doit associer un objet perdu et un objet trouvé disponibles.", "warning")
+                return redirect(url_for('main.detail_item', item_id=item.id))
+            if Match.query.filter(
+                (Match.lost_id.in_([item.id, other.id])) |
+                (Match.found_id.in_([item.id, other.id]))
+            ).first():
+                flash("L'un de ces objets est déjà associé à une autre fiche.", "warning")
+                return redirect(url_for('main.detail_item', item_id=item.id))
+            # Assigner lost_id/found_id selon le statut réel.
             if item.status == Status.LOST:
                 lid, fid = item.id, other.id
             else:
@@ -594,7 +604,7 @@ def detail_item(item_id):
             item.return_photo_filename = secure_filename(filename)
             item.return_photo_data = f.read()
             item.return_photo_original_filename = f.filename
-            item.return_photo_mime_type = getattr(f, 'mimetype', None) or _guess_mime_from_ext(item.return_photo_filename)
+            item.return_photo_mime_type = _guess_mime_from_ext(item.return_photo_filename)
         item.status = Status.RETURNED
         item.return_date = datetime.now(timezone.utc)
         item.return_comment = confirm_return_form.return_comment.data
@@ -724,7 +734,7 @@ def detail_item(item_id):
                         item=item,
                         filename=safe_name,
                         data=data,
-                        mime_type=getattr(f, 'mimetype', None) or _guess_mime_from_ext(safe_name),
+                        mime_type=_guess_mime_from_ext(safe_name),
                         original_filename=f.filename,
                     )
                     db.session.add(photo)
@@ -1074,8 +1084,9 @@ def api_match_explain():
             },
             'details': details
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        current_app.logger.exception('Échec de l’explication de correspondance')
+        return jsonify({'error': 'Impossible de calculer l’explication demandée.'}), 500
 
 @bp.route('/loans', methods=['GET', 'POST'])
 @login_required
@@ -1104,7 +1115,8 @@ def headphone_loans():
                     flash("La photo de carte d'identité doit être une image JPEG ou PNG valide.", "danger")
                     return redirect(url_for('main.headphone_loans'))
                 img_bytes = file.read()
-                id_card_photo_b64 = 'data:' + file.mimetype + ';base64,' + base64.b64encode(img_bytes).decode('utf-8')
+                mime_type = _guess_mime_from_ext(file.filename)
+                id_card_photo_b64 = f'data:{mime_type};base64,' + base64.b64encode(img_bytes).decode('utf-8')
         loan = HeadphoneLoan(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
@@ -1150,10 +1162,21 @@ def request_loan_deletion(loan_id):
 @login_required
 def return_headphone_loan(loan_id):
     loan = db.get_or_404(HeadphoneLoan, loan_id)
+    if loan.return_date:
+        return jsonify({'success': False, 'error': 'Ce prêt a déjà été retourné.'}), 409
     data = request.get_json(silent=True)
     if not data or 'signature' not in data:
         return jsonify({'success': False, 'error': 'Signature manquante'}), 400
     signature = data.get('signature')
+    prefix = 'data:image/png;base64,'
+    if not isinstance(signature, str) or not signature.startswith(prefix):
+        return jsonify({'success': False, 'error': 'Format de signature invalide'}), 400
+    try:
+        signature_bytes = base64.b64decode(signature[len(prefix):], validate=True)
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'error': 'Signature invalide'}), 400
+    if not signature_bytes.startswith(b'\x89PNG\r\n\x1a\n') or len(signature_bytes) > 2 * 1024 * 1024:
+        return jsonify({'success': False, 'error': 'Signature invalide ou trop volumineuse'}), 400
     loan.signature = signature
     loan.return_date = datetime.now(timezone.utc)
     db.session.commit()
@@ -1264,6 +1287,11 @@ def reject_match():
     except (TypeError, ValueError):
         flash("Identifiants invalides.", "danger")
         return redirect(url_for('main.list_matches'))
+    lost = db.session.get(Item, lost_id)
+    found = db.session.get(Item, found_id)
+    if not lost or not found or lost.status != Status.LOST or found.status != Status.FOUND:
+        flash("La paire à rejeter doit contenir un objet perdu et un objet trouvé disponibles.", "warning")
+        return redirect(url_for('main.list_matches'))
     existing = RejectedPair.query.filter_by(lost_id=lost_id, found_id=found_id).first()
     if not existing:
         rp = RejectedPair(
@@ -1309,6 +1337,14 @@ def confirm_match():
 
     if lost.status != Status.LOST or found.status != Status.FOUND:
         flash("L’objet n’est plus disponible pour correspondance.", "warning")
+        return redirect(url_for('main.list_matches'))
+
+    item_already_matched = Match.query.filter(
+        (Match.lost_id.in_([lost_id, found_id])) |
+        (Match.found_id.in_([lost_id, found_id]))
+    ).first()
+    if item_already_matched:
+        flash("L’un des objets est déjà associé à une autre fiche.", "warning")
         return redirect(url_for('main.list_matches'))
 
     # Supprimer le RejectedPair s'il existait (la paire ne doit pas être à la fois rejetée et validée)

@@ -155,6 +155,9 @@ def shuttle_route():
 def add_route_stop():
     form = ShuttleRouteStopForm()
     if form.validate_on_submit():
+        if ShuttleRouteStop.query.filter_by(sequence=form.sequence.data).first():
+            form.sequence.errors.append("Cette position est déjà utilisée par un autre arrêt.")
+            return render_template('admin/shuttle_route_form.html', form=form, title='Ajouter un arrêt')
         stop = ShuttleRouteStop(
             name=form.name.data.strip(),
             sequence=form.sequence.data,
@@ -174,6 +177,13 @@ def edit_route_stop(stop_id):
     stop = db.get_or_404(ShuttleRouteStop, stop_id)
     form = ShuttleRouteStopForm(obj=stop)
     if form.validate_on_submit():
+        duplicate = ShuttleRouteStop.query.filter(
+            ShuttleRouteStop.sequence == form.sequence.data,
+            ShuttleRouteStop.id != stop.id,
+        ).first()
+        if duplicate:
+            form.sequence.errors.append("Cette position est déjà utilisée par un autre arrêt.")
+            return render_template('admin/shuttle_route_form.html', form=form, title='Modifier un arrêt')
         stop.name = form.name.data.strip()
         stop.sequence = form.sequence.data
         stop.dwell_minutes = form.dwell_minutes.data

@@ -19,6 +19,15 @@ def _check_image_magic_bytes_admin(file_stream) -> bool:
         return True
     return False
 
+
+def _image_mime_from_filename(filename):
+    ext = os.path.splitext(filename or '')[1].lower()
+    return {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+    }.get(ext)
+
 ALLOWED_ICON_EXTENSIONS = {"svg", "png", "jpg", "jpeg"}
 ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 
@@ -101,6 +110,9 @@ def delete_category(category_id):
     csrf_form = SimpleCsrfForm()
     if not csrf_form.validate_on_submit():
         flash("Erreur de validation du formulaire.", "danger")
+        return redirect(url_for('admin.category_icons'))
+    if category.items:
+        flash("Cette catégorie est encore utilisée par des objets et ne peut pas être supprimée.", "warning")
         return redirect(url_for('admin.category_icons'))
     db.session.delete(category)
     db.session.commit()
@@ -615,10 +627,7 @@ def goodies_products():
             p.image_filename = safe
             p.image_data = file.read()
             p.image_original_filename = file.filename
-            if getattr(file, 'mimetype', None):
-                p.image_mime_type = file.mimetype
-            else:
-                p.image_mime_type = None
+            p.image_mime_type = _image_mime_from_filename(safe)
         db.session.add(p)
         db.session.commit()
         flash('Article ajouté.', 'success')
@@ -655,10 +664,7 @@ def goodies_product_edit(pid):
             p.image_filename = safe
             p.image_data = file.read()
             p.image_original_filename = file.filename
-            if getattr(file, 'mimetype', None):
-                p.image_mime_type = file.mimetype
-            else:
-                p.image_mime_type = None
+            p.image_mime_type = _image_mime_from_filename(safe)
         db.session.commit()
         flash('Article modifié.', 'success')
         return redirect(url_for('admin.goodies_products'))

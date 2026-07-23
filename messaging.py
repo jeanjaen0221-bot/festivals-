@@ -71,7 +71,7 @@ def inbox():
     parts = (ConversationParticipant.query
              .filter_by(user_id=uid)
              .join(Conversation)
-             .filter(Conversation.is_archived == False)
+             .filter(Conversation.is_archived.is_(False))
              .all())
 
     if not parts:
@@ -86,7 +86,7 @@ def inbox():
         sa.func.max(Message.id).label('max_id')
     ).filter(
         Message.conversation_id.in_(conv_ids),
-        Message.is_deleted == False
+        Message.is_deleted.is_(False)
     ).group_by(Message.conversation_id).subquery())
 
     last_msgs_rows = (db.session.query(Message)
@@ -137,7 +137,7 @@ def new_direct():
     if not target_id or target_id == current_user.id:
         flash("Destinataire invalide.", "danger")
         return redirect(url_for('messaging.inbox'))
-    target = db.get_or_404(User, target_id)
+    db.get_or_404(User, target_id)
 
     existing = (Conversation.query
                 .filter_by(type=ConvType.DIRECT, is_archived=False)
@@ -169,13 +169,22 @@ def new_group():
     all_users = User.query.filter(User.id != current_user.id).order_by(User.first_name).all()
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
-        member_ids = request.form.getlist('members', type=int)
+        member_ids = [
+            uid for uid in dict.fromkeys(request.form.getlist('members', type=int))
+            if uid != current_user.id
+        ]
         if not name or len(name) > 120:
             flash("Le nom du groupe doit comporter entre 1 et 120 caractères.", "danger")
             return render_template('messages/new_group.html', all_users=all_users,
                                    name_val=name, selected_ids=member_ids), 400
         if not member_ids:
             flash("Ajoutez au moins un autre membre.", "danger")
+            return render_template('messages/new_group.html', all_users=all_users,
+                                   name_val=name, selected_ids=member_ids), 400
+
+        valid_member_count = User.query.filter(User.id.in_(member_ids)).count()
+        if valid_member_count != len(member_ids):
+            flash("Un ou plusieurs membres sélectionnés sont introuvables.", "danger")
             return render_template('messages/new_group.html', all_users=all_users,
                                    name_val=name, selected_ids=member_ids), 400
 
@@ -343,6 +352,9 @@ def add_member(conv_id):
     if not uid:
         flash("Utilisateur invalide.", "danger")
         return redirect(url_for('messaging.conversation', conv_id=conv_id))
+    if not db.session.get(User, uid):
+        flash("Utilisateur introuvable.", "danger")
+        return redirect(url_for('messaging.conversation', conv_id=conv_id))
     existing = _get_participant(conv_id, uid)
     if existing:
         flash("Cet utilisateur est déjà membre.", "warning")
@@ -368,6 +380,11 @@ def remove_member(conv_id, uid):
         abort(403)
     target_part = _get_participant(conv_id, uid)
     if target_part:
+        if target_part.role == ParticipantRole.ADMIN:
+            admin_count = sum(p.role == ParticipantRole.ADMIN for p in conv.participants)
+            if admin_count <= 1:
+                flash("Le dernier administrateur du groupe ne peut pas être retiré.", "warning")
+                return redirect(url_for('messaging.conversation', conv_id=conv_id))
         db.session.delete(target_part)
         db.session.commit()
         flash("Membre retiré.", "success")
@@ -403,6 +420,8 @@ def rename_group(conv_id):
 @limiter.limit('20 per minute')
 def promote_member(conv_id, uid):
     conv = db.get_or_404(Conversation, conv_id)
+    if conv.type != ConvType.GROUP:
+        abort(400)
     part = _get_participant(conv_id, current_user.id)
     if not part or (part.role != ParticipantRole.ADMIN and not current_user.is_admin):
         abort(403)
