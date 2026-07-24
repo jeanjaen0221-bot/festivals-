@@ -25,6 +25,7 @@ from models import Item, Category, Status, ItemPhoto, User, ActionLog, Headphone
 from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm, SimpleCsrfForm
 from ocr_utils import extract_id_card_data
 from admin import admin_required
+from embedding_queue import enqueue_visual_embedding
 
 bp = Blueprint('main', __name__)
 
@@ -738,6 +739,10 @@ def detail_item(item_id):
                         original_filename=f.filename,
                     )
                     db.session.add(photo)
+                    # Le calcul CLIP est réservé au worker: cette requête ne fait
+                    # que persister la photo et son job durable.
+                    db.session.flush()
+                    enqueue_visual_embedding(photo)
         db.session.commit()
         # Synchronisation automatique : si l’objet est lié, on marque aussi l’autre comme rendu
         match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first()

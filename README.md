@@ -49,13 +49,31 @@ Application Flask pour gérer les objets perdus, trouvés et rendus lors d'un fe
 2. Ajouter le plugin PostgreSQL → récupérer `DATABASE_URL`.
 3. Définir les variables d'environnement : `SECRET_KEY`, `DATABASE_URL`.
 4. Configurer le volume persistant pour `./static/uploads`.
-5. Connecter votre dépôt GitHub à Railway.
-6. Lancer le script `categories_seed.py` via la commande “Run” sur Railway.
-7. Railway détecte automatiquement le `Procfile` et déploie :
+5. Créer un second service Railway (même dépôt et mêmes variables `SECRET_KEY`/`DATABASE_URL`) avec la commande `python embedding_worker.py`. Ce service est le worker d'embeddings; il ne reçoit pas de trafic HTTP.
+6. Connecter votre dépôt GitHub à Railway.
+7. Lancer le script `categories_seed.py` via la commande “Run” sur Railway.
+8. Railway détecte automatiquement le `Procfile` et déploie :
    ```
    web: gunicorn app:app
+   worker: python embedding_worker.py
    ```
-8. Tester l'application en production.
+9. Tester l'application en production.
+
+### Embeddings visuels asynchrones
+
+Les photos `ItemPhoto` créent dans la même transaction un job PostgreSQL
+`generate_visual_embedding`. Le serveur web ne charge jamais le modèle CLIP et
+ne calcule pas d'embedding pendant l'upload. Le worker traite la file avec un
+verrou PostgreSQL (`SKIP LOCKED`), conserve le vecteur JSON dans la photo et
+positionne son état à `pending`, `ready` ou `failed`. Les échecs sont retentés
+au plus trois fois avec un délai exponentiel et sont journalisés sous les noms
+`embedding_job_retry` et `embedding_job_failed`.
+
+Pour reprendre les erreurs terminales après correction du problème, lancer une
+commande Railway ponctuelle :
+```
+python embedding_worker.py --retry-failed
+```
 
 ## Fonctionnalités
 

@@ -224,6 +224,33 @@ class ItemPhoto(db.Model):
     data = db.Column(db.LargeBinary, nullable=True)
     mime_type = db.Column(db.String(100), nullable=True)
     original_filename = db.Column(db.String(200), nullable=True)
+    # Les vecteurs sont conservés sous forme JSON afin de ne pas imposer pgvector.
+    embedding = db.Column(db.Text, nullable=True)
+    embedding_status = db.Column(db.String(20), nullable=False, default='pending', index=True)
+    embedding_error = db.Column(db.Text, nullable=True)
+    embedding_updated_at = db.Column(db.DateTime, nullable=True)
+
+
+class BackgroundJob(db.Model):
+    """File PostgreSQL durable pour les tâches qui ne doivent pas bloquer le web."""
+    __tablename__ = 'background_jobs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_type = db.Column(db.String(80), nullable=False, index=True)
+    item_photo_id = db.Column(db.Integer, db.ForeignKey('item_photos.id', ondelete='CASCADE'), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default='pending', index=True)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    max_attempts = db.Column(db.Integer, nullable=False, default=3)
+    available_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    locked_at = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    photo = db.relationship('ItemPhoto', backref=db.backref('embedding_jobs', lazy=True, cascade='all, delete-orphan'))
+    __table_args__ = (
+        db.UniqueConstraint('job_type', 'item_photo_id', name='uq_background_job_type_photo'),
+    )
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'

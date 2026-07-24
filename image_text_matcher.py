@@ -1,4 +1,5 @@
 import os
+from io import BytesIO
 from functools import lru_cache
 
 try:
@@ -57,6 +58,18 @@ def embed_image(image_path: str):
         img = PILImage.open(image_path).convert('RGB')
         # sentence-transformers CLIP : model.encode accepte PIL.Image directement
         return model.encode(img, convert_to_numpy=True)
+    except Exception:
+        return None
+
+
+def embed_image_bytes(image_bytes: bytes):
+    """Encode des données binaires; utilisé exclusivement par le worker asynchrone."""
+    model = _load_model()
+    if not model or PILImage is None or not image_bytes:
+        return None
+    try:
+        with PILImage.open(BytesIO(image_bytes)) as image:
+            return model.encode(image.convert('RGB'), convert_to_numpy=True)
     except Exception:
         return None
 

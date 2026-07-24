@@ -118,6 +118,9 @@ import models
 from models import User
 with app.app_context():
     db.create_all()
+    # db.create_all ne rajoute pas les colonnes aux bases Railway existantes.
+    from embedding_queue import ensure_embedding_schema
+    ensure_embedding_schema()
     # Création sécurisée de la table headphone_loans si elle n'existe pas déjà
     try:
         engine = db.get_engine()
