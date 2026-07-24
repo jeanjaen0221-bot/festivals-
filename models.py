@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from app import db
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import event, inspect
 
 class DepositType(enum.Enum):
     ID_CARD = 'id_card'
@@ -216,6 +217,13 @@ class RejectedPair(db.Model):
         return f'<RejectedPair Lost:{self.lost_id} Found:{self.found_id}>'
 
 
+class PhotoEmbeddingStatus(enum.Enum):
+    PENDING = 'pending'
+    READY = 'ready'
+    FAILED = 'failed'
+    INVALIDATED = 'invalidated'
+
+
 class ItemPhoto(db.Model):
     __tablename__ = 'item_photos'
     id = db.Column(db.Integer, primary_key=True)
@@ -224,6 +232,23 @@ class ItemPhoto(db.Model):
     data = db.Column(db.LargeBinary, nullable=True)
     mime_type = db.Column(db.String(100), nullable=True)
     original_filename = db.Column(db.String(200), nullable=True)
+    embeddings = db.relationship('PhotoEmbedding', backref='item_photo', lazy=True, cascade='all, delete-orphan')
+
+
+class PhotoEmbedding(db.Model):
+    __tablename__ = 'photo_embeddings'
+    id = db.Column(db.Integer, primary_key=True)
+    item_photo_id = db.Column(db.Integer, db.ForeignKey('item_photos.id', ondelete='CASCADE'), nullable=False, index=True)
+    model_version = db.Column(db.String(100), nullable=False, index=True)
+    image_hash = db.Column(db.String(64), nullable=False, index=True)
+    embedding = db.Column(db.LargeBinary, nullable=True)
+    embedding_dimension = db.Column(db.Integer, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default=PhotoEmbeddingStatus.PENDING.value, index=True)
+    error_message = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    __table_args__ = (db.UniqueConstraint('item_photo_id', 'model_version', name='uq_photo_embedding_photo_model'),)
+
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -403,3 +428,14 @@ class Message(db.Model):
 
     def __repr__(self):
         return f'<Message {self.id} conv={self.conversation_id} sender={self.sender_id}>'
+
+# A direct ORM replacement of image bytes must never leave an old vector usable.
+# Deletion is handled by the relationship and database ON DELETE CASCADE.
+@event.listens_for(ItemPhoto, 'before_update')
+def invalidate_embeddings_when_photo_changes(mapper, connection, target):
+    state = inspect(target)
+    if state.attrs.data.history.has_changes():
+        for embedding in target.embeddings:
+            embedding.status = PhotoEmbeddingStatus.INVALIDATED.value
+            embedding.embedding = None
+            embedding.embedding_dimension = None

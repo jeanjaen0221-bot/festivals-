@@ -6,7 +6,7 @@ import requests
 import tempfile
 from decimal import Decimal, ROUND_HALF_UP
 import matching
-import image_text_matcher as itm
+from photo_embeddings import ensure_photo_embedding, item_embedding_similarity
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -200,6 +200,11 @@ def _compute_weighted_score(base_score: float, img_sim_pct: float,
     else:
         combined = (tw + iiw) * base_score + iw * img_sim_pct
     return max(0.0, min(100.0, round(combined + bonus, 2)))
+
+
+def _embedding_similarity_pct(item1: Item, item2: Item) -> float:
+    """Compare only ready, persisted DINOv2 embeddings (never infer in request path)."""
+    return round(100.0 * max(0.0, item_embedding_similarity(item1, item2)), 2)
 
 
 def find_similar_items(titre, category_id, seuil=70, location=''):
@@ -636,34 +641,10 @@ def detail_item(item_id):
             lost_item  = item if item.status == Status.LOST else c
             found_item = c    if item.status == Status.LOST else item
             bonus = _item_pair_bonus(lost_item, found_item)
-            # Chemins d'images (LOST item vs FOUND candidate)
-            img_lost_path = None
-            img_found_path = None
-            if item.status == Status.LOST:
-                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
-                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
-            else:
-                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
-                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
-            # Similarité texte↔image
+            # DINOv2 is image-only: use persisted ready embeddings, never infer here.
+            # Text/category/date/structured fields remain complementary scoring rules.
             img_sim_pct = 0.0
-            try:
-                if item.status == Status.LOST and img_found_path:
-                    sim = itm.text_image_similarity(f"{current_matchable.title}. {current_matchable.comments}", img_found_path)
-                    img_sim_pct = round(100.0 * float(sim), 2)
-                elif item.status == Status.FOUND and img_found_path:
-                    sim = itm.text_image_similarity(f"{m.title}. {m.comments}", img_found_path)
-                    img_sim_pct = round(100.0 * float(sim), 2)
-            except Exception:
-                img_sim_pct = 0.0
-            # Similarité image↔image (quand les deux ont une photo)
-            img_img_pct = 0.0
-            try:
-                if img_lost_path and img_found_path:
-                    sim2 = itm.image_image_similarity(img_lost_path, img_found_path)
-                    img_img_pct = round(100.0 * float(sim2), 2)
-            except Exception:
-                img_img_pct = 0.0
+            img_img_pct = _embedding_similarity_pct(lost_item, found_item)
             # Score final pondéré via helper partagé
             final_score = _compute_weighted_score(base_score, img_sim_pct, img_img_pct, bonus)
             # Photo principale
@@ -738,6 +719,8 @@ def detail_item(item_id):
                         original_filename=f.filename,
                     )
                     db.session.add(photo)
+                    db.session.flush()
+                    ensure_photo_embedding(photo)
         db.session.commit()
         # Synchronisation automatique : si l’objet est lié, on marque aussi l’autre comme rendu
         match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first()
@@ -1033,38 +1016,9 @@ def api_match_explain():
                 return i.photo_filename
             return None
 
-        # Déterminer l'image LOST et l'image FOUND
-        img_lost_path = None
-        img_found_path = None
-        if i1.status == Status.LOST and i2.status == Status.FOUND:
-            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
-            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
-        elif i1.status == Status.FOUND and i2.status == Status.LOST:
-            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
-            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
-
-        # Similarité texte↔image
+        # Compare only persisted ready DINOv2 vectors; no request-time model inference.
         img_sim_pct = 0.0
-        try:
-            if i1.status == Status.LOST and img_found_path:
-                sim = itm.text_image_similarity(f"{m1.title}. {m1.comments}", img_found_path)
-                img_sim_pct = round(100.0 * float(sim), 2)
-            elif i1.status == Status.FOUND and img_found_path:
-                sim = itm.text_image_similarity(f"{m2.title}. {m2.comments}", img_found_path)
-                img_sim_pct = round(100.0 * float(sim), 2)
-        except Exception:
-            img_sim_pct = 0.0
-
-        # Similarité image↔image
-        img_img_pct = 0.0
-        try:
-            if img_lost_path and img_found_path:
-                sim2 = itm.image_image_similarity(img_lost_path, img_found_path)
-                img_img_pct = round(100.0 * float(sim2), 2)
-        except Exception:
-            img_img_pct = 0.0
-
-        _cleanup_tmp_images()
+        img_img_pct = _embedding_similarity_pct(lost_i, found_i)
 
         # Score final via helper partagé (formule identique à detail_item)
         final_score = _compute_weighted_score(score_text, img_sim_pct, img_img_pct, bonus)
@@ -1201,7 +1155,8 @@ def get_all_candidate_pairs(seuil=60, skip_set=None):
                 continue
             base_score = matching.match_score(lost, found, fields_weights)
             bonus = _item_pair_bonus(lost, found)
-            score = _compute_weighted_score(base_score, 0.0, 0.0, bonus)
+            img_img_pct = _embedding_similarity_pct(lost, found)
+            score = _compute_weighted_score(base_score, 0.0, img_img_pct, bonus)
             if score >= seuil:
                 explanation = matching.match_explanation(lost, found, fields_weights)
                 pairs.append((lost, found, round(score, 2), explanation))
