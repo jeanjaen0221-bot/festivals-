@@ -339,14 +339,14 @@ document.addEventListener('DOMContentLoaded', function () {
           container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
         } else {
           const w = data.weights || {};
-          const sii = data.image_image_similarity ?? 0;
+          const sii = data.image_image_similarity;
+          const imageState = data.image_similarity_state || 'not_computed_missing_image';
           const chips = `
             <div class="explain-card mb-3">
               <div class="d-flex flex-wrap gap-2">
                 <span class="chip info"><i class="bi bi-type"></i> Texte: <b>${(data.score_base ?? 0).toFixed(1)}%</b></span>
-                <span class="chip" style="background:#ede9fe;color:#5b21b6"><i class="bi bi-image"></i> Texte↔Image: <b>${(data.image_similarity ?? 0).toFixed(1)}%</b></span>
-                ${sii > 0 ? `<span class="chip" style="background:#ccfbf1;color:#134e4a"><i class="bi bi-images"></i> Image↔Image: <b>${sii.toFixed(1)}%</b></span>` : ''}
-                <span class="chip"><i class="bi bi-sliders"></i> Poids: t=${w.text ?? '—'} / i=${w.image ?? '—'}${w.img_img ? ' / ii=' + w.img_img : ''}</span>
+                ${sii !== null && sii !== undefined ? `<span class="chip" style="background:#ccfbf1;color:#134e4a"><i class="bi bi-images"></i> DINOv2 image↔image: <b>${sii.toFixed(1)}%</b></span>` : `<span class="chip warning"><i class="bi bi-images"></i> Image↔image non calculée (${imageState})</span>`}
+                <span class="chip"><i class="bi bi-sliders"></i> Poids: texte=${w.text ?? '—'}${w.img_img ? ' / image=' + w.img_img : ''}</span>
                 <span class="chip ${(data.bonus ?? 0) >= 0 ? 'success' : 'warning'}"><i class="bi bi-plus-slash-minus"></i> Bonus: ${(data.bonus ?? 0) >= 0 ? '+' : ''}${data.bonus ?? 0}</span>
                 <span class="chip success"><i class="bi bi-speedometer"></i> Final: <b>${(data.score_final ?? 0).toFixed(1)}%</b></span>
               </div>

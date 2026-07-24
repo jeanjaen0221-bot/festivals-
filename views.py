@@ -6,7 +6,7 @@ import requests
 import tempfile
 from decimal import Decimal, ROUND_HALF_UP
 import matching
-from photo_embeddings import ensure_photo_embedding, item_embedding_similarity
+import visual_matcher
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -257,15 +257,23 @@ def _item_pair_bonus(lost, found) -> float:
     return bonus
 
 
-def _compute_weighted_score(base_score: float, img_sim_pct: float,
-                            img_img_pct: float, bonus: float) -> float:
-    """Formule de pondération unifiée — identique dans detail_item, list_matches et api_match_explain."""
+def _image_pair_similarity_pct(image_path_a: str | None, image_path_b: str | None) -> float | None:
+    """Calcule DINOv2 image↔image; ``None`` représente explicitement un calcul absent."""
+    if not image_path_a or not image_path_b:
+        return None
+    vector_a = visual_matcher.embed_image(image_path_a)
+    vector_b = visual_matcher.embed_image(image_path_b)
+    similarity = visual_matcher.image_similarity(vector_a, vector_b)
+    return round(100.0 * similarity, 2) if similarity is not None else None
+
+
+def _compute_weighted_score(base_score: float, img_img_pct: float | None, bonus: float) -> float:
+    """Pondère le texte et DINOv2 seulement si les deux images ont été comparées."""
     _cfg = matching.MATCH_CONFIG
-    tw, iw, iiw = _cfg['text_weight'], _cfg['image_weight'], _cfg['img_img_weight']
-    if img_img_pct > 0:
-        combined = tw * base_score + iw * img_sim_pct + iiw * img_img_pct
+    if img_img_pct is None:
+        combined = base_score
     else:
-        combined = (tw + iiw) * base_score + iw * img_sim_pct
+        combined = _cfg['text_weight'] * base_score + _cfg['img_img_weight'] * img_img_pct
     return max(0.0, min(100.0, round(combined + bonus, 2)))
 
 
@@ -714,36 +722,19 @@ def detail_item(item_id):
             lost_item  = item if item.status == Status.LOST else c
             found_item = c    if item.status == Status.LOST else item
             bonus = _item_pair_bonus(lost_item, found_item)
-            # DINOv2 is image-only: use persisted ready embeddings, never infer here.
-            # Text/category/date/structured fields remain complementary scoring rules.
-            img_sim_pct = 0.0
-            try:
-                if item.status == Status.LOST and img_found_path:
-                    sim = itm.text_image_similarity(f"{current_matchable.title}. {current_matchable.comments}", img_found_path)
-                    img_sim_pct = round(100.0 * float(sim), 2)
-                elif item.status == Status.FOUND and img_found_path:
-                    sim = itm.text_image_similarity(f"{m.title}. {m.comments}", img_found_path)
-                    img_sim_pct = round(100.0 * float(sim), 2)
-            except Exception:
-                img_sim_pct = 0.0
-            # Le hash est le préfiltre du modèle visuel : les copies évidentes
-            # sont résolues immédiatement, les autres paires seulement sont
-            # envoyées à l'embedding image↔image.
-            img_img_pct = 0.0
-            try:
-                if img_lost_path and img_found_path:
-                    hash_distance = _hamming_distance(
-                        _primary_perceptual_hash(lost_item), _primary_perceptual_hash(found_item)
-                    )
-                    if hash_distance is not None and hash_distance <= PERCEPTUAL_HASH_DISTANCE:
-                        img_img_pct = 100.0
-                    else:
-                        sim2 = itm.image_image_similarity(img_lost_path, img_found_path)
-                        img_img_pct = round(100.0 * float(sim2), 2)
-            except Exception:
-                img_img_pct = 0.0
-            # Score final pondéré via helper partagé
-            final_score = _compute_weighted_score(base_score, img_sim_pct, img_img_pct, bonus)
+            # Chemins d'images (LOST item vs FOUND candidate)
+            img_lost_path = None
+            img_found_path = None
+            if item.status == Status.LOST:
+                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
+                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
+            else:
+                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
+                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
+            # DINOv2 ne compare que deux images: jamais de texte↔image.
+            img_img_pct = _image_pair_similarity_pct(img_lost_path, img_found_path)
+            # Le texte garde 100 % de son poids si la comparaison image est indisponible.
+            final_score = _compute_weighted_score(base_score, img_img_pct, bonus)
             # Photo principale
             if hasattr(c, 'photos') and c.photos and len(c.photos) > 0:
                 photo_url = url_for('main.uploaded_file', filename=c.photos[0].filename)
@@ -1128,37 +1119,23 @@ def api_match_explain():
                 return i.photo_filename
             return None
 
-        # Compare only persisted ready DINOv2 vectors; no request-time model inference.
-        img_sim_pct = 0.0
-        try:
-            if i1.status == Status.LOST and img_found_path:
-                sim = itm.text_image_similarity(f"{m1.title}. {m1.comments}", img_found_path)
-                img_sim_pct = round(100.0 * float(sim), 2)
-            elif i1.status == Status.FOUND and img_found_path:
-                sim = itm.text_image_similarity(f"{m2.title}. {m2.comments}", img_found_path)
-                img_sim_pct = round(100.0 * float(sim), 2)
-        except Exception:
-            img_sim_pct = 0.0
+        # Déterminer l'image LOST et l'image FOUND
+        img_lost_path = None
+        img_found_path = None
+        if i1.status == Status.LOST and i2.status == Status.FOUND:
+            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
+            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
+        elif i1.status == Status.FOUND and i2.status == Status.LOST:
+            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
+            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
 
-        # Similarité image↔image
-        img_img_pct = 0.0
-        try:
-            if img_lost_path and img_found_path:
-                hash_distance = _hamming_distance(
-                    _primary_perceptual_hash(lost_i), _primary_perceptual_hash(found_i)
-                )
-                if hash_distance is not None and hash_distance <= PERCEPTUAL_HASH_DISTANCE:
-                    img_img_pct = 100.0
-                else:
-                    sim2 = itm.image_image_similarity(img_lost_path, img_found_path)
-                    img_img_pct = round(100.0 * float(sim2), 2)
-        except Exception:
-            img_img_pct = 0.0
-
+        # DINOv2 est employé exclusivement pour image↔image.
+        img_img_pct = _image_pair_similarity_pct(img_lost_path, img_found_path)
+        model_state = visual_matcher.model_status()
         _cleanup_tmp_images()
 
-        # Score final via helper partagé (formule identique à detail_item)
-        final_score = _compute_weighted_score(score_text, img_sim_pct, img_img_pct, bonus)
+        # Une indisponibilité est renvoyée comme null, pas comme 0 %.
+        final_score = _compute_weighted_score(score_text, img_img_pct, bonus)
 
         return jsonify({
             'item_id': i1.id,
@@ -1166,13 +1143,14 @@ def api_match_explain():
             'score_base': score_text,
             'bonus': bonus,
             'score_final': final_score,
-            'image_similarity': img_sim_pct,
+            'image_similarity': None,
             'image_image_similarity': img_img_pct,
             'weights': {
                 'text': _cfg['text_weight'],
-                'image': _cfg['image_weight'],
                 'img_img': _cfg['img_img_weight'],
             },
+            'image_similarity_state': 'computed' if img_img_pct is not None else (model_state['state'] if model_state['state'] == 'unavailable' else 'not_computed_missing_image'),
+            'visual_model': model_state,
             'details': details
         })
     except Exception:
@@ -1276,6 +1254,12 @@ def return_headphone_loan(loan_id):
 # ───────────────────────────────────────────────────────────────────────────────
 # Routes de correspondance globale Lost↔Found (nouvelles)
 # ───────────────────────────────────────────────────────────────────────────────
+def _primary_photo_filename(item: Item) -> str | None:
+    if getattr(item, 'photos', None):
+        return item.photos[0].filename
+    return item.photo_filename or None
+
+
 def get_all_candidate_pairs(seuil=60, skip_set=None):
     """Calcule toutes les paires Lost↔Found dont le score >= seuil.
     skip_set: ensemble de tuples (lost_id, found_id) à ignorer (déjà validés/rejetés si non affichés).
@@ -1292,11 +1276,14 @@ def get_all_candidate_pairs(seuil=60, skip_set=None):
                 continue
             base_score = matching.match_score(lost, found, fields_weights)
             bonus = _item_pair_bonus(lost, found)
-            img_img_pct = _embedding_similarity_pct(lost, found)
-            score = _compute_weighted_score(base_score, 0.0, img_img_pct, bonus)
+            lost_path = _ensure_image_on_disk_for_matching(_primary_photo_filename(lost))
+            found_path = _ensure_image_on_disk_for_matching(_primary_photo_filename(found))
+            img_img_pct = _image_pair_similarity_pct(lost_path, found_path)
+            score = _compute_weighted_score(base_score, img_img_pct, bonus)
             if score >= seuil:
                 explanation = matching.match_explanation(lost, found, fields_weights)
                 pairs.append((lost, found, round(score, 2), explanation))
+    _cleanup_tmp_images()
     return pairs
 
 @bp.route('/matches')
