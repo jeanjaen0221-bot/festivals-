@@ -280,6 +280,7 @@ with app.app_context():
                     ('data', 'ALTER TABLE item_photos ADD COLUMN data BYTEA;'),
                     ('mime_type', 'ALTER TABLE item_photos ADD COLUMN mime_type VARCHAR(100);'),
                     ('original_filename', 'ALTER TABLE item_photos ADD COLUMN original_filename VARCHAR(200);'),
+                    ('perceptual_hash', 'ALTER TABLE item_photos ADD COLUMN perceptual_hash VARCHAR(64);'),
                 ]:
                     result = conn.execute(sqlalchemy.text(f"""
                         SELECT column_name FROM information_schema.columns
@@ -288,6 +289,10 @@ with app.app_context():
                     if result.fetchone() is None:
                         conn.execute(sqlalchemy.text(ddl))
                         conn.execute(sqlalchemy.text("COMMIT;"))
+                conn.execute(sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_item_photos_perceptual_hash ON item_photos (perceptual_hash);"
+                ))
+                conn.execute(sqlalchemy.text("COMMIT;"))
             except Exception as e6:
                 print(f"[WARN] Impossible d'ajouter les colonnes data/mime_type sur item_photos: {e6}", file=sys.stderr)
 

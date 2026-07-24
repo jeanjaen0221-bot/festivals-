@@ -224,6 +224,8 @@ class ItemPhoto(db.Model):
     data = db.Column(db.LargeBinary, nullable=True)
     mime_type = db.Column(db.String(100), nullable=True)
     original_filename = db.Column(db.String(200), nullable=True)
+    # pHash hexadécimal (256 bits) : accélère la détection de photos très proches.
+    perceptual_hash = db.Column(db.String(64), nullable=True, index=True)
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
