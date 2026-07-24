@@ -220,6 +220,17 @@ def remove_custom_icon(category_id):
 
 # Route delete_category_icon supprimée - plus nécessaire avec Bootstrap Icons (toutes les catégories ont une icône par défaut)
 
+@bp_admin.route('/visual-model-status')
+@login_required
+@admin_required
+def visual_model_status():
+    """Vérification explicite du modèle DINOv2 pour l'administration."""
+    from visual_matcher import model_status
+    status = model_status(load=True)
+    code = 200 if status['state'] == 'ready' else 503
+    return jsonify(status), code
+
+
 @bp_admin.route('/')
 @login_required
 @admin_required
@@ -241,6 +252,7 @@ def admin_dashboard():
                 total_sales_eur += si.unit_price * si.quantity
     except Exception:
         pass
+    from visual_matcher import model_status
     csrf_form = SimpleCsrfForm()
     return render_template(
         'admin/dashboard.html',
@@ -251,6 +263,7 @@ def admin_dashboard():
         nb_deletions=nb_deletions,
         active_loans=active_loans,
         total_sales_eur=total_sales_eur,
+        visual_model_status=model_status(),
         csrf_form=csrf_form
     )
 

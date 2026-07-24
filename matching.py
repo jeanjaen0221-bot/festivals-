@@ -18,9 +18,8 @@ _stemmer = FrenchStemmer()
 # ── Configuration centralisée ──────────────────────────────────────────────────
 MATCH_CONFIG = {
     'fields_weights': {'title': 0.55, 'comments': 0.25, 'location': 0.20},
-    'text_weight':    0.55,   # part du score texte dans le score final
-    'image_weight':   0.30,   # part texte↔image
-    'img_img_weight': 0.15,   # part image↔image (quand les deux ont une photo)
+    'text_weight':    0.85,   # texte quand une comparaison image↔image est disponible
+    'img_img_weight': 0.15,   # DINOv2 image↔image (quand les deux ont une photo)
     'bonus_same_category':      10,
     'bonus_date_close':         10,  # ≤ 2 jours
     'malus_date_far':           10,  # > 14 jours

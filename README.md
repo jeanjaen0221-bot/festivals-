@@ -117,3 +117,12 @@ Application Flask pour gérer les objets perdus, trouvés et rendus lors d'un fe
 - **Connexion ne fonctionne pas** : s'assurer que les boutons submit ont bien un attribut `name` et que la vue Flask détecte le bon formulaire.
 
 ---
+
+### Matching visuel DINOv2
+
+Le matching image↔image utilise localement `facebook/dinov2-small`. Définissez
+`VISUAL_MATCHER_CACHE_DIR` vers un volume Railway persistant (par exemple
+`/data/huggingface`) afin de conserver les poids téléchargés entre les
+déploiements. L’état du modèle est affiché sur le tableau de bord admin et peut
+être contrôlé par `GET /admin/visual-model-status`; une indisponibilité renvoie
+un état explicite et ne constitue jamais une similarité de 0 %.
