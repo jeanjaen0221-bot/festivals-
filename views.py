@@ -19,6 +19,8 @@ from flask import (
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_
+import imagehash
+from PIL import Image, UnidentifiedImageError
 
 from app import app, db, limiter
 from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure
@@ -106,6 +108,71 @@ def _guess_mime_from_ext(filename: str) -> str | None:
     if ext == '.png':
         return 'image/png'
     return None
+
+
+# 256 bits garde une bonne tolérance aux recompressions tout en limitant les
+# faux positifs. Une distance <= 18 signale les copies, recadrages légers et
+# photos quasi identiques ; ce n'est volontairement jamais un blocage.
+PERCEPTUAL_HASH_DISTANCE = 18
+
+
+def _perceptual_hash(image_bytes: bytes) -> str | None:
+    """Calcule un pHash stable sans charger de modèle ML."""
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            return str(imagehash.phash(image.convert('RGB'), hash_size=16))
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None
+
+
+def _hamming_distance(hash_a: str | None, hash_b: str | None) -> int | None:
+    if not hash_a or not hash_b or len(hash_a) != len(hash_b):
+        return None
+    try:
+        return (int(hash_a, 16) ^ int(hash_b, 16)).bit_count()
+    except ValueError:
+        return None
+
+
+def find_visual_duplicates(perceptual_hash: str | None, limit: int = 10):
+    """Retourne les ItemPhoto proches, triés par distance de Hamming."""
+    if not perceptual_hash:
+        return []
+    # L'index réduit le coût des cas exactement identiques. Les autres hashes
+    # sont ensuite comparés en mémoire, car PostgreSQL n'offre pas un opérateur
+    # Hamming portable pour cette colonne hexadécimale.
+    photos = ItemPhoto.query.filter(ItemPhoto.perceptual_hash.isnot(None)).all()
+    matches = []
+    for photo in photos:
+        distance = _hamming_distance(perceptual_hash, photo.perceptual_hash)
+        if distance is not None and distance <= PERCEPTUAL_HASH_DISTANCE:
+            matches.append((photo, distance))
+    matches.sort(key=lambda entry: entry[1])
+    return matches[:limit]
+
+
+def _primary_perceptual_hash(item: Item) -> str | None:
+    """Hash de la photo principale, s'il a été calculé à l'import."""
+    return item.photos[0].perceptual_hash if item.photos else None
+
+
+def _persist_item_photo(item: Item, file: FileStorage) -> ItemPhoto | None:
+    """Persiste toute ItemPhoto au même endroit, avec son hash perceptuel."""
+    if not (file and file.filename and allowed_file(file.filename) and _check_image_magic_bytes(file)):
+        return None
+    ext = os.path.splitext(file.filename)[1].lower()
+    filename = secure_filename(f"{uuid.uuid4().hex}{ext}")
+    data = file.read()
+    photo = ItemPhoto(
+        item=item,
+        filename=filename,
+        data=data,
+        mime_type=_guess_mime_from_ext(filename),
+        original_filename=file.filename,
+        perceptual_hash=_perceptual_hash(data),
+    )
+    db.session.add(photo)
+    return photo
 
 
 def _db_image_bytes_by_filename(filename: str):
@@ -497,6 +564,10 @@ def report_item():
             item_distinctive=','.join(lost_form.item_distinctive.data) if lost_form.item_distinctive.data else None,
         )
         db.session.add(item)
+        # Les objets perdus ne proposent pas de photo dans le formulaire, mais
+        # garder ce chemin rend la persistance cohérente si le champ évolue.
+        for photo_file in lost_form.photos.data or []:
+            _persist_item_photo(item, photo_file)
         db.session.commit()
         log_action(current_user.id, 'create_item', f'Ajout objet perdu ID:{item.id}')
         flash("Objet perdu enregistré !", "success")
@@ -529,6 +600,8 @@ def report_item():
             item_distinctive=','.join(found_form.item_distinctive.data) if found_form.item_distinctive.data else None,
         )
         db.session.add(item)
+        for photo_file in found_form.photos.data or []:
+            _persist_item_photo(item, photo_file)
         db.session.commit()
         log_action(current_user.id, 'create_item', f'Ajout objet trouvé ID:{item.id}')
         flash("Objet trouvé enregistré !", "success")
@@ -644,7 +717,31 @@ def detail_item(item_id):
             # DINOv2 is image-only: use persisted ready embeddings, never infer here.
             # Text/category/date/structured fields remain complementary scoring rules.
             img_sim_pct = 0.0
-            img_img_pct = _embedding_similarity_pct(lost_item, found_item)
+            try:
+                if item.status == Status.LOST and img_found_path:
+                    sim = itm.text_image_similarity(f"{current_matchable.title}. {current_matchable.comments}", img_found_path)
+                    img_sim_pct = round(100.0 * float(sim), 2)
+                elif item.status == Status.FOUND and img_found_path:
+                    sim = itm.text_image_similarity(f"{m.title}. {m.comments}", img_found_path)
+                    img_sim_pct = round(100.0 * float(sim), 2)
+            except Exception:
+                img_sim_pct = 0.0
+            # Le hash est le préfiltre du modèle visuel : les copies évidentes
+            # sont résolues immédiatement, les autres paires seulement sont
+            # envoyées à l'embedding image↔image.
+            img_img_pct = 0.0
+            try:
+                if img_lost_path and img_found_path:
+                    hash_distance = _hamming_distance(
+                        _primary_perceptual_hash(lost_item), _primary_perceptual_hash(found_item)
+                    )
+                    if hash_distance is not None and hash_distance <= PERCEPTUAL_HASH_DISTANCE:
+                        img_img_pct = 100.0
+                    else:
+                        sim2 = itm.image_image_similarity(img_lost_path, img_found_path)
+                        img_img_pct = round(100.0 * float(sim2), 2)
+            except Exception:
+                img_img_pct = 0.0
             # Score final pondéré via helper partagé
             final_score = _compute_weighted_score(base_score, img_sim_pct, img_img_pct, bonus)
             # Photo principale
@@ -706,21 +803,8 @@ def detail_item(item_id):
         item.return_date = datetime.now(timezone.utc)
         if form.photos.data:
             for f in form.photos.data:
-                if isinstance(f, FileStorage) and f and f.filename and allowed_file(f.filename) and _check_image_magic_bytes(f):
-                    ext = os.path.splitext(f.filename)[1].lower()
-                    filename = f"{uuid.uuid4().hex}{ext}"
-                    safe_name = secure_filename(filename)
-                    data = f.read()
-                    photo = ItemPhoto(
-                        item=item,
-                        filename=safe_name,
-                        data=data,
-                        mime_type=_guess_mime_from_ext(safe_name),
-                        original_filename=f.filename,
-                    )
-                    db.session.add(photo)
-                    db.session.flush()
-                    ensure_photo_embedding(photo)
+                if isinstance(f, FileStorage):
+                    _persist_item_photo(item, f)
         db.session.commit()
         # Synchronisation automatique : si l’objet est lié, on marque aussi l’autre comme rendu
         match = Match.query.filter((Match.lost_id==item.id)|(Match.found_id==item.id)).first()
@@ -958,6 +1042,34 @@ def api_check_similar():
 
     return jsonify({'similars': similars, 'candidates': candidates})
 
+
+@bp.route('/api/check_visual_duplicates', methods=['POST'])
+@limiter.limit("20 per minute")
+@login_required
+def api_check_visual_duplicates():
+    """Prévisualise les doublons photo avant la création d'une déclaration."""
+    matches = []
+    for uploaded in request.files.getlist('photos'):
+        if not (uploaded and uploaded.filename and allowed_file(uploaded.filename)
+                and _check_image_magic_bytes(uploaded)):
+            continue
+        perceptual_hash = _perceptual_hash(uploaded.read())
+        uploaded.seek(0)
+        for photo, distance in find_visual_duplicates(perceptual_hash):
+            item = photo.item
+            if item is None or any(row['photo_id'] == photo.id for row in matches):
+                continue
+            matches.append({
+                'photo_id': photo.id,
+                'item_id': item.id,
+                'title': item.title,
+                'distance': distance,
+                'url_detail': url_for('main.detail_item', item_id=item.id),
+                'photo_url': url_for('main.uploaded_file', filename=photo.filename),
+            })
+    matches.sort(key=lambda row: row['distance'])
+    return jsonify({'duplicates': matches[:10]})
+
 @bp.route('/api/match_explain', methods=['POST'])
 @limiter.limit("20 per minute")
 @login_required
@@ -1018,7 +1130,32 @@ def api_match_explain():
 
         # Compare only persisted ready DINOv2 vectors; no request-time model inference.
         img_sim_pct = 0.0
-        img_img_pct = _embedding_similarity_pct(lost_i, found_i)
+        try:
+            if i1.status == Status.LOST and img_found_path:
+                sim = itm.text_image_similarity(f"{m1.title}. {m1.comments}", img_found_path)
+                img_sim_pct = round(100.0 * float(sim), 2)
+            elif i1.status == Status.FOUND and img_found_path:
+                sim = itm.text_image_similarity(f"{m2.title}. {m2.comments}", img_found_path)
+                img_sim_pct = round(100.0 * float(sim), 2)
+        except Exception:
+            img_sim_pct = 0.0
+
+        # Similarité image↔image
+        img_img_pct = 0.0
+        try:
+            if img_lost_path and img_found_path:
+                hash_distance = _hamming_distance(
+                    _primary_perceptual_hash(lost_i), _primary_perceptual_hash(found_i)
+                )
+                if hash_distance is not None and hash_distance <= PERCEPTUAL_HASH_DISTANCE:
+                    img_img_pct = 100.0
+                else:
+                    sim2 = itm.image_image_similarity(img_lost_path, img_found_path)
+                    img_img_pct = round(100.0 * float(sim2), 2)
+        except Exception:
+            img_img_pct = 0.0
+
+        _cleanup_tmp_images()
 
         # Score final via helper partagé (formule identique à detail_item)
         final_score = _compute_weighted_score(score_text, img_sim_pct, img_img_pct, bonus)

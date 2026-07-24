@@ -232,23 +232,8 @@ class ItemPhoto(db.Model):
     data = db.Column(db.LargeBinary, nullable=True)
     mime_type = db.Column(db.String(100), nullable=True)
     original_filename = db.Column(db.String(200), nullable=True)
-    embeddings = db.relationship('PhotoEmbedding', backref='item_photo', lazy=True, cascade='all, delete-orphan')
-
-
-class PhotoEmbedding(db.Model):
-    __tablename__ = 'photo_embeddings'
-    id = db.Column(db.Integer, primary_key=True)
-    item_photo_id = db.Column(db.Integer, db.ForeignKey('item_photos.id', ondelete='CASCADE'), nullable=False, index=True)
-    model_version = db.Column(db.String(100), nullable=False, index=True)
-    image_hash = db.Column(db.String(64), nullable=False, index=True)
-    embedding = db.Column(db.LargeBinary, nullable=True)
-    embedding_dimension = db.Column(db.Integer, nullable=True)
-    status = db.Column(db.String(20), nullable=False, default=PhotoEmbeddingStatus.PENDING.value, index=True)
-    error_message = db.Column(db.String(500), nullable=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
-    __table_args__ = (db.UniqueConstraint('item_photo_id', 'model_version', name='uq_photo_embedding_photo_model'),)
-
+    # pHash hexadécimal (256 bits) : accélère la détection de photos très proches.
+    perceptual_hash = db.Column(db.String(64), nullable=True, index=True)
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'

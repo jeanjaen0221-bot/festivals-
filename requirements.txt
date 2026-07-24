@@ -19,6 +19,7 @@ reportlab==3.6.13
 setuptools==75.8.0
 sentence-transformers==2.7.0
 Pillow==10.4.0
+ImageHash==4.3.1
 numpy==1.26.4
 flask-limiter==3.5.1
 torch==2.5.1
