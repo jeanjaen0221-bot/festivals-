@@ -6,7 +6,7 @@ import requests
 import tempfile
 from decimal import Decimal, ROUND_HALF_UP
 import matching
-import image_text_matcher as itm
+from photo_embeddings import ensure_photo_embedding, item_embedding_similarity
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -267,6 +267,11 @@ def _compute_weighted_score(base_score: float, img_sim_pct: float,
     else:
         combined = (tw + iiw) * base_score + iw * img_sim_pct
     return max(0.0, min(100.0, round(combined + bonus, 2)))
+
+
+def _embedding_similarity_pct(item1: Item, item2: Item) -> float:
+    """Compare only ready, persisted DINOv2 embeddings (never infer in request path)."""
+    return round(100.0 * max(0.0, item_embedding_similarity(item1, item2)), 2)
 
 
 def find_similar_items(titre, category_id, seuil=70, location=''):
@@ -709,16 +714,8 @@ def detail_item(item_id):
             lost_item  = item if item.status == Status.LOST else c
             found_item = c    if item.status == Status.LOST else item
             bonus = _item_pair_bonus(lost_item, found_item)
-            # Chemins d'images (LOST item vs FOUND candidate)
-            img_lost_path = None
-            img_found_path = None
-            if item.status == Status.LOST:
-                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
-                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
-            else:
-                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
-                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
-            # Similarité texte↔image
+            # DINOv2 is image-only: use persisted ready embeddings, never infer here.
+            # Text/category/date/structured fields remain complementary scoring rules.
             img_sim_pct = 0.0
             try:
                 if item.status == Status.LOST and img_found_path:
@@ -1131,17 +1128,7 @@ def api_match_explain():
                 return i.photo_filename
             return None
 
-        # Déterminer l'image LOST et l'image FOUND
-        img_lost_path = None
-        img_found_path = None
-        if i1.status == Status.LOST and i2.status == Status.FOUND:
-            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
-            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
-        elif i1.status == Status.FOUND and i2.status == Status.LOST:
-            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
-            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
-
-        # Similarité texte↔image
+        # Compare only persisted ready DINOv2 vectors; no request-time model inference.
         img_sim_pct = 0.0
         try:
             if i1.status == Status.LOST and img_found_path:
@@ -1305,7 +1292,8 @@ def get_all_candidate_pairs(seuil=60, skip_set=None):
                 continue
             base_score = matching.match_score(lost, found, fields_weights)
             bonus = _item_pair_bonus(lost, found)
-            score = _compute_weighted_score(base_score, 0.0, 0.0, bonus)
+            img_img_pct = _embedding_similarity_pct(lost, found)
+            score = _compute_weighted_score(base_score, 0.0, img_img_pct, bonus)
             if score >= seuil:
                 explanation = matching.match_explanation(lost, found, fields_weights)
                 pairs.append((lost, found, round(score, 2), explanation))
