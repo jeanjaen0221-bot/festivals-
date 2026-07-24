@@ -225,6 +225,17 @@ class ItemPhoto(db.Model):
     mime_type = db.Column(db.String(100), nullable=True)
     original_filename = db.Column(db.String(200), nullable=True)
 
+
+class EmbeddingJob(db.Model):
+    """Une tâche persistée de calcul d'embedding pour une photo d'objet."""
+    __tablename__ = 'embedding_jobs'
+    id = db.Column(db.Integer, primary_key=True)
+    photo_id = db.Column(db.Integer, db.ForeignKey('item_photos.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    photo = db.relationship('ItemPhoto', backref=db.backref('embedding_job', uselist=False, cascade='all, delete-orphan'))
+
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)

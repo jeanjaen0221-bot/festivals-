@@ -84,6 +84,11 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30 MB
+# Les limites métier sont distinctes de la limite de requête HTTP.
+app.config['MAX_ITEM_PHOTOS'] = int(os.environ.get('MAX_ITEM_PHOTOS', '5'))
+app.config['MAX_ITEM_PHOTOS_TOTAL_BYTES'] = int(
+    os.environ.get('MAX_ITEM_PHOTOS_TOTAL_BYTES', str(20 * 1024 * 1024))
+)
 
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)

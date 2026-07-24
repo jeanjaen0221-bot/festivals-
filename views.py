@@ -21,7 +21,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
 from app import app, db, limiter
-from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure
+from models import Item, Category, Status, ItemPhoto, EmbeddingJob, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure
 from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm, SimpleCsrfForm
 from ocr_utils import extract_id_card_data
 from admin import admin_required
@@ -106,6 +106,84 @@ def _guess_mime_from_ext(filename: str) -> str | None:
     if ext == '.png':
         return 'image/png'
     return None
+
+
+# Ces valeurs peuvent être ajustées par environnement sans changer le formulaire.
+DEFAULT_MAX_ITEM_PHOTOS = 5
+DEFAULT_MAX_ITEM_PHOTOS_TOTAL_BYTES = 20 * 1024 * 1024
+
+
+class PhotoUploadError(ValueError):
+    """Erreur de validation des photos affichable à l'utilisateur."""
+
+
+def _save_item_photos(
+    item: Item,
+    form,
+    *,
+    existing_photo_count: int = 0,
+    existing_photo_bytes: int | None = None,
+) -> list[ItemPhoto]:
+    """Valide et ajoute les photos d'un formulaire et leurs tâches d'embedding.
+
+    Les fichiers sont tous contrôlés avant toute écriture. Les photos sont flushées
+    pour obtenir leurs identifiants, puis une tâche persistée est créée pour chacune.
+    L'appelant reste responsable du commit afin que l'objet, ses photos et les tâches
+    soient atomiques.
+    """
+    max_photos = current_app.config.get('MAX_ITEM_PHOTOS', DEFAULT_MAX_ITEM_PHOTOS)
+    max_total_bytes = current_app.config.get(
+        'MAX_ITEM_PHOTOS_TOTAL_BYTES', DEFAULT_MAX_ITEM_PHOTOS_TOTAL_BYTES,
+    )
+    try:
+        max_photos = int(max_photos)
+        max_total_bytes = int(max_total_bytes)
+    except (TypeError, ValueError):
+        raise RuntimeError('Les limites de photos configurées sont invalides.')
+
+    uploads = []
+    for file_storage in form.photos.data or []:
+        if not isinstance(file_storage, FileStorage) or not file_storage.filename:
+            continue
+        if not allowed_file(file_storage.filename) or not _check_image_magic_bytes(file_storage):
+            raise PhotoUploadError('Chaque photo doit être une image JPEG ou PNG valide.')
+        data = file_storage.read()
+        if not data:
+            raise PhotoUploadError('Une photo envoyée est vide.')
+        uploads.append((file_storage, data))
+
+    if existing_photo_count + len(uploads) > max_photos:
+        raise PhotoUploadError(f'Un objet ne peut pas avoir plus de {max_photos} photos.')
+
+    existing_bytes = (
+        sum(len(photo.data or b'') for photo in item.photos)
+        if existing_photo_bytes is None else existing_photo_bytes
+    )
+    total_bytes = existing_bytes + sum(len(data) for _, data in uploads)
+    if total_bytes > max_total_bytes:
+        raise PhotoUploadError(
+            f'La taille cumulée des photos ne peut pas dépasser {max_total_bytes // (1024 * 1024)} Mo.'
+        )
+
+    photos = []
+    for file_storage, data in uploads:
+        ext = os.path.splitext(file_storage.filename)[1].lower()
+        filename = secure_filename(f'{uuid.uuid4().hex}{ext}')
+        photo = ItemPhoto(
+            item=item,
+            filename=filename,
+            data=data,
+            mime_type=_guess_mime_from_ext(filename),
+            original_filename=file_storage.filename,
+        )
+        db.session.add(photo)
+        photos.append(photo)
+
+    # Le flush persiste les photos et assigne leurs IDs sans valider la transaction.
+    db.session.flush()
+    for photo in photos:
+        db.session.add(EmbeddingJob(photo_id=photo.id, status='pending'))
+    return photos
 
 
 def _db_image_bytes_by_filename(filename: str):
@@ -491,8 +569,14 @@ def report_item():
             item_brand=(lost_form.item_brand.data or '').strip() or None,
             item_distinctive=','.join(lost_form.item_distinctive.data) if lost_form.item_distinctive.data else None,
         )
-        db.session.add(item)
-        db.session.commit()
+        try:
+            db.session.add(item)
+            _save_item_photos(item, lost_form)
+            db.session.commit()
+        except PhotoUploadError as exc:
+            db.session.rollback()
+            flash(str(exc), 'lost')
+            return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='lost')
         log_action(current_user.id, 'create_item', f'Ajout objet perdu ID:{item.id}')
         flash("Objet perdu enregistré !", "success")
         return redirect(url_for('main.list_items', status='lost'))
@@ -523,8 +607,14 @@ def report_item():
             item_brand=(found_form.item_brand.data or '').strip() or None,
             item_distinctive=','.join(found_form.item_distinctive.data) if found_form.item_distinctive.data else None,
         )
-        db.session.add(item)
-        db.session.commit()
+        try:
+            db.session.add(item)
+            _save_item_photos(item, found_form)
+            db.session.commit()
+        except PhotoUploadError as exc:
+            db.session.rollback()
+            flash(str(exc), 'found')
+            return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='found')
         log_action(current_user.id, 'create_item', f'Ajout objet trouvé ID:{item.id}')
         flash("Objet trouvé enregistré !", "success")
         return redirect(url_for('main.list_items', status='found'))
@@ -796,6 +886,10 @@ def edit_item(item_id):
         form.item_distinctive.data = item.item_distinctive.split(',') if item.item_distinctive else []
 
     if form.validate_on_submit():
+        photo_ids_to_delete = {
+            int(pid) for pid in request.form.getlist('delete_photos') if pid.isdigit()
+        }
+        retained_photos = [photo for photo in item.photos if photo.id not in photo_ids_to_delete]
         item.title = form.title.data
         item.comments = form.comments.data
         item.location = form.location.data
@@ -810,15 +904,22 @@ def edit_item(item_id):
         if item.status.name == 'FOUND':
             item.found_location = form.found_location_other.data.strip() if form.found_location_other.data else ''
             item.storage_location = form.storage_location_other.data.strip() if form.storage_location.data == 'autre' else (dict(form.storage_location.choices).get(form.storage_location.data) if form.storage_location.data else '')
-        db.session.commit()
-        # Suppression des photos cochées
-        photo_ids_to_delete = request.form.getlist('delete_photos')
-        if photo_ids_to_delete:
-            for pid in photo_ids_to_delete:
-                photo = ItemPhoto.query.filter_by(id=pid, item_id=item.id).first()
-                if photo:
+        try:
+            # Les suppressions, nouvelles photos et données de l'objet sont validées ensemble.
+            for photo in item.photos:
+                if photo.id in photo_ids_to_delete:
                     db.session.delete(photo)
+            _save_item_photos(
+                item,
+                form,
+                existing_photo_count=len(retained_photos),
+                existing_photo_bytes=sum(len(photo.data or b'') for photo in retained_photos),
+            )
             db.session.commit()
+        except PhotoUploadError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+            return render_template('edit_item.html', form=form, item=item)
         log_action(current_user.id, 'edit_item', f'Modification objet ID:{item.id}')
         flash("Objet mis à jour !", "success")
         return redirect(url_for('main.detail_item', item_id=item.id))
