@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from app import db
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import event, inspect
 
 class DepositType(enum.Enum):
     ID_CARD = 'id_card'
@@ -216,6 +217,13 @@ class RejectedPair(db.Model):
         return f'<RejectedPair Lost:{self.lost_id} Found:{self.found_id}>'
 
 
+class PhotoEmbeddingStatus(enum.Enum):
+    PENDING = 'pending'
+    READY = 'ready'
+    FAILED = 'failed'
+    INVALIDATED = 'invalidated'
+
+
 class ItemPhoto(db.Model):
     __tablename__ = 'item_photos'
     id = db.Column(db.Integer, primary_key=True)
@@ -224,6 +232,8 @@ class ItemPhoto(db.Model):
     data = db.Column(db.LargeBinary, nullable=True)
     mime_type = db.Column(db.String(100), nullable=True)
     original_filename = db.Column(db.String(200), nullable=True)
+    # pHash hexadécimal (256 bits) : accélère la détection de photos très proches.
+    perceptual_hash = db.Column(db.String(64), nullable=True, index=True)
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
@@ -403,3 +413,14 @@ class Message(db.Model):
 
     def __repr__(self):
         return f'<Message {self.id} conv={self.conversation_id} sender={self.sender_id}>'
+
+# A direct ORM replacement of image bytes must never leave an old vector usable.
+# Deletion is handled by the relationship and database ON DELETE CASCADE.
+@event.listens_for(ItemPhoto, 'before_update')
+def invalidate_embeddings_when_photo_changes(mapper, connection, target):
+    state = inspect(target)
+    if state.attrs.data.history.has_changes():
+        for embedding in target.embeddings:
+            embedding.status = PhotoEmbeddingStatus.INVALIDATED.value
+            embedding.embedding = None
+            embedding.embedding_dimension = None

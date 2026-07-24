@@ -131,8 +131,34 @@ document.addEventListener('DOMContentLoaded', function() {
   var lostForm = document.getElementById('itemForm');
   var lostBtn = document.getElementById('submit-lost-btn');
   var foundBtn = document.getElementById('submit-found-btn');
+  var visualCheckDone = false;
   if(lostForm) {
     lostForm.addEventListener('submit', function(e) {
+      var photoInput = lostForm.querySelector('input[type="file"][name$="photos"]');
+      if (!visualCheckDone && photoInput && photoInput.files && photoInput.files.length) {
+        e.preventDefault();
+        var body = new FormData();
+        Array.prototype.forEach.call(photoInput.files, function(file) { body.append('photos', file); });
+        fetch('{{ url_for("main.api_check_visual_duplicates") }}', {
+          method: 'POST', body: body,
+          headers: {'X-CSRFToken': lostForm.querySelector('input[name$="csrf_token"]').value}
+        }).then(function(response) { return response.json(); }).then(function(data) {
+          var duplicates = data.duplicates || [];
+          if (!duplicates.length) { visualCheckDone = true; lostForm.requestSubmit(); return; }
+          var list = document.getElementById('doublonList');
+          list.innerHTML = duplicates.map(function(row) {
+            return '<li class="border-bottom py-2"><a href="' + row.url_detail + '" target="_blank" class="fw-semibold">'
+              + row.title + ' (#' + row.item_id + ')</a> — photo très proche (distance ' + row.distance + ')'
+              + (row.photo_url ? '<br><img src="' + row.photo_url + '" alt="Photo similaire" class="mt-2 rounded" style="max-height:90px;max-width:120px">' : '') + '</li>';
+          }).join('');
+          document.getElementById('noDoublon').classList.add('d-none');
+          document.getElementById('doublonModalTitle').textContent = 'Photo possiblement déjà déclarée';
+          var modal = new bootstrap.Modal(document.getElementById('doublonModal'));
+          document.getElementById('confirmSubmit').onclick = function() { visualCheckDone = true; modal.hide(); lostForm.requestSubmit(); };
+          modal.show();
+        }).catch(function() { visualCheckDone = true; lostForm.requestSubmit(); });
+        return;
+      }
       // Désactive les boutons et affiche les spinners
       if(lostBtn) {
         lostBtn.disabled = true;

@@ -4,6 +4,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from flask import Flask, g
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+import click
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager
 from flask_limiter import Limiter
@@ -86,6 +88,7 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30 MB
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 csrf = CSRFProtect(app)
 limiter = Limiter(
     app=app,
@@ -115,7 +118,23 @@ login_manager.login_message_category = 'info'
 
 # Import models and create tables
 import models
-from models import User
+from models import User, ItemPhoto
+
+
+@app.cli.command("index-photo-embeddings")
+@click.option("--force", is_flag=True, help="Recalculate all photos for the configured model version.")
+def index_photo_embeddings_command(force):
+    """Index missing photo embeddings; use --force after a model change."""
+    import click
+    from photo_embeddings import ensure_photo_embedding, current_model_version
+    count = 0
+    for photo in ItemPhoto.query.order_by(ItemPhoto.id).yield_per(50):
+        ensure_photo_embedding(photo, force=force)
+        count += 1
+        if count % 25 == 0:
+            db.session.commit()
+    db.session.commit()
+    click.echo(f"{count} photo(s) indexed for {current_model_version()}.")
 with app.app_context():
     db.create_all()
     # Création sécurisée de la table headphone_loans si elle n'existe pas déjà
@@ -280,6 +299,7 @@ with app.app_context():
                     ('data', 'ALTER TABLE item_photos ADD COLUMN data BYTEA;'),
                     ('mime_type', 'ALTER TABLE item_photos ADD COLUMN mime_type VARCHAR(100);'),
                     ('original_filename', 'ALTER TABLE item_photos ADD COLUMN original_filename VARCHAR(200);'),
+                    ('perceptual_hash', 'ALTER TABLE item_photos ADD COLUMN perceptual_hash VARCHAR(64);'),
                 ]:
                     result = conn.execute(sqlalchemy.text(f"""
                         SELECT column_name FROM information_schema.columns
@@ -288,6 +308,10 @@ with app.app_context():
                     if result.fetchone() is None:
                         conn.execute(sqlalchemy.text(ddl))
                         conn.execute(sqlalchemy.text("COMMIT;"))
+                conn.execute(sqlalchemy.text(
+                    "CREATE INDEX IF NOT EXISTS ix_item_photos_perceptual_hash ON item_photos (perceptual_hash);"
+                ))
+                conn.execute(sqlalchemy.text("COMMIT;"))
             except Exception as e6:
                 print(f"[WARN] Impossible d'ajouter les colonnes data/mime_type sur item_photos: {e6}", file=sys.stderr)
 
