@@ -1,49 +1,36 @@
-"""DINOv2 embedding persistence and similarity helpers for item photos."""
+"""DINOv2 embedding persistence and similarity helpers for item photos.
+
+Reuses the single DINOv2 model already loaded by ``visual_matcher`` (Hugging
+Face ``facebook/dinov2-small``) so a process never keeps two separate DINOv2
+weights sets in memory.
+"""
 import hashlib
 import os
-from functools import lru_cache
 from datetime import datetime, timezone
-from io import BytesIO
 
 import numpy as np
 
-DEFAULT_MODEL_VERSION = "dinov2_vits14"
 READY = "ready"
 FAILED = "failed"
 INVALIDATED = "invalidated"
 
 
 def current_model_version() -> str:
-    return os.environ.get("PHOTO_EMBEDDING_MODEL_VERSION", DEFAULT_MODEL_VERSION)
+    from visual_matcher import MODEL_ID
+    return os.environ.get("PHOTO_EMBEDDING_MODEL_VERSION", MODEL_ID)
 
 
 def image_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-@lru_cache(maxsize=1)
-def _load_dinov2(model_version: str):
-    import torch
-    model = torch.hub.load("facebookresearch/dinov2", model_version)
-    model.eval()
-    return model
-
-
 def _embed_dinov2(data: bytes) -> np.ndarray:
     """Return a normalized float32 DINOv2 vector; model loading remains lazy."""
-    from PIL import Image
-    import torch
+    from visual_matcher import embed_image_bytes
 
-    image = Image.open(BytesIO(data)).convert("RGB")
-    model = _load_dinov2(current_model_version())
-    # DINOv2's ImageNet preprocessing is intentionally kept alongside its model.
-    from torchvision import transforms
-    transform = transforms.Compose([
-        transforms.Resize(256), transforms.CenterCrop(224), transforms.ToTensor(),
-        transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-    ])
-    with torch.no_grad():
-        vector = model(transform(image).unsqueeze(0)).squeeze(0).cpu().numpy()
+    vector = embed_image_bytes(data)
+    if vector is None:
+        raise RuntimeError("Le modèle visuel DINOv2 est indisponible")
     vector = np.asarray(vector, dtype=np.float32)
     norm = np.linalg.norm(vector)
     if not norm:
@@ -100,12 +87,16 @@ def invalidate_photo_embedding(photo) -> None:
         record.status = INVALIDATED
 
 
-def item_embedding_similarity(item1, item2) -> float:
-    """Best cosine similarity across *persisted ready* embeddings of both items."""
+def item_embedding_similarity(item1, item2) -> float | None:
+    """Best cosine similarity across *persisted ready* embeddings of both items.
+
+    Returns ``None`` (not 0.0) when no ready embedding exists on either side,
+    so an absent comparison is never confused with an actual low similarity.
+    """
     vectors1 = _ready_vectors(item1)
     vectors2 = _ready_vectors(item2)
     if not vectors1 or not vectors2:
-        return 0.0
+        return None
     return max(float(np.clip(np.dot(a, b), -1.0, 1.0)) for a in vectors1 for b in vectors2)
 
 

@@ -126,3 +126,25 @@ Le matching image↔image utilise localement `facebook/dinov2-small`. Définisse
 déploiements. L’état du modèle est affiché sur le tableau de bord admin et peut
 être contrôlé par `GET /admin/visual-model-status`; une indisponibilité renvoie
 un état explicite et ne constitue jamais une similarité de 0 %.
+
+**Embeddings persistés (pas d'inférence dans le chemin de requête) :**
+chaque photo d'objet est encodée une seule fois, à l'upload
+(`_persist_item_photo` appelle `ensure_photo_embedding`), et le vecteur
+float32 est stocké dans la table `photo_embeddings` (bytea, une ligne par
+photo x version de modèle). Les pages de correspondance (`/item/<id>`,
+`/matches`, `/api/match_explain`) ne font plus jamais tourner DINOv2 :
+elles comparent uniquement des vecteurs déjà prêts via un simple produit
+scalaire (`photo_embeddings.item_embedding_similarity`). C'est ce qui rend
+`/matches` utilisable en production - avant ce correctif, cette page
+relançait DINOv2 pour chaque paire Lost x Found (potentiellement des
+milliers d'inférences par chargement de page), un point de blocage majeur
+sur l'infrastructure limitée de Railway.
+
+Après un déploiement qui ajoute ou modifie ce module, ou pour indexer des
+photos existantes qui n'ont pas encore d'embedding, lancez une fois (Railway
+-> onglet "Run") :
+```
+flask index-photo-embeddings
+```
+Ajoutez `--force` après un changement de `PHOTO_EMBEDDING_MODEL_VERSION`
+pour recalculer tous les vecteurs avec le nouveau modèle.

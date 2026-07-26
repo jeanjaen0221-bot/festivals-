@@ -3,10 +3,10 @@ import uuid
 import json
 import base64
 import requests
-import tempfile
 from decimal import Decimal, ROUND_HALF_UP
 import matching
 import visual_matcher
+from photo_embeddings import ensure_photo_embedding, item_embedding_similarity
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -172,6 +172,10 @@ def _persist_item_photo(item: Item, file: FileStorage) -> ItemPhoto | None:
         perceptual_hash=_perceptual_hash(data),
     )
     db.session.add(photo)
+    # Un flush attribue les IDs nécessaires à la persistance de l'embedding,
+    # calculé une seule fois ici pour ne jamais inférer dans le chemin de matching.
+    db.session.flush()
+    ensure_photo_embedding(photo)
     return photo
 
 
@@ -197,47 +201,6 @@ def _db_image_bytes_by_filename(filename: str):
     return None, None
 
 
-_tmp_files_to_cleanup: list[str] = []
-
-
-def _ensure_image_on_disk_for_matching(filename: str) -> str | None:
-    """Return a readable file path for matching. Uses UPLOAD_FOLDER if present,
-    otherwise writes a temp file from DB bytes. Temp paths are registered for cleanup."""
-    if not filename:
-        return None
-    try:
-        path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-        if os.path.exists(path):
-            return path
-    except Exception:
-        path = None
-
-    data, _mime = _db_image_bytes_by_filename(filename)
-    if not data:
-        return None
-    try:
-        suffix = os.path.splitext(filename)[1].lower() if filename else ''
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        tmp.write(data)
-        tmp.flush()
-        tmp.close()
-        _tmp_files_to_cleanup.append(tmp.name)
-        return tmp.name
-    except Exception:
-        return None
-
-
-def _cleanup_tmp_images() -> None:
-    """Supprime les fichiers temporaires créés pour le matching."""
-    while _tmp_files_to_cleanup:
-        path = _tmp_files_to_cleanup.pop()
-        try:
-            if os.path.exists(path):
-                os.unlink(path)
-        except Exception:
-            pass
-
-
 def _item_pair_bonus(lost, found) -> float:
     """Bonus/malus catégorie + date + champs structurés pour une paire Lost↔Found."""
     _cfg = matching.MATCH_CONFIG
@@ -257,16 +220,6 @@ def _item_pair_bonus(lost, found) -> float:
     return bonus
 
 
-def _image_pair_similarity_pct(image_path_a: str | None, image_path_b: str | None) -> float | None:
-    """Calcule DINOv2 image↔image; ``None`` représente explicitement un calcul absent."""
-    if not image_path_a or not image_path_b:
-        return None
-    vector_a = visual_matcher.embed_image(image_path_a)
-    vector_b = visual_matcher.embed_image(image_path_b)
-    similarity = visual_matcher.image_similarity(vector_a, vector_b)
-    return round(100.0 * similarity, 2) if similarity is not None else None
-
-
 def _compute_weighted_score(base_score: float, img_img_pct: float | None, bonus: float) -> float:
     """Pondère le texte et DINOv2 seulement si les deux images ont été comparées."""
     _cfg = matching.MATCH_CONFIG
@@ -277,9 +230,16 @@ def _compute_weighted_score(base_score: float, img_img_pct: float | None, bonus:
     return max(0.0, min(100.0, round(combined + bonus, 2)))
 
 
-def _embedding_similarity_pct(item1: Item, item2: Item) -> float:
-    """Compare only ready, persisted DINOv2 embeddings (never infer in request path)."""
-    return round(100.0 * max(0.0, item_embedding_similarity(item1, item2)), 2)
+def _embedding_similarity_pct(item1: Item, item2: Item) -> float | None:
+    """Compare only ready, persisted DINOv2 embeddings (never infer in request path).
+
+    Returns ``None`` when either item has no ready embedding yet, so callers can
+    fall back to the text-only score instead of treating it as 0% similarity.
+    """
+    similarity = item_embedding_similarity(item1, item2)
+    if similarity is None:
+        return None
+    return round(100.0 * max(0.0, similarity), 2)
 
 
 def find_similar_items(titre, category_id, seuil=70, location=''):
@@ -708,13 +668,6 @@ def detail_item(item_id):
             return SimpleNamespace(title=i.title or '', comments=i.comments or '', location=loc or '')
         current_matchable = to_matchable(item)
 
-        def primary_photo_filename(i: Item):
-            if hasattr(i, 'photos') and i.photos and len(i.photos) > 0:
-                return i.photos[0].filename
-            if i.photo_filename:
-                return i.photo_filename
-            return None
-
         for c in candidats:
             m = to_matchable(c)
             base_score = matching.match_score(current_matchable, m)
@@ -722,17 +675,9 @@ def detail_item(item_id):
             lost_item  = item if item.status == Status.LOST else c
             found_item = c    if item.status == Status.LOST else item
             bonus = _item_pair_bonus(lost_item, found_item)
-            # Chemins d'images (LOST item vs FOUND candidate)
-            img_lost_path = None
-            img_found_path = None
-            if item.status == Status.LOST:
-                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
-                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
-            else:
-                img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(item))
-                img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(c))
-            # DINOv2 ne compare que deux images: jamais de texte↔image.
-            img_img_pct = _image_pair_similarity_pct(img_lost_path, img_found_path)
+            # DINOv2 ne compare que deux images, via des embeddings déjà persistés
+            # à l'upload (jamais d'inférence dans ce chemin de requête).
+            img_img_pct = _embedding_similarity_pct(lost_item, found_item)
             # Le texte garde 100 % de son poids si la comparaison image est indisponible.
             final_score = _compute_weighted_score(base_score, img_img_pct, bonus)
             # Photo principale
@@ -768,8 +713,6 @@ def detail_item(item_id):
                 'category_icon_class': cat_icon_class,
                 'category_icon_url': cat_icon_url
             })
-        # Nettoyer les fichiers temporaires créés pour le matching
-        _cleanup_tmp_images()
         # Trier desc et limiter à top 10
         suggestions.sort(key=lambda x: x['score'], reverse=True)
         has_more = len(suggestions) > 10
@@ -1112,27 +1055,10 @@ def api_match_explain():
         found_i = i2 if i1.status == Status.LOST else i1
         bonus = _item_pair_bonus(lost_i, found_i)
 
-        def primary_photo_filename(i: Item):
-            if hasattr(i, 'photos') and i.photos and len(i.photos) > 0:
-                return i.photos[0].filename
-            if i.photo_filename:
-                return i.photo_filename
-            return None
-
-        # Déterminer l'image LOST et l'image FOUND
-        img_lost_path = None
-        img_found_path = None
-        if i1.status == Status.LOST and i2.status == Status.FOUND:
-            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
-            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
-        elif i1.status == Status.FOUND and i2.status == Status.LOST:
-            img_found_path = _ensure_image_on_disk_for_matching(primary_photo_filename(i1))
-            img_lost_path  = _ensure_image_on_disk_for_matching(primary_photo_filename(i2))
-
-        # DINOv2 est employé exclusivement pour image↔image.
-        img_img_pct = _image_pair_similarity_pct(img_lost_path, img_found_path)
+        # DINOv2 est employé exclusivement pour image↔image, via des embeddings
+        # déjà persistés à l'upload (jamais d'inférence dans ce chemin de requête).
+        img_img_pct = _embedding_similarity_pct(lost_i, found_i)
         model_state = visual_matcher.model_status()
-        _cleanup_tmp_images()
 
         # Une indisponibilité est renvoyée comme null, pas comme 0 %.
         final_score = _compute_weighted_score(score_text, img_img_pct, bonus)
@@ -1149,7 +1075,7 @@ def api_match_explain():
                 'text': _cfg['text_weight'],
                 'img_img': _cfg['img_img_weight'],
             },
-            'image_similarity_state': 'computed' if img_img_pct is not None else (model_state['state'] if model_state['state'] == 'unavailable' else 'not_computed_missing_image'),
+            'image_similarity_state': 'computed' if img_img_pct is not None else (model_state['state'] if model_state['state'] == 'unavailable' else 'not_computed_missing_embedding'),
             'visual_model': model_state,
             'details': details
         })
@@ -1254,16 +1180,12 @@ def return_headphone_loan(loan_id):
 # ───────────────────────────────────────────────────────────────────────────────
 # Routes de correspondance globale Lost↔Found (nouvelles)
 # ───────────────────────────────────────────────────────────────────────────────
-def _primary_photo_filename(item: Item) -> str | None:
-    if getattr(item, 'photos', None):
-        return item.photos[0].filename
-    return item.photo_filename or None
-
-
 def get_all_candidate_pairs(seuil=60, skip_set=None):
     """Calcule toutes les paires Lost↔Found dont le score >= seuil.
     skip_set: ensemble de tuples (lost_id, found_id) à ignorer (déjà validés/rejetés si non affichés).
     Utilise _compute_weighted_score pour que les scores soient identiques à ceux de detail_item.
+    Compare les images via les embeddings DINOv2 déjà persistés : jamais d'inférence
+    (donc jamais de N×M appels modèle) dans cette boucle O(lost × found).
     """
     pairs = []
     lost_items  = Item.query.filter_by(status=Status.LOST).all()
@@ -1276,14 +1198,11 @@ def get_all_candidate_pairs(seuil=60, skip_set=None):
                 continue
             base_score = matching.match_score(lost, found, fields_weights)
             bonus = _item_pair_bonus(lost, found)
-            lost_path = _ensure_image_on_disk_for_matching(_primary_photo_filename(lost))
-            found_path = _ensure_image_on_disk_for_matching(_primary_photo_filename(found))
-            img_img_pct = _image_pair_similarity_pct(lost_path, found_path)
+            img_img_pct = _embedding_similarity_pct(lost, found)
             score = _compute_weighted_score(base_score, img_img_pct, bonus)
             if score >= seuil:
                 explanation = matching.match_explanation(lost, found, fields_weights)
                 pairs.append((lost, found, round(score, 2), explanation))
-    _cleanup_tmp_images()
     return pairs
 
 @bp.route('/matches')

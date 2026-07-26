@@ -7,6 +7,7 @@ standard Hugging Face (dans l'image de build si préchargé) est utilisé.
 import logging
 import os
 import threading
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -79,24 +80,33 @@ def model_status(load: bool = False) -> dict[str, Any]:
     }
 
 
-def embed_image(image_path: str) -> np.ndarray | None:
-    """Retourne le vecteur CLS DINOv2 d'une image, ou ``None`` si indisponible."""
+def embed_image_bytes(data: bytes) -> np.ndarray | None:
+    """Retourne le vecteur CLS DINOv2 à partir d'octets image bruts, ou ``None`` si indisponible."""
     loaded = load_model()
     if loaded is None:
         return None
-    if not image_path or not os.path.isfile(image_path):
-        _LOGGER.warning("Embedding image ignoré: fichier introuvable (%s)", image_path)
+    if not data:
         return None
     model, processor = loaded
     try:
-        with Image.open(image_path) as image:
+        with Image.open(BytesIO(data)) as image:
             inputs = processor(images=image.convert("RGB"), return_tensors="pt")
         with torch.inference_mode():
             outputs = model(**inputs)
         return outputs.last_hidden_state[:, 0, :].squeeze(0).cpu().numpy()
     except Exception:
-        _LOGGER.exception("Échec de l'embedding DINOv2 pour %s", image_path)
+        _LOGGER.exception("Échec de l'embedding DINOv2 depuis des octets image")
         return None
+
+
+def embed_image(image_path: str) -> np.ndarray | None:
+    """Retourne le vecteur CLS DINOv2 d'une image sur disque, ou ``None`` si indisponible."""
+    if not image_path or not os.path.isfile(image_path):
+        _LOGGER.warning("Embedding image ignoré: fichier introuvable (%s)", image_path)
+        return None
+    with open(image_path, 'rb') as f:
+        data = f.read()
+    return embed_image_bytes(data)
 
 
 def image_similarity(vector_a: np.ndarray | None, vector_b: np.ndarray | None) -> float | None:
