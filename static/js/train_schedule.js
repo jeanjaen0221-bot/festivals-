@@ -215,6 +215,14 @@ function renderFlapBoard(container, stationName, departures, bannerText, opts={}
   }
 }
 
+function handleLiveboardRateLimit(resultsDiv, retryAfterSec, retryFn) {
+  const ra = Number(retryAfterSec || 30);
+  resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra}s…</div>`;
+  if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
+  if (rateRetryId) clearTimeout(rateRetryId);
+  rateRetryId = setTimeout(retryFn, ra * 1000);
+}
+
 async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) {
   const showSpinner = options.showSpinner !== undefined ? options.showSpinner : true;
   if (showSpinner) {
@@ -224,11 +232,7 @@ async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) 
     const resp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}`);
     if (resp.status === 429) {
       const d = await resp.json().catch(()=>({}));
-      const ra = Number(d.retry_after || 30);
-      resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra}s…</div>`;
-      if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
-      if (rateRetryId) clearTimeout(rateRetryId);
-      rateRetryId = setTimeout(() => { loadLiveboard(stationParam, resultsDiv, displayName); }, ra * 1000);
+      handleLiveboardRateLimit(resultsDiv, d.retry_after, () => loadLiveboard(stationParam, resultsDiv, displayName));
       return;
     }
     const data = await resp.json();
@@ -240,11 +244,7 @@ async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) 
       const resp2 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}&fast=false`);
       if (resp2.status === 429) {
         const d2 = await resp2.json().catch(()=>({}));
-        const ra2 = Number(d2.retry_after || 30);
-        resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra2}s…</div>`;
-        if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
-        if (rateRetryId) clearTimeout(rateRetryId);
-        rateRetryId = setTimeout(() => { loadLiveboard(stationParam, resultsDiv, displayName); }, ra2 * 1000);
+        handleLiveboardRateLimit(resultsDiv, d2.retry_after, () => loadLiveboard(stationParam, resultsDiv, displayName));
         return;
       }
       const data2 = await resp2.json();
@@ -267,11 +267,7 @@ async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) 
             const r3 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(best.id)}&fast=false`);
             if (r3.status === 429) {
               const d3j = await r3.json().catch(()=>({}));
-              const ra3 = Number(d3j.retry_after || 30);
-              resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra3}s…</div>`;
-              if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
-              if (rateRetryId) clearTimeout(rateRetryId);
-              rateRetryId = setTimeout(() => { loadLiveboard(best.id, resultsDiv, best.name || typed); }, ra3 * 1000);
+              handleLiveboardRateLimit(resultsDiv, d3j.retry_after, () => loadLiveboard(best.id, resultsDiv, best.name || typed));
               return;
             }
             const d3 = await r3.json();
@@ -290,11 +286,7 @@ async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) 
           const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}&fast=false&time=${t}&date=${date}`);
           if (rp.status === 429) {
             const dj2 = await rp.json().catch(()=>({}));
-            const ra4 = Number(dj2.retry_after || 30);
-            resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra4}s…</div>`;
-            if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
-            if (rateRetryId) clearTimeout(rateRetryId);
-            rateRetryId = setTimeout(() => { loadLiveboard(stationParam, resultsDiv, displayName); }, ra4 * 1000);
+            handleLiveboardRateLimit(resultsDiv, dj2.retry_after, () => loadLiveboard(stationParam, resultsDiv, displayName));
             return;
           }
           const dj = await rp.json();
@@ -334,11 +326,7 @@ async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) 
           const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}&fast=false&time=${t}&date=${date}`);
           if (rp.status === 429) {
             const dj2 = await rp.json().catch(()=>({}));
-            const ra4 = Number(dj2.retry_after || 30);
-            resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra4}s…</div>`;
-            if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
-            if (rateRetryId) clearTimeout(rateRetryId);
-            rateRetryId = setTimeout(() => { loadLiveboard(stationParam, resultsDiv, displayName); }, ra4 * 1000);
+            handleLiveboardRateLimit(resultsDiv, dj2.retry_after, () => loadLiveboard(stationParam, resultsDiv, displayName));
             return;
           }
           const dj = await rp.json();
@@ -361,11 +349,7 @@ async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) 
   } catch (err) {
     // Handle backend explicit rate_limited JSON errors (e.g., 200 with error string)
     if (String(err.message).includes('rate_limited')) {
-      const ra = 30;
-      resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra}s…</div>`;
-      if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
-      if (rateRetryId) clearTimeout(rateRetryId);
-      rateRetryId = setTimeout(() => { loadLiveboard(stationParam, resultsDiv, displayName); }, ra * 1000);
+      handleLiveboardRateLimit(resultsDiv, 30, () => loadLiveboard(stationParam, resultsDiv, displayName));
     } else {
       resultsDiv.innerHTML = `<div class='alert alert-danger'>Erreur : ${err.message || 'Impossible de récupérer les horaires.'}</div>`;
     }

@@ -303,6 +303,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function () {
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   // Associer directement
   document.querySelectorAll('.btn-associate').forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -340,7 +345,7 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
           const w = data.weights || {};
           const sii = data.image_image_similarity;
-          const imageState = data.image_similarity_state || 'not_computed_missing_image';
+          const imageState = data.image_similarity_state || 'not_computed_missing_embedding';
           const chips = `
             <div class="explain-card mb-3">
               <div class="d-flex flex-wrap gap-2">
@@ -361,8 +366,8 @@ document.addEventListener('DOMContentLoaded', function () {
               if (Array.isArray(p)) { return `<span class='chip warning'>${p[1]} → ${p[0]}</span>`; }
               return `<span class='chip warning'>${p}</span>`;
             }).join(' ');
-            const v1 = d.value1 ? `<div class='text-muted small mt-1'><i class="bi bi-search text-danger"></i> Perdu: <span class='hl-word'>${d.value1}</span></div>` : '';
-            const v2 = d.value2 ? `<div class='text-muted small'>  <i class="bi bi-check2-circle text-primary"></i> Trouvé: <span class='hl-word'>${d.value2}</span></div>` : '';
+            const v1 = d.value1 ? `<div class='text-muted small mt-1'><i class="bi bi-search text-danger"></i> Perdu: <span class='hl-word'>${escHtml(d.value1)}</span></div>` : '';
+            const v2 = d.value2 ? `<div class='text-muted small'>  <i class="bi bi-check2-circle text-primary"></i> Trouvé: <span class='hl-word'>${escHtml(d.value2)}</span></div>` : '';
             const scoreBadge = isNa
               ? `<span class="badge bg-secondary">—</span>`
               : `<span class="badge text-bg-info text-dark">${sc.toFixed(1)}%</span>`;

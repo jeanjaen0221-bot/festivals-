@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import '_macros.html' as macros %}
 {% block content %}
   <div class="text-center mt-5 mb-5">
   <span class="d-inline-block mb-3" style="font-size: 3.5rem; color: #0d6efd;">
@@ -27,13 +28,7 @@
                 {% set lieu = item.storage_location or item.found_location %}
                 {% if lieu %}
                   {% set lieu_lower = lieu|lower %}
-                  {% set badge_class = (
-                    'bg-danger text-white' if 'camping famille' in lieu_lower else
-                    'bg-primary text-white' if 'point info festival' in lieu_lower else
-                    'bg-success text-white' if 'festivalier' in lieu_lower else
-                    'bg-secondary text-white' if 'autre' in lieu_lower else
-                    'bg-warning text-dark'
-                  ) %}
+                  {% set badge_class = macros.storage_badge_class(lieu_lower) %}
                   <span class="position-absolute top-0 end-0 m-2 badge {{ badge_class }} storage-badge d-flex align-items-center gap-1" style="z-index:2; font-size:0.95em;">
                     <i class="bi bi-flag-fill"></i> {{ lieu }}
                   </span>

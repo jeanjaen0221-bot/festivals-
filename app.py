@@ -2,6 +2,7 @@ import os
 import sys
 import secrets
 from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
 from flask import Flask, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -12,24 +13,33 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import sqlalchemy
 
+# Charge un .env local si présent ; sans effet sur Railway où les variables
+# sont déjà injectées dans l'environnement du conteneur.
+load_dotenv()
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 raw_url = (os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_PUBLIC_URL') or '').strip()
 if raw_url.startswith('postgres://'):
     raw_url = 'postgresql://' + raw_url[len('postgres://'):]
-if raw_url.startswith('postgresql://') and '+psycopg' not in raw_url and '+psycopg2' not in raw_url:
+# sslmode n'a de sens que pour Postgres ; un DATABASE_URL sqlite:// (tests locaux)
+# ne doit jamais se voir imposer cette option.
+is_postgres = raw_url.startswith('postgresql://')
+if is_postgres and '+psycopg' not in raw_url and '+psycopg2' not in raw_url:
     raw_url = 'postgresql+psycopg://' + raw_url[len('postgresql://'):]
-if 'sslmode=' not in raw_url:
+if is_postgres and 'sslmode=' not in raw_url:
     raw_url = f"{raw_url}{'&' if '?' in raw_url else '?'}sslmode=require"
 app.config['SQLALCHEMY_DATABASE_URI'] = raw_url
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+engine_options = {
     'pool_pre_ping': True,
     'pool_recycle': int(os.environ.get('DB_POOL_RECYCLE', '300')),
     'pool_size': int(os.environ.get('DB_POOL_SIZE', '5')),
     'max_overflow': int(os.environ.get('DB_MAX_OVERFLOW', '5')),
     'pool_timeout': int(os.environ.get('DB_POOL_TIMEOUT', '30')),
-    'connect_args': {'sslmode': 'require'},
 }
+if is_postgres:
+    engine_options['connect_args'] = {'sslmode': 'require'}
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Sécurité : forcer la présence de secrets en production
@@ -43,9 +53,11 @@ app.config['SESSION_COOKIE_SECURE'] = not app.debug
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# Durée de vie des sessions et des tokens CSRF
+# Durée de vie des sessions et des tokens CSRF (alignées : un formulaire resté
+# ouvert plusieurs heures sur un stand festival ne doit pas échouer au submit
+# avec une session encore valide mais un jeton CSRF déjà expiré).
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
-app.config['WTF_CSRF_TIME_LIMIT'] = 3600
+app.config['WTF_CSRF_TIME_LIMIT'] = 8 * 3600
 
 # Génération du nonce CSP par requête
 @app.before_request
@@ -100,6 +112,12 @@ limiter = Limiter(
 @app.context_processor
 def inject_current_year():
     return {'current_year': datetime.now(timezone.utc).year}
+
+@app.context_processor
+def inject_whatsapp_support_url():
+    return {'whatsapp_support_url': os.environ.get(
+        'WHATSAPP_SUPPORT_URL', 'https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS'
+    )}
 
 @app.context_processor
 def inject_unread_count():

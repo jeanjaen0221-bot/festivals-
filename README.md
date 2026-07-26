@@ -57,6 +57,23 @@ Application Flask pour gérer les objets perdus, trouvés et rendus lors d'un fe
    ```
 8. Tester l'application en production.
 
+### Rate limiting multi-workers
+
+Le Procfile lance plusieurs workers gunicorn ; par défaut, `flask-limiter`
+stocke ses compteurs en mémoire (`memory://`), ce qui n'est pas partagé entre
+workers : la limite effective globale devient alors un multiple de la valeur
+configurée. Pour un rate-limiting réellement cohérent en production, ajoutez
+le plugin Redis sur Railway et définissez la variable `REDIS_URL` ; le code
+la détecte déjà automatiquement (`app.py`, `Limiter(storage_uri=...)`).
+
+### Mémoire des workers gunicorn
+
+Le Procfile utilise `-w 2` par défaut : le modèle DINOv2 (`visual_matcher.py`)
+se charge en mémoire séparément dans chaque worker (~300-500 Mo chacun avec
+torch), donc réduire le nombre de workers limite l'empreinte mémoire totale.
+Si le plan Railway dispose de suffisamment de RAM, `-w 4` (ou plus) peut être
+remis pour absorber davantage de trafic simultané.
+
 ## Fonctionnalités
 
 - **Authentification sécurisée** :

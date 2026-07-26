@@ -2,6 +2,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const itemForm = document.getElementById('itemForm');
   if (!itemForm) return;
 
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   var submitted = false;
 
   function getCheckedValues(nameAttr) {
@@ -39,9 +44,9 @@ document.addEventListener('DOMContentLoaded', function() {
       + '<div class="fw-bold mb-1"><i class="bi bi-search-heart me-1"></i>' + candidates.length + ' objet(s) ' + lbp + ' potentiellement correspondant(s)</div>'
       + '<ul class="list-unstyled mb-1">';
     candidates.forEach(function(c) {
-      html += '<li class="py-1 border-bottom"><strong>' + c.title + '</strong>'
-        + ' <span class="badge bg-secondary">' + c.category + '</span>'
-        + ' <span class="text-muted small">' + c.date + '</span>'
+      html += '<li class="py-1 border-bottom"><strong>' + escHtml(c.title) + '</strong>'
+        + ' <span class="badge bg-secondary">' + escHtml(c.category) + '</span>'
+        + ' <span class="text-muted small">' + escHtml(c.date) + '</span>'
         + ' <span class="badge bg-warning text-dark ms-1">' + c.score + '%</span></li>';
     });
     html += '</ul><div class="small text-muted"><i class="bi bi-info-circle"></i> V\u00e9rifiez si c\'est le m\u00eame objet avant d\'enregistrer.</div></div>';
@@ -122,10 +127,10 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
               thumbHtml = `<div class="bg-light d-inline-flex align-items-center justify-content-center text-muted me-3" style="width:56px;height:56px;border-radius:0.375rem;"><i class="bi bi-box-seam"></i></div>`;
             }
-            const cat = item.category_name ? `<span class="badge bg-secondary ms-2">${item.category_name}</span>` : '';
+            const cat = item.category_name ? `<span class="badge bg-secondary ms-2">${escHtml(item.category_name)}</span>` : '';
             const li = document.createElement('li');
             li.className = 'd-flex align-items-center mb-3';
-            li.innerHTML = `${thumbHtml}<div class="flex-grow-1"><a href="${item.url_detail}" target="_blank" class="fw-bold text-decoration-none">${item.title}</a>${cat}<br><span class="text-muted small">Score : ${item.score}%</span></div>`;
+            li.innerHTML = `${thumbHtml}<div class="flex-grow-1"><a href="${item.url_detail}" target="_blank" class="fw-bold text-decoration-none">${escHtml(item.title)}</a>${cat}<br><span class="text-muted small">Score : ${item.score}%</span></div>`;
             doublonList.appendChild(li);
           });
         }
@@ -140,8 +145,8 @@ document.addEventListener('DOMContentLoaded', function() {
             var li2 = document.createElement('li');
             li2.className = 'd-flex align-items-center mb-2';
             li2.innerHTML = '<div class="bg-success-subtle d-inline-flex align-items-center justify-content-center me-3 rounded" style="width:56px;height:56px;"><i class="bi bi-check-circle text-success" style="font-size:1.5rem;"></i></div>'
-              + '<div class="flex-grow-1"><strong>' + c.title + '</strong> <span class="badge bg-secondary">' + c.category + '</span>'
-              + '<br><span class="text-muted small">' + c.date + ' \u2014 Score\u00a0: ' + c.score + '%</span></div>';
+              + '<div class="flex-grow-1"><strong>' + escHtml(c.title) + '</strong> <span class="badge bg-secondary">' + escHtml(c.category) + '</span>'
+              + '<br><span class="text-muted small">' + escHtml(c.date) + ' \u2014 Score\u00a0: ' + c.score + '%</span></div>';
             doublonList.appendChild(li2);
           });
         }

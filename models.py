@@ -147,6 +147,28 @@ class ShuttleSettings(db.Model):
     def __repr__(self):
         return f'<ShuttleSettings mean_leg_minutes={self.mean_leg_minutes}>'
 
+
+class AppSettings(db.Model):
+    """Réglages globaux applicatifs (une seule ligne, comme ShuttleSettings)."""
+    __tablename__ = 'app_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    registration_open = db.Column(db.Boolean, nullable=False, default=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    def __repr__(self):
+        return f'<AppSettings registration_open={self.registration_open}>'
+
+
+def get_app_settings() -> 'AppSettings':
+    """Récupère la ligne unique de réglages, en la créant si besoin (comme ShuttleSettings)."""
+    settings = AppSettings.query.first()
+    if not settings:
+        settings = AppSettings(registration_open=False)
+        db.session.add(settings)
+        db.session.commit()
+    return settings
+
+
 class Status(enum.Enum):
     LOST = 'lost'
     FOUND = 'found'

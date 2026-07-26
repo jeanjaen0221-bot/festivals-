@@ -34,8 +34,8 @@ ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 # Ancien système d'icônes supprimé - plus besoin d'importer fetch_category_icons
 from flask_login import login_required, current_user
 from app import db
-from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, ConversationParticipant, Message, ConvType, ParticipantRole, Category
-from forms import SimpleCsrfForm, HeadphoneLoanForm, ProductForm, CategoryIconForm, RegisterForm
+from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, Message, ConvType, Category, get_app_settings
+from forms import SimpleCsrfForm, ProductForm, CategoryIconForm, RegisterForm
 from datetime import datetime, timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -362,7 +362,29 @@ def reject_deletion(item_id):
 @admin_required
 def admin_users():
     users = User.query.all()
-    return render_template('admin/users.html', users=users)
+    csrf_form = SimpleCsrfForm()
+    settings = get_app_settings()
+    return render_template('admin/users.html', users=users, csrf_form=csrf_form, settings=settings)
+
+@bp_admin.route('/users/toggle-registration', methods=['POST'])
+@login_required
+@admin_required
+def toggle_registration():
+    form = SimpleCsrfForm()
+    if not form.validate_on_submit():
+        flash('Erreur CSRF.', 'danger')
+        return redirect(url_for('admin.admin_users'))
+    settings = get_app_settings()
+    settings.registration_open = not settings.registration_open
+    db.session.commit()
+    db.session.add(ActionLog(
+        user_id=current_user.id,
+        action_type='toggle_registration',
+        details=f"Inscriptions publiques {'ouvertes' if settings.registration_open else 'fermées'}"
+    ))
+    db.session.commit()
+    flash(f"Inscriptions publiques {'ouvertes' if settings.registration_open else 'fermées'}.", 'success')
+    return redirect(url_for('admin.admin_users'))
 
 @bp_admin.route('/users/<int:user_id>')
 @login_required
@@ -422,14 +444,6 @@ def delete_user(user_id):
     else:
         flash("Erreur de validation du formulaire.", "danger")
         return redirect(url_for('admin.user_detail', user_id=user_id))
-
-@bp_admin.route('/loans')
-@login_required
-@admin_required  
-def admin_loans():
-    loans = HeadphoneLoan.query.order_by(HeadphoneLoan.loan_date.desc()).all()
-    csrf_form = SimpleCsrfForm()
-    return render_template('admin/loans.html', loans=loans, csrf_form=csrf_form)
 
 @bp_admin.route('/helmet-rentals')
 @login_required

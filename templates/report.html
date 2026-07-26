@@ -132,6 +132,11 @@ document.addEventListener('DOMContentLoaded', function() {
   var lostBtn = document.getElementById('submit-lost-btn');
   var foundBtn = document.getElementById('submit-found-btn');
   var visualCheckDone = false;
+
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
   if(lostForm) {
     lostForm.addEventListener('submit', function(e) {
       var photoInput = lostForm.querySelector('input[type="file"][name$="photos"]');
@@ -148,7 +153,7 @@ document.addEventListener('DOMContentLoaded', function() {
           var list = document.getElementById('doublonList');
           list.innerHTML = duplicates.map(function(row) {
             return '<li class="border-bottom py-2"><a href="' + row.url_detail + '" target="_blank" class="fw-semibold">'
-              + row.title + ' (#' + row.item_id + ')</a> — photo très proche (distance ' + row.distance + ')'
+              + escHtml(row.title) + ' (#' + row.item_id + ')</a> — photo très proche (distance ' + row.distance + ')'
               + (row.photo_url ? '<br><img src="' + row.photo_url + '" alt="Photo similaire" class="mt-2 rounded" style="max-height:90px;max-width:120px">' : '') + '</li>';
           }).join('');
           document.getElementById('noDoublon').classList.add('d-none');
@@ -171,68 +176,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if(sp2) sp2.classList.remove('d-none');
       }
     });
-  }
-});
-</script>
-<script nonce="{{ csp_nonce }}">
-document.addEventListener('DOMContentLoaded', function() {
-  // LOST
-  var prefix = "";
-  const toggle = document.getElementById(prefix + 'new-category-toggle');
-  const existingGroup = document.getElementById(prefix + 'existing-category-group');
-  const newGroup = document.getElementById(prefix + 'new-category-group');
-  const categorySelect = document.querySelector('select[name="' + prefix + 'category"]');
-  const newCategoryInput = document.querySelector('input[name="' + prefix + 'new_category"]');
-  if (toggle && existingGroup && newGroup && categorySelect && newCategoryInput) {
-    toggle.addEventListener('change', function() {
-      if (this.checked) {
-        existingGroup.style.display = 'none';
-        newGroup.style.display = 'block';
-        categorySelect.required = false;
-        newCategoryInput.required = true;
-      } else {
-        existingGroup.style.display = 'block';
-        newGroup.style.display = 'none';
-        categorySelect.required = true;
-        newCategoryInput.required = false;
-      }
-    });
-    if (newCategoryInput.value) {
-      toggle.checked = true;
-      existingGroup.style.display = 'none';
-      newGroup.style.display = 'block';
-      categorySelect.required = false;
-      newCategoryInput.required = true;
-    }
-  }
-  // FOUND
-  var prefix2 = "found-";
-  const toggle2 = document.getElementById(prefix2 + 'new-category-toggle');
-  const existingGroup2 = document.getElementById(prefix2 + 'existing-category-group');
-  const newGroup2 = document.getElementById(prefix2 + 'new-category-group');
-  const categorySelect2 = document.querySelector('select[name="' + prefix2 + 'category"]');
-  const newCategoryInput2 = document.querySelector('input[name="' + prefix2 + 'new_category"]');
-  if (toggle2 && existingGroup2 && newGroup2 && categorySelect2 && newCategoryInput2) {
-    toggle2.addEventListener('change', function() {
-      if (this.checked) {
-        existingGroup2.style.display = 'none';
-        newGroup2.style.display = 'block';
-        categorySelect2.required = false;
-        newCategoryInput2.required = true;
-      } else {
-        existingGroup2.style.display = 'block';
-        newGroup2.style.display = 'none';
-        categorySelect2.required = true;
-        newCategoryInput2.required = false;
-      }
-    });
-    if (newCategoryInput2.value) {
-      toggle2.checked = true;
-      existingGroup2.style.display = 'none';
-      newGroup2.style.display = 'block';
-      categorySelect2.required = false;
-      newCategoryInput2.required = true;
-    }
   }
 });
 </script>

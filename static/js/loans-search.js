@@ -29,6 +29,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     const container = document.querySelector('#loans-results');
                     if (container) container.replaceWith(newResults);
                 }
+            })
+            .catch(() => {
+                // Erreur réseau : on laisse les résultats affichés tels quels
+                // plutôt que de planter silencieusement (promesse rejetée non gérée).
             });
     }
 });

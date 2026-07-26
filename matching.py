@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 import nltk
 from rapidfuzz import fuzz
 from unidecode import unidecode
@@ -130,7 +131,10 @@ def _replace_synonyms(text: str) -> str:
     return text
 
 
+@lru_cache(maxsize=4096)
 def normalize_text(text: str) -> str:
+    """Fonction pure : mémoïsée car appelée plusieurs fois pour le même texte
+    (match_score() et match_explanation() normalisent chacun les mêmes champs)."""
     if not text:
         return ''
     text = text.lower()

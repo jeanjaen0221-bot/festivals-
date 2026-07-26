@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import matching
 import visual_matcher
 from photo_embeddings import ensure_photo_embedding, item_embedding_similarity
+from registration_policy import compute_registration_open
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -23,7 +24,7 @@ import imagehash
 from PIL import Image, UnidentifiedImageError
 
 from app import app, db, limiter
-from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure
+from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure, AppSettings
 from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm, SimpleCsrfForm
 from ocr_utils import extract_id_card_data
 from admin import admin_required
@@ -310,8 +311,9 @@ def auth():
 
     # Vérifie s'il existe déjà un admin
     admin_exists = User.query.filter_by(is_admin=True).first() is not None
-    show_admin_checkbox = not admin_exists
-    registration_open = not admin_exists  # L'inscription publique est fermée dès qu'un admin existe
+    show_admin_checkbox = not admin_exists  # seul le tout premier compte peut devenir admin
+    app_settings = AppSettings.query.first()
+    registration_open = compute_registration_open(admin_exists, bool(app_settings and app_settings.registration_open))
 
     # Gestion connexion
     if request.method == 'POST':
@@ -819,6 +821,13 @@ def edit_item(item_id):
                 photo = ItemPhoto.query.filter_by(id=pid, item_id=item.id).first()
                 if photo:
                     db.session.delete(photo)
+            db.session.commit()
+        # Ajout de nouvelles photos (le champ existe dans le formulaire mais
+        # n'était pas traité ici : les uploads étaient silencieusement perdus)
+        if form.photos.data:
+            for photo_file in form.photos.data:
+                if isinstance(photo_file, FileStorage) and photo_file.filename:
+                    _persist_item_photo(item, photo_file)
             db.session.commit()
         log_action(current_user.id, 'edit_item', f'Modification objet ID:{item.id}')
         flash("Objet mis à jour !", "success")

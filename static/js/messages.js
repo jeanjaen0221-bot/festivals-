@@ -58,7 +58,7 @@ function appendMessage(m, currentUserId) {
     ? 'background:linear-gradient(135deg,#0d6efd,#0dcaf0);'
     : 'background:linear-gradient(135deg,#6c757d,#adb5bd);';
 
-  var bodyHtml = m.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  var bodyHtml = escHtml(m.body).replace(/\n/g, '<br>');
 
   var html = '<div class="d-flex ' + (isMe ? 'justify-content-end msg-me' : 'justify-content-start msg-other') +
     ' align-items-end gap-2" id="msg-' + m.id + '">';
