@@ -38,6 +38,11 @@ class Category(db.Model):
     __tablename__ = 'categories'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
+    # Famille de regroupement (cf. categories_families.py). Utilisée pour
+    # grouper le menu déroulant ET pour pénaliser les correspondances entre
+    # objets de familles différentes. NULL = famille inconnue, traitée comme
+    # neutre par le matching (jamais pénalisée).
+    family = db.Column(db.String(50), nullable=True, index=True)
     
     # Système hybride d'icônes
     icon_class = db.Column(db.String(50), nullable=True)  # Classe Bootstrap Icon (ex: 'bi bi-wallet')

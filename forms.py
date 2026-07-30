@@ -3,6 +3,8 @@ from wtforms import StringField, TextAreaField, SelectField, SelectMultipleField
 from wtforms.widgets import ListWidget, CheckboxInput
 from wtforms.validators import DataRequired, Length, Email, Optional, EqualTo, NumberRange
 from flask_wtf.file import FileField, FileAllowed, FileRequired
+from zones import LIEUX_CHOIX as ZONES_CHOIX
+from categories_families import CATEGORY_TO_FAMILY, FAMILY_NAMES
 
 class HeadphoneLoanForm(FlaskForm):
     first_name = StringField('Prénom', validators=[DataRequired(), Length(max=100)])
@@ -29,13 +31,9 @@ class ItemForm(FlaskForm):
     photos = MultipleFileField('Photos (jpg/png)', validators=[FileAllowed(['jpg', 'jpeg', 'png'], "Images uniquement")])
     title = StringField('Titre', validators=[DataRequired(), Length(max=100)])
     comments = TextAreaField('Description / Commentaires', validators=[Length(max=500)])
-    LIEUX_CHOIX = [
-        ('', 'Sélectionnez un lieu'),
-        ('camping_famille', 'Camping Famille'),
-        ('point_info', 'Point info Festival'),
-        ('festivalier', 'Camping Festivalier'),
-        ('autre', 'Autre (précisez)')
-    ]
+    # Zones du site : source unique dans zones.py, partagée par les déclarations
+    # d'objets perdus ET trouvés (indispensable pour que le lieu soit comparable).
+    LIEUX_CHOIX = ZONES_CHOIX
     # Pour objets perdus
     location = SelectField('Lieu de perte', choices=LIEUX_CHOIX, validators=[Optional()])
     location_other = StringField('Précisez le lieu de perte', validators=[Optional(), Length(max=100)])
@@ -99,54 +97,35 @@ class ItemForm(FlaskForm):
 
     submit = SubmitField('Valider')
     
+    HORS_FAMILLE_LABEL = 'Autres catégories'
+
     def __init__(self, *args, **kwargs):
         super(ItemForm, self).__init__(*args, **kwargs)
-        # Charger les catégories existantes
         from models import Category
-        # Définir les familles de catégories (doivent correspondre à la seed)
-        FAMILLES = [
-            ("Objets personnels", [
-                "Téléphone", "Clés", "Portefeuille", "Carte bancaire", "Carte d'identité", "Permis de conduire", "Badge d'accès", "Papiers d’identité"
-            ]),
-            ("Accessoires", [
-                "Sac à dos", "Sac à main", "Banane", "Pochette", "Trousseau"
-            ]),
-            ("Vêtements", [
-                "Veste", "Pull", "Sweat", "T-shirt", "Pantalon", "Short", "Jupe", "Robe", "Casquette", "Chapeau", "Bonnet", "Écharpe", "Gants", "Chaussures", "Sandales"
-            ]),
-            ("Lunettes & optique", [
-                "Lunettes de soleil", "Lunettes de vue"
-            ]),
-            ("Bijoux", [
-                "Bijoux", "Bague", "Collier", "Bracelet", "Boucles d’oreilles"
-            ]),
-            ("Audio & tech", [
-                "Écouteurs", "Casque audio", "Batterie externe", "Chargeur", "Câble USB"
-            ]),
-            ("Festival & camping", [
-                "Tente", "Sac de couchage", "Matelas gonflable", "Lampe frontale", "Gourde", "Bouteille", "Verre réutilisable", "Badge festival", "Bracelet festival", "Pochette étanche", "Gobelet réutilisable", "Poncho pluie", "Bouchons d’oreille", "Crème solaire", "Plaid", "Tapis de sol", "Cendrier de poche"
-            ]),
-            ("Divers précieux", [
-                "Argent liquide", "Carte cadeau"
-            ]),
-            ("Objets de transport", [
-                "Vélo", "Trottinette", "Skateboard", "Clé de voiture", "Clé de moto"
-            ]),
-            ("Santé", [
-                "Médicaments", "Boîte à médicaments", "Inhalateur", "Appareil auditif"
-            ]),
-            ("Autres", [
-                "Livre", "Carnet", "Stylo", "Parapluie", "Briquet", "Jeu de cartes", "Doudou", "Peluche", "Jouet", "Accessoire animalier", "Accessoire de déguisement", "Maillot de bain"
-            ]),
-        ]
-        # Charger toutes les catégories existantes
+
         categories = Category.query.order_by('name').all()
-        # Regrouper par famille
-        grouped = []
-        for famille, noms in FAMILLES:
-            groupe = [(str(c.id), c.name) for c in categories if c.name in noms]
-            if groupe:
-                grouped.append((famille, groupe))
+
+        # Regroupement par famille, en s'appuyant sur la colonne `family`
+        # (renseignée au démarrage pour les catégories du seed, devinée à la
+        # création pour les autres). L'ancienne version filtrait sur une liste de
+        # noms codée en dur : toute catégorie créée par un bénévole disparaissait
+        # purement et simplement du menu et devenait impossible à resélectionner.
+        par_famille = {}
+        for c in categories:
+            famille = (c.family or '').strip() or CATEGORY_TO_FAMILY.get(c.name)
+            par_famille.setdefault(famille or self.HORS_FAMILLE_LABEL, []).append(
+                (str(c.id), c.name)
+            )
+
+        grouped = [(f, par_famille[f]) for f in FAMILY_NAMES if f in par_famille]
+        # Les familles inattendues (renommage, import) et les catégories sans
+        # famille ferment la liste — visibles quoi qu'il arrive.
+        for famille in sorted(par_famille):
+            if famille not in FAMILY_NAMES and famille != self.HORS_FAMILLE_LABEL:
+                grouped.append((famille, par_famille[famille]))
+        if self.HORS_FAMILLE_LABEL in par_famille:
+            grouped.append((self.HORS_FAMILLE_LABEL, par_famille[self.HORS_FAMILLE_LABEL]))
+
         self.category.choices = [('', 'Sélectionnez une catégorie')] + grouped
 
     def validate(self, extra_validators=None):
@@ -158,17 +137,25 @@ class ItemForm(FlaskForm):
             self.category.errors.append("Veuillez sélectionner une catégorie ou en créer une nouvelle.")
             self.new_category.errors.append("Veuillez sélectionner une catégorie ou en créer une nouvelle.")
             return False
-        # Validation spécifique selon le contexte (perdu/trouvé)
-        if self._prefix == 'lost':
+        # Validation spécifique selon le contexte (perdu/trouvé).
+        # WTForms normalise prefix='lost' en _prefix='lost-' : comparer à 'lost'
+        # était donc toujours faux et tout ce bloc ne s'exécutait jamais.
+        contexte = self._prefix.rstrip('-_;:/.')
+        if contexte == 'lost':
             if not self.location.data:
                 self.location.errors.append('Merci de préciser le lieu de perte.')
                 return False
             if self.location.data == 'autre' and (not self.location_other.data or not self.location_other.data.strip()):
                 self.location_other.errors.append('Merci de préciser le lieu de perte.')
                 return False
-        elif self._prefix == 'found':
-            # Désormais, lieu de découverte saisi en texte libre
-            if not self.found_location_other.data or not self.found_location_other.data.strip():
+        elif contexte == 'found':
+            # Le lieu de découverte suit désormais la même liste de zones que le
+            # lieu de perte : sans vocabulaire commun, les deux ne pouvaient pas
+            # se comparer et le champ ne servait à rien dans le matching.
+            if not self.found_location.data:
+                self.found_location.errors.append('Merci de préciser le lieu de découverte.')
+                return False
+            if self.found_location.data == 'autre' and (not self.found_location_other.data or not self.found_location_other.data.strip()):
                 self.found_location_other.errors.append('Merci de préciser le lieu de découverte.')
                 return False
             # storage_location obligatoire

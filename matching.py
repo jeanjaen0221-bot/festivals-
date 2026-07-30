@@ -18,24 +18,37 @@ _stemmer = FrenchStemmer()
 
 # ── Configuration centralisée ──────────────────────────────────────────────────
 MATCH_CONFIG = {
-    'fields_weights': {'title': 0.55, 'comments': 0.25, 'location': 0.20},
+    # Le lieu ne pèse autant que parce que perdus et trouvés partagent désormais
+    # la même liste de zones (voir zones.py) : sans vocabulaire commun il ne
+    # pouvait quasiment jamais correspondre.
+    'fields_weights': {'title': 0.60, 'comments': 0.20, 'location': 0.20},
     'text_weight':    0.85,   # texte quand une comparaison image↔image est disponible
     'img_img_weight': 0.15,   # DINOv2 image↔image (quand les deux ont une photo)
-    'bonus_same_category':      10,
     'bonus_date_close':         10,  # ≤ 2 jours
     'malus_date_far':           10,  # > 14 jours
-    'threshold_default':        60,
-    'threshold_duplicate':      60,  # détection de doublons (find_similar_items)
-    # Champs structurés (item_color / item_brand / item_distinctive CSV)
+    # ── Catégorie & famille ───────────────────────────────────────────────────
+    # Une catégorie identique est un signal fort ; un écart en est un aussi, et
+    # il n'était pas exploité (l'ancien bonus binaire ne pénalisait jamais rien).
+    'bonus_same_category':      12,
+    'malus_other_category':     10,  # même famille, catégorie différente
+    'malus_other_family':       40,  # familles différentes
+    # ── Champs structurés (item_color / item_brand / item_distinctive CSV) ────
     'bonus_color_match':        15,  # par couleur commune
     'malus_color_conflict':      8,  # couleurs présentes ET aucune commune
     'bonus_brand_match':        20,  # même marque normalisée
     'bonus_distinctive_match':  12,  # par flag commun (a_document_id, a_argent…)
-    'threshold_structured_low': 45,  # seuil si signal structuré fort (≥15 pts)
-    # Paliers de confiance affichés aux agents (le score brut sature vite à 100
-    # à cause du cumul des bonus : un pourcentage donnerait une fausse précision)
-    'confidence_high':          85,
-    'confidence_medium':        65,
+    # ── Seuils ────────────────────────────────────────────────────────────────
+    # Relevés après dé-saturation des scores (cf. bonus_full_scale) : les
+    # anciennes valeurs 60/45/60 laissaient passer un quart de toutes les paires.
+    'threshold_default':        85,
+    'threshold_structured_low': 70,  # seuil si signal structuré fort (≥15 pts)
+    'threshold_duplicate':      75,  # détection de doublons (find_similar_items)
+    # Échelle de conversion des bonus : un bonus de cette valeur consomme toute
+    # la marge restante jusqu'à 100. Empêche les scores de s'empiler au plafond.
+    'bonus_full_scale':         55,
+    # Paliers de confiance affichés aux agents plutôt qu'un pourcentage brut.
+    'confidence_high':          92,
+    'confidence_medium':        80,
 }
 
 # Couleurs qui ne doivent jamais servir de preuve de divergence.
@@ -207,22 +220,24 @@ def _get_field(item, field: str) -> str:
     return getattr(item, field, '') or ''
 
 
-def _text_field_score(v1: str, v2: str) -> float:
+def _text_field_score(v1: str, v2: str) -> float | None:
     """
-    Score multi-stratégie pour deux textes normalisés (0-100).
-    Combine token_sort_ratio, partial_ratio, WRatio et token_set_ratio.
+    Score de similarité entre deux textes normalisés (0-100), ou ``None`` si la
+    comparaison n'a pas de sens (au moins un des deux côtés est vide).
+
+    ``None`` — et non 0 — parce qu'un champ rempli face à un champ vide n'est pas
+    une divergence : c'est une absence d'information. L'ancien 0 coûtait tout le
+    poids du champ (jusqu'à 25 points sur la description), ce qui écrasait les
+    vraies paires dès qu'un déclarant avait laissé un champ de côté.
+
+    On n'utilise plus ``partial_ratio`` ni ``WRatio`` : sur des titres courts ils
+    montent à 100 pour des objets sans rapport (« cles voitur » vs « cle usb »).
+    ``token_sort_ratio`` compare l'ensemble des mots, ``token_set_ratio`` tolère
+    qu'un côté soit plus détaillé que l'autre — d'où sa part minoritaire.
     """
-    if not v1 and not v2:
-        return 0.0
     if not v1 or not v2:
-        return 0.0
-    best = max(
-        fuzz.token_sort_ratio(v1, v2),
-        fuzz.partial_ratio(v1, v2),
-        fuzz.WRatio(v1, v2),
-    )
-    set_score = fuzz.token_set_ratio(v1, v2)
-    return best * 0.50 + set_score * 0.50
+        return None
+    return 0.65 * fuzz.token_sort_ratio(v1, v2) + 0.35 * fuzz.token_set_ratio(v1, v2)
 
 
 def match_score(item1, item2, fields_weights=None):
@@ -237,10 +252,11 @@ def match_score(item1, item2, fields_weights=None):
     for field, weight in fields_weights.items():
         v1 = normalize_text(_get_field(item1, field))
         v2 = normalize_text(_get_field(item2, field))
-        # Si les deux sont vides → score neutre, ne pas pénaliser
-        if not v1 and not v2:
-            continue
         s = _text_field_score(v1, v2)
+        # None = champ non comparable (vide d'au moins un côté) : on le retire de
+        # la pondération au lieu de le compter comme une divergence.
+        if s is None:
+            continue
         score += s * weight
         total += weight
     base = round(score / total, 2) if total > 0 else 0.0
@@ -250,7 +266,7 @@ def match_score(item1, item2, fields_weights=None):
     raw2 = (getattr(item2, 'title', '') or '') + ' ' + (getattr(item2, 'comments', '') or '')
     desc_b = descriptor_bonus(raw1, raw2)
 
-    return round(max(0.0, min(100.0, base + desc_b)), 2)
+    return apply_bonus(base, desc_b)
 
 
 def match_explanation(item1, item2, fields_weights=None):
@@ -265,8 +281,11 @@ def match_explanation(item1, item2, fields_weights=None):
         raw2 = _get_field(item2, field)
         norm1 = normalize_text(raw1)
         norm2 = normalize_text(raw2)
-        # Si les deux champs sont vides, on ne peut pas les comparer (N/A)
-        if not norm1 and not norm2:
+        score = _text_field_score(norm1, norm2)
+        # None = champ vide d'au moins un côté : non comparable (N/A), et exclu
+        # de la pondération par match_score. L'agent doit voir « — », pas « 0 % »,
+        # sinon il croit à une divergence alors qu'il manque juste l'information.
+        if score is None:
             details[field] = {
                 'score': None,
                 'score_na': True,
@@ -279,7 +298,6 @@ def match_explanation(item1, item2, fields_weights=None):
         tokens1 = set(norm1.split())
         tokens2 = set(norm2.split())
         common = sorted(tokens1 & tokens2)
-        score = _text_field_score(norm1, norm2)
         syns = []
         for main, synlist in SYNONYMS.items():
             for syn in synlist:
@@ -369,6 +387,70 @@ def effective_threshold(structured_bonus: float) -> float:
     if structured_bonus >= 15:
         return cfg['threshold_structured_low']
     return cfg['threshold_default']
+
+
+def _category_family(item) -> str | None:
+    """Famille de l'item, en tolérant qu'il n'ait pas de catégorie chargée."""
+    category = getattr(item, 'category', None)
+    if category is None:
+        return None
+    return (getattr(category, 'family', None) or '').strip() or None
+
+
+def family_bonus(item1, item2) -> float:
+    """
+    Bonus/malus tiré de la catégorie et de sa famille.
+
+    L'ancien système n'accordait qu'un +10 si les catégories étaient identiques
+    et ne pénalisait *jamais* un écart : un téléphone perdu et une bouteille
+    trouvée pouvaient donc atteindre 100/100. Trois situations sont désormais
+    distinguées :
+
+    * même catégorie                     → signal fort
+    * même famille, catégorie différente → plausible (sac à dos ↔ sac à main)
+    * familles différentes               → quasi certainement pas le même objet
+
+    Le cas « familles différentes » est un malus, pas une exclusion : un objet
+    mal catégorisé par un bénévole pressé doit rester retrouvable en abaissant
+    le seuil sur /matches. Une famille inconnue (catégorie créée à la volée dont
+    la devinette n'a rien donné) est neutre : mieux vaut ne rien affirmer que
+    pénaliser à tort.
+    """
+    cfg = MATCH_CONFIG
+    cat1 = getattr(item1, 'category_id', None)
+    cat2 = getattr(item2, 'category_id', None)
+    if cat1 and cat2 and cat1 == cat2:
+        return float(cfg['bonus_same_category'])
+
+    fam1 = _category_family(item1)
+    fam2 = _category_family(item2)
+    if fam1 is None or fam2 is None:
+        return 0.0
+    if fam1 == fam2:
+        return -float(cfg['malus_other_category'])
+    return -float(cfg['malus_other_family'])
+
+
+def apply_bonus(base: float, bonus: float) -> float:
+    """
+    Applique un bonus/malus à un score de base sans jamais saturer.
+
+    L'ancien `min(100, base + bonus)` écrasait tout contre le plafond : sur un
+    corpus de 10 000 paires, 509 affichaient exactement 100 — vraies et fausses
+    confondues — ce qui rendait le tri et le seuil inopérants.
+
+    Ici un bonus positif ne peut qu'entamer la marge restante jusqu'à 100 :
+    une paire déjà à 90 gagne au plus 10 points, une paire à 40 en gagne jusqu'à
+    60. La fonction reste strictement croissante en `base` comme en `bonus`,
+    donc le classement est préservé, mais les ex æquo artificiels disparaissent.
+    Les malus, eux, restent soustractifs : une contradiction doit coûter cher.
+    """
+    if bonus > 0:
+        scale = MATCH_CONFIG['bonus_full_scale']
+        score = base + (100.0 - base) * min(1.0, bonus / scale)
+    else:
+        score = base + bonus
+    return round(max(0.0, min(100.0, score)), 2)
 
 
 # ── Affichage de la confiance ─────────────────────────────────────────────────

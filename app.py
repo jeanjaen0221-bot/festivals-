@@ -153,6 +153,72 @@ def index_photo_embeddings_command(force):
             db.session.commit()
     db.session.commit()
     click.echo(f"{count} photo(s) indexed for {current_model_version()}.")
+
+
+@app.cli.command("calibrate-matching")
+@click.option("--min-seuil", default=50, help="Seuil le plus bas balayé.")
+@click.option("--max-seuil", default=98, help="Seuil le plus haut balayé.")
+@click.option("--pas", default=5, help="Pas du balayage.")
+def calibrate_matching_command(min_seuil, max_seuil, pas):
+    """Mesure les seuils de matching sur les données réelles du festival.
+
+    Les valeurs par défaut de MATCH_CONFIG ont été calibrées sur un corpus
+    simulé. Cette commande les confronte au terrain en prenant les paires
+    validées (table `matches`) comme vrais positifs et les paires rejetées
+    (`rejected_pairs`) comme faux positifs, puis affiche pour chaque seuil
+    combien de paires seraient proposées, le rappel et la précision.
+
+    À lancer après la première demi-journée d'exploitation, une fois que les
+    agents ont validé et rejeté quelques dizaines de paires.
+    """
+    import matching
+    from models import Item, Status, Match, RejectedPair
+    from views import _item_pair_bonus, _compute_weighted_score, _embedding_similarity_pct
+
+    valides = {(m.lost_id, m.found_id) for m in Match.query.all()}
+    rejetes = {(r.lost_id, r.found_id) for r in RejectedPair.query.all()}
+    if not valides:
+        click.echo("Aucune paire validée : impossible de mesurer le rappel. "
+                   "Relancez après que les agents aient validé des correspondances.")
+        return
+
+    perdus = Item.query.filter_by(status=Status.LOST).all()
+    trouves = Item.query.filter_by(status=Status.FOUND).all()
+    click.echo(f"{len(perdus)} perdus × {len(trouves)} trouvés = "
+               f"{len(perdus) * len(trouves)} paires — "
+               f"{len(valides)} validée(s), {len(rejetes)} rejetée(s)")
+
+    fields_weights = matching.MATCH_CONFIG['fields_weights']
+    scores = {}
+    for lost in perdus:
+        for found in trouves:
+            base = matching.match_score(lost, found, fields_weights)
+            bonus = _item_pair_bonus(lost, found)
+            img = _embedding_similarity_pct(lost, found)
+            scores[(lost.id, found.id)] = _compute_weighted_score(base, img, bonus)
+
+    click.echo("")
+    click.echo(f"{'seuil':>6} {'proposées':>10} {'rappel':>8} {'précision':>10}  (sur paires jugées)")
+    for seuil in range(min_seuil, max_seuil + 1, pas):
+        retenues = {k for k, v in scores.items() if v >= seuil}
+        vp = len(retenues & valides)
+        fp = len(retenues & rejetes)
+        rappel = 100.0 * vp / len(valides)
+        precision = 100.0 * vp / (vp + fp) if (vp + fp) else float('nan')
+        click.echo(f"{seuil:>6} {len(retenues):>10} {rappel:>7.0f}% {precision:>9.1f}%")
+
+    actuel = matching.MATCH_CONFIG['threshold_default']
+    manquees = [k for k in valides if scores.get(k, 0.0) < actuel]
+    click.echo("")
+    click.echo(f"Seuil configuré actuellement : {actuel}")
+    if manquees:
+        click.echo(f"⚠ {len(manquees)} paire(s) validée(s) passeraient SOUS ce seuil :")
+        for lost_id, found_id in manquees[:20]:
+            click.echo(f"   perdu #{lost_id} ↔ trouvé #{found_id} : {scores.get((lost_id, found_id), 0.0)}")
+    else:
+        click.echo("✓ Toutes les paires validées sont au-dessus du seuil configuré.")
+
+
 with app.app_context():
     db.create_all()
     # Création sécurisée de la table headphone_loans si elle n'existe pas déjà
@@ -441,6 +507,39 @@ with app.app_context():
                         print(f"[INFO] Colonne items.{col_name} ajoutée.", file=sys.stderr)
                 except Exception as e_col:
                     print(f"[WARN] Impossible d'ajouter items.{col_name}: {e_col}", file=sys.stderr)
+
+            # --- Ensure categories.family exists (regroupement + matching) ---
+            try:
+                res = conn.execute(sqlalchemy.text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name='categories' AND column_name='family'"
+                ))
+                if res.fetchone() is None:
+                    conn.execute(sqlalchemy.text(
+                        "ALTER TABLE categories ADD COLUMN family VARCHAR(50);"
+                    ))
+                    conn.execute(sqlalchemy.text(
+                        "CREATE INDEX IF NOT EXISTS ix_categories_family ON categories(family);"
+                    ))
+                    conn.execute(sqlalchemy.text("COMMIT;"))
+                    print("[INFO] Colonne categories.family ajoutée.", file=sys.stderr)
+            except Exception as e_fam:
+                print(f"[WARN] Impossible d'ajouter categories.family: {e_fam}", file=sys.stderr)
+
+        # Renseigner la famille des catégories qui n'en ont pas encore. Idempotent :
+        # ne touche que les lignes NULL, donc une famille corrigée à la main reste.
+        try:
+            from models import Category
+            from categories_families import CATEGORY_TO_FAMILY, guess_family
+            manquantes = Category.query.filter(Category.family.is_(None)).all()
+            for cat in manquantes:
+                cat.family = CATEGORY_TO_FAMILY.get(cat.name) or guess_family(cat.name)
+            if manquantes:
+                db.session.commit()
+                print(f"[INFO] Famille renseignée pour {len(manquantes)} catégorie(s).", file=sys.stderr)
+        except Exception as e_backfill:
+            db.session.rollback()
+            print(f"[WARN] Impossible de renseigner les familles: {e_backfill}", file=sys.stderr)
 
     except Exception as e:
         print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)

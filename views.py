@@ -6,6 +6,8 @@ import requests
 from decimal import Decimal, ROUND_HALF_UP
 import matching
 import visual_matcher
+import zones
+from categories_families import guess_family
 from photo_embeddings import ensure_photo_embedding, item_embedding_similarity
 from registration_policy import compute_registration_open
 from io import BytesIO
@@ -205,9 +207,7 @@ def _db_image_bytes_by_filename(filename: str):
 def _item_pair_bonus(lost, found) -> float:
     """Bonus/malus catégorie + date + champs structurés pour une paire Lost↔Found."""
     _cfg = matching.MATCH_CONFIG
-    bonus = 0.0
-    if lost.category_id and lost.category_id == found.category_id:
-        bonus += _cfg['bonus_same_category']
+    bonus = matching.family_bonus(lost, found)
     try:
         if lost.date_reported and found.date_reported:
             days = abs((lost.date_reported - found.date_reported).total_seconds()) / 86400.0
@@ -228,7 +228,9 @@ def _compute_weighted_score(base_score: float, img_img_pct: float | None, bonus:
         combined = base_score
     else:
         combined = _cfg['text_weight'] * base_score + _cfg['img_img_weight'] * img_img_pct
-    return max(0.0, min(100.0, round(combined + bonus, 2)))
+    # Le bonus s'applique sur la marge restante (cf. matching.apply_bonus) pour
+    # que les scores ne s'agglutinent plus à 100.
+    return matching.apply_bonus(combined, bonus)
 
 
 def _embedding_similarity_pct(item1: Item, item2: Item) -> float | None:
@@ -396,12 +398,19 @@ def get_or_create_category(category_id, new_category_name):
         
         if existing_category:
             return existing_category.id
-            
-        # Créer une nouvelle catégorie
-        new_category = Category(name=new_category_name.strip())
+
+        # Créer une nouvelle catégorie. La famille est devinée par rapprochement
+        # flou (« Sacoche » → Accessoires) : sans elle, la catégorie serait
+        # absente du menu déroulant et son objet ne bénéficierait d'aucun
+        # regroupement. None en cas de doute — le matching traite alors la
+        # famille comme neutre plutôt que de pénaliser à tort.
+        nom = new_category_name.strip()
+        famille = guess_family(nom)
+        new_category = Category(name=nom, family=famille)
         db.session.add(new_category)
         db.session.flush()  # Pour obtenir l'ID de la nouvelle catégorie
-        log_action(current_user.id, 'create_category', f'Nouvelle catégorie: {new_category.name}')
+        log_action(current_user.id, 'create_category',
+                   f'Nouvelle catégorie: {new_category.name} (famille: {famille or "indéterminée"})')
         return new_category.id
     return category_id
 
@@ -526,18 +535,15 @@ def report_item():
         if not category_id:
             flash("Veuillez sélectionner une catégorie ou en créer une nouvelle.", "lost")
             return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='lost')
-        doublons = find_similar_items(
-            lost_form.title.data, category_id,
-            location=(lost_form.location_other.data.strip() if lost_form.location.data == 'autre'
-                      else dict(lost_form.location.choices).get(lost_form.location.data, '')),
-        )
+        lost_zone = zones.resolve(lost_form.location.data, lost_form.location_other.data)
+        doublons = find_similar_items(lost_form.title.data, category_id, location=lost_zone)
         if doublons:
             flash("Attention : des objets similaires existent déjà !", "lost")
         item = Item(
             status=Status.LOST,
             title=lost_form.title.data,
             comments=lost_form.comments.data,
-            location=lost_form.location_other.data.strip() if lost_form.location.data == 'autre' else dict(lost_form.location.choices).get(lost_form.location.data, ''),
+            location=lost_zone,
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
@@ -565,22 +571,16 @@ def report_item():
         if not category_id:
             flash("Veuillez sélectionner une catégorie ou en créer une nouvelle.", "found")
             return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='found')
-        doublons = find_similar_items(
-            found_form.title.data, category_id,
-            location=(found_form.found_location_other.data or '').strip(),
-        )
+        found_zone = zones.resolve(found_form.found_location.data, found_form.found_location_other.data)
+        doublons = find_similar_items(found_form.title.data, category_id, location=found_zone)
         if doublons:
             flash("Attention : des objets similaires existent déjà !", "found")
         item = Item(
             status=Status.FOUND,
             title=found_form.title.data,
             comments=found_form.comments.data,
-            # Le formulaire n'affiche que la saisie libre (found_location_other) :
-            # le SelectField found_location n'est jamais rendu, donc sa .data vaut
-            # None et l'ancien dict(choices).get(None, '') écrasait silencieusement
-            # le lieu saisi par le bénévole. Même logique que edit_item().
-            found_location=(found_form.found_location_other.data or '').strip(),
-            storage_location=found_form.storage_location_other.data.strip() if found_form.storage_location.data == 'autre' else (dict(found_form.storage_location.choices).get(found_form.storage_location.data) if found_form.storage_location.data else ''),
+            found_location=found_zone,
+            storage_location=zones.resolve(found_form.storage_location.data, found_form.storage_location_other.data),
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
@@ -809,13 +809,16 @@ def edit_item(item_id):
     if request.method == 'GET':
         form.title.data = item.title
         form.comments.data = item.comments
-        form.location.data = item.location
+        # La base stocke le libellé de la zone ; le select attend sa valeur.
+        # Un libellé hors liste bascule sur « Autre » sans perdre le texte.
+        form.location.data, form.location_other.data = zones.to_form_values(item.location)
         form.category.data = item.category_id
         form.reporter_name.data = item.reporter_name
         form.reporter_email.data = item.reporter_email
         form.reporter_phone.data = item.reporter_phone
         if item.status.name == 'FOUND':
-            form.found_location_other.data = item.found_location or ''
+            form.found_location.data, form.found_location_other.data = zones.to_form_values(item.found_location)
+            form.storage_location.data, form.storage_location_other.data = zones.to_form_values(item.storage_location)
         form.item_color.data = item.item_color.split(',') if item.item_color else []
         form.item_brand.data = item.item_brand or ''
         form.item_distinctive.data = item.item_distinctive.split(',') if item.item_distinctive else []
@@ -823,7 +826,13 @@ def edit_item(item_id):
     if form.validate_on_submit():
         item.title = form.title.data
         item.comments = form.comments.data
-        item.location = form.location.data
+        # zones.resolve stocke le libellé, comme à la création : l'édition
+        # enregistrait auparavant la valeur technique (« camping_famille »), ce
+        # qui rendait le lieu incomparable avec celui des autres déclarations.
+        # Réservé aux objets perdus : sur un objet trouvé, `location` masquerait
+        # `found_location` dans _get_location().
+        if item.status.name != 'FOUND':
+            item.location = zones.resolve(form.location.data, form.location_other.data)
         item.category_id = form.category.data
         item.reporter_name = form.reporter_name.data
         item.reporter_email = form.reporter_email.data
@@ -833,8 +842,8 @@ def edit_item(item_id):
         item.item_brand = (form.item_brand.data or '').strip() or None
         item.item_distinctive = ','.join(form.item_distinctive.data) if form.item_distinctive.data else None
         if item.status.name == 'FOUND':
-            item.found_location = form.found_location_other.data.strip() if form.found_location_other.data else ''
-            item.storage_location = form.storage_location_other.data.strip() if form.storage_location.data == 'autre' else (dict(form.storage_location.choices).get(form.storage_location.data) if form.storage_location.data else '')
+            item.found_location = zones.resolve(form.found_location.data, form.found_location_other.data)
+            item.storage_location = zones.resolve(form.storage_location.data, form.storage_location_other.data)
         db.session.commit()
         # Suppression des photos cochées
         photo_ids_to_delete = request.form.getlist('delete_photos')
@@ -987,11 +996,15 @@ def api_check_similar():
             Item.category_id == cat_id,
             Item.status == opposite,
         ).order_by(Item.date_reported.desc()).limit(200).all()
+        # Les candidats sont filtrés sur la même catégorie que la déclaration en
+        # cours : on applique donc le même bonus que sur la fiche objet, sans
+        # quoi l'aperçu serait systématiquement plus sévère que /item/<id>.
+        same_cat_bonus = matching.MATCH_CONFIG['bonus_same_category']
         for obj in opp_items:
             struct_b = matching.structured_field_bonus(probe, obj)
             threshold = matching.effective_threshold(struct_b)
             base = matching.match_score(probe, obj)
-            score = max(0.0, min(100.0, round(base + struct_b, 2)))
+            score = matching.apply_bonus(base, struct_b + same_cat_bonus)
             if score >= threshold:
                 candidates.append({
                     'id': obj.id,
