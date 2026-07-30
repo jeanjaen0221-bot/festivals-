@@ -18,6 +18,23 @@ document.addEventListener('DOMContentLoaded', function() {
     if (itemForm.querySelector('[name="submit_found"]')) return 'found';
     return '';
   }
+  // Le lieu est stocke en base sous son LIBELLE (dict(choices).get(...)), pas
+  // sous la valeur technique : on envoie donc le texte de l'option selectionnee.
+  function getLocationText() {
+    if (getFormStatus() === 'found') {
+      var foundEl = itemForm.querySelector('[name$="found_location_other"]');
+      return foundEl ? foundEl.value.trim() : '';
+    }
+    var sel = itemForm.querySelector('select[name$="-location"], select[name="location"]');
+    if (!sel) return '';
+    if (sel.value === 'autre') {
+      var otherEl = itemForm.querySelector('[name$="location_other"]');
+      return otherEl ? otherEl.value.trim() : '';
+    }
+    var opt = sel.options[sel.selectedIndex];
+    return opt ? opt.text.trim() : '';
+  }
+
   function buildBody(titre, categoryId) {
     var colorCb = itemForm.querySelector('input[type="checkbox"][value="noir"]');
     var distCb  = itemForm.querySelector('input.distinctive-check');
@@ -26,10 +43,20 @@ document.addEventListener('DOMContentLoaded', function() {
       title: titre,
       category_id: categoryId,
       status: getFormStatus(),
+      location: getLocationText(),
       colors: colorCb ? getCheckedValues(colorCb.getAttribute('name')) : '',
       brand: brandEl ? brandEl.value.trim() : '',
       distinctive: distCb ? getCheckedValues(distCb.getAttribute('name')) : '',
     });
+  }
+
+  // Le score brut cumule les bonus puis est borne a 100 : beaucoup de paires
+  // sans rapport atteignent le plafond. On affiche un palier de confiance et on
+  // garde le chiffre en infobulle pour le diagnostic.
+  function confidenceBadgeClass(level) {
+    if (level === 'high')   return 'bg-success';
+    if (level === 'medium') return 'bg-warning text-dark';
+    return 'bg-secondary';
   }
 
   var previewTimer = null;
@@ -47,7 +74,9 @@ document.addEventListener('DOMContentLoaded', function() {
       html += '<li class="py-1 border-bottom"><strong>' + escHtml(c.title) + '</strong>'
         + ' <span class="badge bg-secondary">' + escHtml(c.category) + '</span>'
         + ' <span class="text-muted small">' + escHtml(c.date) + '</span>'
-        + ' <span class="badge bg-warning text-dark ms-1">' + c.score + '%</span></li>';
+        + ' <span class="badge ' + confidenceBadgeClass(c.confidence) + ' ms-1"'
+        + ' title="Score interne : ' + c.score + '">'
+        + escHtml(c.confidence_label || '') + '</span></li>';
     });
     html += '</ul><div class="small text-muted"><i class="bi bi-info-circle"></i> V\u00e9rifiez si c\'est le m\u00eame objet avant d\'enregistrer.</div></div>';
     panel.innerHTML = html;
@@ -65,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var structKey = (colorCb2 ? getCheckedValues(colorCb2.getAttribute('name')) : '')
                   + '|' + (brandEl2 ? brandEl2.value.trim() : '')
                   + '|' + (distCb2 ? getCheckedValues(distCb2.getAttribute('name')) : '');
-    var key = titre + '|' + cat + '|' + getFormStatus() + '|' + structKey;
+    var key = titre + '|' + cat + '|' + getFormStatus() + '|' + getLocationText() + '|' + structKey;
     if (key === lastPreviewKey) return;
     clearTimeout(previewTimer);
     previewTimer = setTimeout(function() {
@@ -82,6 +111,12 @@ document.addEventListener('DOMContentLoaded', function() {
   if (titreInput) titreInput.addEventListener('input', triggerLivePreview);
   if (catSelect)  catSelect.addEventListener('change', triggerLivePreview);
   document.addEventListener('structuredFieldChange', triggerLivePreview);
+  // Le lieu compte pour 20 % du score : reevaluer quand il change.
+  itemForm.querySelectorAll('select[name$="-location"], select[name="location"], [name$="location_other"]')
+    .forEach(function(el) {
+      el.addEventListener('change', triggerLivePreview);
+      el.addEventListener('input', triggerLivePreview);
+    });
   if (titreInput && titreInput.closest('.mb-3')) {
     var panel = document.createElement('div');
     panel.id = 'live-candidates-panel';
@@ -130,7 +165,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const cat = item.category_name ? `<span class="badge bg-secondary ms-2">${escHtml(item.category_name)}</span>` : '';
             const li = document.createElement('li');
             li.className = 'd-flex align-items-center mb-3';
-            li.innerHTML = `${thumbHtml}<div class="flex-grow-1"><a href="${item.url_detail}" target="_blank" class="fw-bold text-decoration-none">${escHtml(item.title)}</a>${cat}<br><span class="text-muted small">Score : ${item.score}%</span></div>`;
+            const conf = `<span class="badge ${confidenceBadgeClass(item.confidence)} ms-2" title="Score interne : ${item.score}">${escHtml(item.confidence_label || '')}</span>`;
+            li.innerHTML = `${thumbHtml}<div class="flex-grow-1"><a href="${item.url_detail}" target="_blank" class="fw-bold text-decoration-none">${escHtml(item.title)}</a>${cat}<br><span class="text-muted small">Ressemblance :</span>${conf}</div>`;
             doublonList.appendChild(li);
           });
         }
@@ -146,7 +182,9 @@ document.addEventListener('DOMContentLoaded', function() {
             li2.className = 'd-flex align-items-center mb-2';
             li2.innerHTML = '<div class="bg-success-subtle d-inline-flex align-items-center justify-content-center me-3 rounded" style="width:56px;height:56px;"><i class="bi bi-check-circle text-success" style="font-size:1.5rem;"></i></div>'
               + '<div class="flex-grow-1"><strong>' + escHtml(c.title) + '</strong> <span class="badge bg-secondary">' + escHtml(c.category) + '</span>'
-              + '<br><span class="text-muted small">' + escHtml(c.date) + ' \u2014 Score\u00a0: ' + c.score + '%</span></div>';
+              + '<br><span class="text-muted small">' + escHtml(c.date) + '</span>'
+              + ' <span class="badge ' + confidenceBadgeClass(c.confidence) + '" title="Score interne\u00a0: ' + c.score + '">'
+              + escHtml(c.confidence_label || '') + '</span></div>';
             doublonList.appendChild(li2);
           });
         }

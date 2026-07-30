@@ -43,10 +43,10 @@
 
         {# Bande score #}
         <div class="mpc-score-band
-          {% if pair.score >= 80 %}score-high
-          {% elif pair.score >= 60 %}score-mid
+          {% if pair.confidence == 'high' %}score-high
+          {% elif pair.confidence == 'medium' %}score-mid
           {% else %}score-low{% endif %}">
-          <span class="mpc-score-value">{{ pair.score|round(1) }}%</span>
+          <span class="mpc-score-value" title="Score interne : {{ pair.score|round(1) }}">{{ pair.confidence_label }}</span>
           <div class="mpc-score-bar"><div data-pct="{{ pair.score|int }}"></div></div>
           <span class="mpc-category text-truncate"><i class="bi bi-tag"></i> {{ pair.lost.category.name if pair.lost.category else '—' }}</span>
           {% if pair.is_validated %}<span class="mpc-status-badge validated"><i class="bi bi-patch-check-fill"></i> Validé</span>
@@ -145,6 +145,35 @@
     {% endfor %}
   </div>
 
+  {% if total_pages > 1 %}
+    <nav class="mt-4" aria-label="Pagination des correspondances">
+      <div class="text-muted small mb-2 text-center">
+        {{ total_visible }} paire{{ 's' if total_visible != 1 }} au seuil de {{ threshold }}% —
+        page {{ page }} sur {{ total_pages }}
+      </div>
+      <ul class="pagination pagination-sm justify-content-center flex-wrap mb-0">
+        {% set args = {'threshold': threshold,
+                       'show_validated': '1' if show_validated else '0',
+                       'show_rejected': '1' if show_rejected else '0'} %}
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('main.list_matches', page=page-1, **args) }}">‹ Précédent</a>
+        </li>
+        {% for p in range(1, total_pages + 1) %}
+          {% if p <= 2 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+              <a class="page-link" href="{{ url_for('main.list_matches', page=p, **args) }}">{{ p }}</a>
+            </li>
+          {% elif p == 3 and page > 4 or p == total_pages - 2 and page < total_pages - 3 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('main.list_matches', page=page+1, **args) }}">Suivant ›</a>
+        </li>
+      </ul>
+    </nav>
+  {% endif %}
+
 {% else %}
   <div class="alert alert-secondary">
     <i class="bi bi-search me-2"></i>Aucune paire à afficher avec le seuil de {{ threshold }}%.
@@ -228,7 +257,7 @@
     var global = `
       <div class="mb-3">
         <div class="d-flex justify-content-between fw-semibold mb-1">
-          <span>Score final</span><span>${sf.toFixed(1)}%</span>
+          <span>Score interne (diagnostic)</span><span>${sf.toFixed(1)}</span>
         </div>
         <div class="explain-global-bar"><div class="explain-global-fill bg-${score2class(sf)}" style="width:${Math.round(sf)}%"></div></div>
       </div>`;

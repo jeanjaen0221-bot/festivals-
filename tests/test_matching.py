@@ -59,6 +59,51 @@ def test_structured_field_bonus_brand_match():
     assert bonus >= matching.MATCH_CONFIG['bonus_brand_match']
 
 
+def test_multicolore_never_creates_a_color_conflict():
+    """'multicolore' est compatible avec n'importe quelle couleur : un sac
+    multicolore decrit comme 'noir' par l'autre partie n'est pas une divergence."""
+    bonus = matching.structured_field_bonus(_item(item_color="multicolore"), _item(item_color="noir"))
+    assert bonus == 0, "'multicolore' ne doit jamais declencher le malus de conflit"
+
+
+def test_multicolore_shared_still_rewarded():
+    bonus = matching.structured_field_bonus(_item(item_color="multicolore"),
+                                            _item(item_color="multicolore"))
+    assert bonus >= matching.MATCH_CONFIG['bonus_color_match']
+
+
+def test_multicolore_does_not_mask_a_real_conflict():
+    """Une couleur franche divergente reste un conflit meme si 'multicolore' est coche."""
+    bonus = matching.structured_field_bonus(_item(item_color="multicolore,noir"),
+                                            _item(item_color="rouge"))
+    assert bonus < 0
+
+
+def test_inconnu_stays_neutral():
+    assert matching.structured_field_bonus(_item(item_color="inconnu"), _item(item_color="noir")) == 0
+
+
+def test_confidence_label_bands():
+    cfg = matching.MATCH_CONFIG
+    assert matching.confidence_label(100) == 'Fort'
+    assert matching.confidence_label(cfg['confidence_high']) == 'Fort'
+    assert matching.confidence_label(cfg['confidence_medium']) == 'Moyen'
+    assert matching.confidence_label(cfg['confidence_medium'] - 1) == 'Faible'
+    assert matching.confidence_label(0) == 'Faible'
+
+
+def test_confidence_level_keys_are_known():
+    for score in (0, 50, 70, 95, 100):
+        assert matching.confidence_level(score) in matching.CONFIDENCE_LEVELS
+
+
+def test_extract_descriptors_returns_immutable_sets():
+    """Le cache LRU partage ses valeurs : elles doivent etre non modifiables."""
+    colors, brands = matching._extract_descriptors("sac noir nike")
+    assert isinstance(colors, frozenset) and isinstance(brands, frozenset)
+    assert 'noir' in colors and 'nike' in brands
+
+
 def test_effective_threshold_switches_on_strong_structured_signal():
     assert matching.effective_threshold(0) == matching.MATCH_CONFIG['threshold_default']
     assert matching.effective_threshold(15) == matching.MATCH_CONFIG['threshold_structured_low']

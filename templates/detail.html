@@ -199,7 +199,8 @@ document.addEventListener('DOMContentLoaded', function() {
                           {% if loop.first %}
                             <span class="badge text-bg-warning" title="Meilleure suggestion">TOP</span>
                           {% endif %}
-                          <span class="score-badge" title="Score de correspondance">{{ s.score }}%</span>
+                          <span class="score-badge conf-{{ s.confidence }}"
+                                title="Indice de correspondance — score interne : {{ s.score }}">{{ s.confidence_label }}</span>
                         </div>
                       </div>
                       <div class="text-muted small mb-2">
@@ -207,8 +208,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         {% if s.meta_location %}<i class="bi bi-geo-alt"></i> {{ s.meta_location }} · {% endif %}
                         {% if s.date_reported %}<i class="bi bi-calendar-event"></i> {{ s.date_reported.strftime('%d/%m/%Y %H:%M') }}{% endif %}
                       </div>
-                      <div class="score-bar mb-2" aria-label="Score de correspondance" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ s.score }}">
-                        <div class="score-bar-fill" data-width="{{ s.score }}"></div>
+                      <div class="score-bar mb-2" aria-label="Indice de correspondance : {{ s.confidence_label }}" role="img">
+                        <div class="score-bar-fill conf-{{ s.confidence }}" data-width="{{ s.score }}"></div>
                       </div>
                       <div class="match-actions">
                         <button type="button" class="btn btn-outline-secondary btn-sm btn-explain" data-bs-toggle="tooltip" data-bs-title="Voir pourquoi cette proposition" data-candidate-id="{{ s.id }}"><i class="bi bi-question-circle"></i> Pourquoi</button>
@@ -353,7 +354,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 ${sii !== null && sii !== undefined ? `<span class="chip" style="background:#ccfbf1;color:#134e4a"><i class="bi bi-images"></i> DINOv2 image↔image: <b>${sii.toFixed(1)}%</b></span>` : `<span class="chip warning"><i class="bi bi-images"></i> Image↔image non calculée (${imageState})</span>`}
                 <span class="chip"><i class="bi bi-sliders"></i> Poids: texte=${w.text ?? '—'}${w.img_img ? ' / image=' + w.img_img : ''}</span>
                 <span class="chip ${(data.bonus ?? 0) >= 0 ? 'success' : 'warning'}"><i class="bi bi-plus-slash-minus"></i> Bonus: ${(data.bonus ?? 0) >= 0 ? '+' : ''}${data.bonus ?? 0}</span>
-                <span class="chip success"><i class="bi bi-speedometer"></i> Final: <b>${(data.score_final ?? 0).toFixed(1)}%</b></span>
+                <span class="chip success"><i class="bi bi-speedometer"></i> Score interne (diagnostic): <b>${(data.score_final ?? 0).toFixed(1)}</b></span>
               </div>
             </div>`;
 
@@ -399,8 +400,8 @@ document.addEventListener('DOMContentLoaded', function () {
           const global = `
             <div class="mb-3">
               <div class="d-flex justify-content-between align-items-center mb-1">
-                <span class="fw-semibold">Score global</span>
-                <span class="fw-semibold">${(data.score_final ?? 0).toFixed(1)}%</span>
+                <span class="fw-semibold">Score global (interne)</span>
+                <span class="fw-semibold">${(data.score_final ?? 0).toFixed(1)}</span>
               </div>
               <div class="global-progress"><div class="global-progress-bar" style="width:${Math.round(data.score_final ?? 0)}%"></div></div>
             </div>`;

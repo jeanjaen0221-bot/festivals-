@@ -243,10 +243,17 @@ def _embedding_similarity_pct(item1: Item, item2: Item) -> float | None:
     return round(100.0 * max(0.0, similarity), 2)
 
 
-def find_similar_items(titre, category_id, seuil=70, location=''):
+def find_similar_items(titre, category_id, seuil=None, location=''):
     """Retourne des objets similaires (même catégorie) triés par score descendant.
     Utilise le score complet (titre + description + lieu) via matching.match_score.
+
+    Le seuil par défaut vient de MATCH_CONFIG : la sonde n'a pas de description,
+    or un champ vide face à un champ rempli score 0 et pèse malgré tout 0,25.
+    Un doublon parfait dont le candidat a des commentaires plafonnait donc à 63 —
+    sous l'ancien seuil de 70, aucun doublon n'était jamais signalé.
     """
+    if seuil is None:
+        seuil = matching.MATCH_CONFIG['threshold_duplicate']
     similaires = []
     probe = SimpleNamespace(title=titre or '', comments='', location=location or '')
     candidats = Item.query.filter(
@@ -280,6 +287,8 @@ def find_similar_items(titre, category_id, seuil=70, location=''):
                 'id': obj.id,
                 'title': obj.title,
                 'score': score,
+                'confidence': matching.confidence_level(score),
+                'confidence_label': matching.confidence_label(score),
                 'category_name': obj.category.name if obj.category else None,
                 'photo_url': photo_url,
                 'category_icon_url': cat_icon_url,
@@ -517,7 +526,11 @@ def report_item():
         if not category_id:
             flash("Veuillez sélectionner une catégorie ou en créer une nouvelle.", "lost")
             return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='lost')
-        doublons = find_similar_items(lost_form.title.data, category_id, 70)
+        doublons = find_similar_items(
+            lost_form.title.data, category_id,
+            location=(lost_form.location_other.data.strip() if lost_form.location.data == 'autre'
+                      else dict(lost_form.location.choices).get(lost_form.location.data, '')),
+        )
         if doublons:
             flash("Attention : des objets similaires existent déjà !", "lost")
         item = Item(
@@ -552,14 +565,21 @@ def report_item():
         if not category_id:
             flash("Veuillez sélectionner une catégorie ou en créer une nouvelle.", "found")
             return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='found')
-        doublons = find_similar_items(found_form.title.data, category_id, 70)
+        doublons = find_similar_items(
+            found_form.title.data, category_id,
+            location=(found_form.found_location_other.data or '').strip(),
+        )
         if doublons:
             flash("Attention : des objets similaires existent déjà !", "found")
         item = Item(
             status=Status.FOUND,
             title=found_form.title.data,
             comments=found_form.comments.data,
-            found_location=(found_form.found_location_other.data.strip() if found_form.found_location.data == 'autre' else dict(found_form.found_location.choices).get(found_form.found_location.data, '')),
+            # Le formulaire n'affiche que la saisie libre (found_location_other) :
+            # le SelectField found_location n'est jamais rendu, donc sa .data vaut
+            # None et l'ancien dict(choices).get(None, '') écrasait silencieusement
+            # le lieu saisi par le bénévole. Même logique que edit_item().
+            found_location=(found_form.found_location_other.data or '').strip(),
             storage_location=found_form.storage_location_other.data.strip() if found_form.storage_location.data == 'autre' else (dict(found_form.storage_location.choices).get(found_form.storage_location.data) if found_form.storage_location.data else ''),
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
@@ -707,6 +727,8 @@ def detail_item(item_id):
                 'id': c.id,
                 'title': c.title,
                 'score': final_score,
+                'confidence': matching.confidence_level(final_score),
+                'confidence_label': matching.confidence_label(final_score),
                 'url_detail': url_for('main.detail_item', item_id=c.id),
                 'photo_url': photo_url,
                 'category_name': (c.category.name if c.category else None),
@@ -951,7 +973,7 @@ def api_check_similar():
     current_status = request.form.get('status', '')  # 'lost' ou 'found'
 
     # Doublons (même statut)
-    similars = find_similar_items(titre, cat_id, seuil=70, location=location)
+    similars = find_similar_items(titre, cat_id, location=location)
 
     # Correspondances croisées (statut opposé) — preview temps réel
     candidates = []
@@ -976,6 +998,8 @@ def api_check_similar():
                     'title': obj.title,
                     'category': obj.category.name if obj.category else '',
                     'score': score,
+                    'confidence': matching.confidence_level(score),
+                    'confidence_label': matching.confidence_label(score),
                     'date': obj.date_reported.strftime('%d/%m/%Y') if obj.date_reported else '',
                     'item_color': obj.item_color or '',
                     'item_brand': obj.item_brand or '',
@@ -1189,13 +1213,20 @@ def return_headphone_loan(loan_id):
 # ───────────────────────────────────────────────────────────────────────────────
 # Routes de correspondance globale Lost↔Found (nouvelles)
 # ───────────────────────────────────────────────────────────────────────────────
-def get_all_candidate_pairs(seuil=60, skip_set=None):
+def get_all_candidate_pairs(seuil=None, skip_set=None):
     """Calcule toutes les paires Lost↔Found dont le score >= seuil.
     skip_set: ensemble de tuples (lost_id, found_id) à ignorer (déjà validés/rejetés si non affichés).
     Utilise _compute_weighted_score pour que les scores soient identiques à ceux de detail_item.
     Compare les images via les embeddings DINOv2 déjà persistés : jamais d'inférence
     (donc jamais de N×M appels modèle) dans cette boucle O(lost × found).
+
+    L'explication détaillée n'est PAS calculée ici : match_explanation() coûte
+    ~2,2 ms par paire (elle balaie tous les synonymes en regex) et n'était
+    utilisée par aucun template — matches.html la récupère en AJAX via
+    /api/match_explain quand un agent clique sur « Détails ».
     """
+    if seuil is None:
+        seuil = matching.MATCH_CONFIG['threshold_default']
     pairs = []
     lost_items  = Item.query.filter_by(status=Status.LOST).all()
     found_items = Item.query.filter_by(status=Status.FOUND).all()
@@ -1210,17 +1241,21 @@ def get_all_candidate_pairs(seuil=60, skip_set=None):
             img_img_pct = _embedding_similarity_pct(lost, found)
             score = _compute_weighted_score(base_score, img_img_pct, bonus)
             if score >= seuil:
-                explanation = matching.match_explanation(lost, found, fields_weights)
-                pairs.append((lost, found, round(score, 2), explanation))
+                pairs.append((lost, found, round(score, 2)))
     return pairs
+
+MATCHES_PER_PAGE = 25
+
 
 @bp.route('/matches')
 @login_required
 def list_matches():
+    _default_seuil = matching.MATCH_CONFIG['threshold_default']
     try:
-        seuil = int(request.args.get('threshold', 60))
+        seuil = int(request.args.get('threshold', _default_seuil))
     except (TypeError, ValueError):
-        seuil = 60
+        seuil = _default_seuil
+    page = request.args.get('page', 1, type=int) or 1
     show_validated = request.args.get('show_validated', '0') == '1'
     show_rejected  = request.args.get('show_rejected',  '0') == '1'
 
@@ -1245,9 +1280,9 @@ def list_matches():
     all_pairs = get_all_candidate_pairs(seuil=seuil, skip_set=skip_set if skip_set else None)
     all_pairs = sorted(all_pairs, key=lambda x: x[2], reverse=True)
 
-    pairs_with_status = []
+    visible = []
     n_pending = n_validated = n_rejected = 0
-    for lost, found, score, explanation in all_pairs:
+    for lost, found, score in all_pairs:
         key = (lost.id, found.id)
         is_validated = key in validated_set
         is_rejected  = key in rejected_set
@@ -1264,14 +1299,27 @@ def list_matches():
         if is_rejected and not show_rejected:
             continue
 
-        pairs_with_status.append({
-            'lost': lost,
-            'found': found,
-            'score': score,
-            'is_validated': is_validated,
-            'is_rejected': is_rejected,
-            'explanation': explanation,
-        })
+        visible.append((lost, found, score, is_validated, is_rejected))
+
+    # Pagination : la page rendait auparavant toutes les paires d'un coup
+    # (plusieurs centaines de cartes sur un festival réel).
+    total_visible = len(visible)
+    total_pages = max(1, (total_visible + MATCHES_PER_PAGE - 1) // MATCHES_PER_PAGE)
+    page = min(max(1, page), total_pages)
+    start = (page - 1) * MATCHES_PER_PAGE
+    page_slice = visible[start:start + MATCHES_PER_PAGE]
+
+    # Pas de match_explanation() ici : le bouton « Détails » de matches.html la
+    # récupère en AJAX via /api/match_explain, à la demande et pour une seule paire.
+    pairs_with_status = [{
+        'lost': lost,
+        'found': found,
+        'score': score,
+        'confidence': matching.confidence_level(score),
+        'confidence_label': matching.confidence_label(score),
+        'is_validated': is_validated,
+        'is_rejected': is_rejected,
+    } for lost, found, score, is_validated, is_rejected in page_slice]
 
     stats = {'pending': n_pending, 'validated': n_validated, 'rejected': n_rejected}
     return render_template(
@@ -1281,6 +1329,9 @@ def list_matches():
         show_validated=show_validated,
         show_rejected=show_rejected,
         stats=stats,
+        page=page,
+        total_pages=total_pages,
+        total_visible=total_visible,
     )
 
 

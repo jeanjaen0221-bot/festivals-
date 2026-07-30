@@ -25,13 +25,25 @@ MATCH_CONFIG = {
     'bonus_date_close':         10,  # ≤ 2 jours
     'malus_date_far':           10,  # > 14 jours
     'threshold_default':        60,
+    'threshold_duplicate':      60,  # détection de doublons (find_similar_items)
     # Champs structurés (item_color / item_brand / item_distinctive CSV)
     'bonus_color_match':        15,  # par couleur commune
     'malus_color_conflict':      8,  # couleurs présentes ET aucune commune
     'bonus_brand_match':        20,  # même marque normalisée
     'bonus_distinctive_match':  12,  # par flag commun (a_document_id, a_argent…)
     'threshold_structured_low': 45,  # seuil si signal structuré fort (≥15 pts)
+    # Paliers de confiance affichés aux agents (le score brut sature vite à 100
+    # à cause du cumul des bonus : un pourcentage donnerait une fausse précision)
+    'confidence_high':          85,
+    'confidence_medium':        65,
 }
+
+# Couleurs qui ne doivent jamais servir de preuve de divergence.
+# 'inconnu'     : l'agent a explicitement coché « je ne sais pas ».
+# 'multicolore' : compatible avec n'importe quelle couleur — un sac multicolore
+#                 déclaré « noir » par l'autre partie n'est PAS une contradiction.
+NEUTRAL_COLORS = {'inconnu'}
+WILDCARD_COLORS = {'multicolore'}
 
 # ── Stopwords ─────────────────────────────────────────────────────────────────
 STOPWORDS = {
@@ -147,11 +159,16 @@ def normalize_text(text: str) -> str:
     return ' '.join(tokens)
 
 
-def _extract_descriptors(raw_text: str) -> tuple[set, set]:
-    """Retourne (couleurs, marques) trouvées dans le texte brut (lowercased + unidecode)."""
+@lru_cache(maxsize=4096)
+def _extract_descriptors(raw_text: str) -> tuple[frozenset, frozenset]:
+    """Retourne (couleurs, marques) trouvées dans le texte brut (lowercased + unidecode).
+
+    Mémoïsée : ~70 regex par appel, et la boucle O(perdus × trouvés) de /matches
+    repasse en permanence sur les mêmes textes. Les frozensets évitent qu'un
+    appelant modifie par erreur une valeur partagée par le cache."""
     text = unidecode(raw_text.lower())
-    found_colors = {c for c in COLORS if re.search(r'\b' + re.escape(c) + r'\b', text)}
-    found_brands = {b for b in BRANDS if re.search(r'\b' + re.escape(b) + r'\b', text)}
+    found_colors = frozenset(c for c in COLORS if re.search(r'\b' + re.escape(c) + r'\b', text))
+    found_brands = frozenset(b for b in BRANDS if re.search(r'\b' + re.escape(b) + r'\b', text))
     return found_colors, found_brands
 
 
@@ -313,14 +330,16 @@ def structured_field_bonus(item1, item2) -> float:
     # ── Couleurs ──────────────────────────────────────────────────────────────
     colors1 = _parse_csv_field(getattr(item1, 'item_color', '') or '')
     colors2 = _parse_csv_field(getattr(item2, 'item_color', '') or '')
-    # Exclure 'inconnu' des comparaisons réelles
-    real1 = colors1 - {'inconnu'}
-    real2 = colors2 - {'inconnu'}
-    shared_colors = real1 & real2
+    # Une couleur commune reste un signal, y compris 'multicolore' des deux côtés.
+    shared_colors = (colors1 & colors2) - NEUTRAL_COLORS
+    # Seules les couleurs discriminantes peuvent prouver une divergence :
+    # 'multicolore' est compatible avec tout, 'inconnu' n'affirme rien.
+    discriminant1 = colors1 - NEUTRAL_COLORS - WILDCARD_COLORS
+    discriminant2 = colors2 - NEUTRAL_COLORS - WILDCARD_COLORS
     if shared_colors:
         bonus += cfg['bonus_color_match'] * len(shared_colors)
-    elif real1 and real2:
-        # Les deux ont des couleurs mais aucune commune → conflit explicite
+    elif discriminant1 and discriminant2:
+        # Les deux ont des couleurs franches mais aucune commune → conflit explicite
         bonus -= cfg['malus_color_conflict']
 
     # ── Marque ────────────────────────────────────────────────────────────────
@@ -350,3 +369,32 @@ def effective_threshold(structured_bonus: float) -> float:
     if structured_bonus >= 15:
         return cfg['threshold_structured_low']
     return cfg['threshold_default']
+
+
+# ── Affichage de la confiance ─────────────────────────────────────────────────
+# Le score brut cumule bonus catégorie, date, couleur, marque et signes
+# distinctifs, puis est borné à 100 : de nombreuses paires sans rapport
+# atteignent le plafond. Afficher « 100 % » à un agent lui donnerait une
+# certitude que le score ne porte pas. On expose donc un palier qualitatif.
+CONFIDENCE_LEVELS = {
+    'high':   {'label': 'Fort',   'css': 'high',   'icon': 'bi-check-circle-fill'},
+    'medium': {'label': 'Moyen',  'css': 'medium', 'icon': 'bi-question-circle-fill'},
+    'low':    {'label': 'Faible', 'css': 'low',    'icon': 'bi-dash-circle'},
+}
+
+
+def confidence_level(score: float) -> str:
+    """Retourne la clé de palier ('high' / 'medium' / 'low') pour un score 0-100."""
+    cfg = MATCH_CONFIG
+    if score is None:
+        return 'low'
+    if score >= cfg['confidence_high']:
+        return 'high'
+    if score >= cfg['confidence_medium']:
+        return 'medium'
+    return 'low'
+
+
+def confidence_label(score: float) -> str:
+    """Libellé affiché aux agents à la place du pourcentage brut."""
+    return CONFIDENCE_LEVELS[confidence_level(score)]['label']
