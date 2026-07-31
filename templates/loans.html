@@ -196,47 +196,50 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.6/dist/signature_pad.umd.min.js"></script>
+{# Servi par notre propre serveur : un CDN injoignable ou filtré rendait la
+   signature impossible, sans le moindre message d'erreur. #}
+<script src="{{ url_for('static', filename='js/signature-pad.js') }}"></script>
 <script nonce="{{ csp_nonce }}">
 // Gestion signature dynamique par prêt
 const signaturePads = {};
 
-// Le canvas n'avait aucun attribut width/height : sa surface de dessin restait
-// à la taille par défaut de 300x150 alors que le CSS l'affiche bien plus grand.
-// signature_pad dessine dans les coordonnées du bitmap, donc le trait
-// apparaissait décalé par rapport au doigt et débordait de la zone visible.
-// Il faut aligner le bitmap sur la taille réellement affichée, densité d'écran
-// comprise (un téléphone a souvent un devicePixelRatio de 2 ou 3).
-function ajusterCanvas(canvas, pad) {
-  if (!canvas || !canvas.offsetWidth) return;   // modal encore masqué
-  const ratio = Math.max(window.devicePixelRatio || 1, 1);
-  canvas.width = canvas.offsetWidth * ratio;
-  canvas.height = canvas.offsetHeight * ratio;
-  canvas.getContext('2d').scale(ratio, ratio);
-  if (pad) pad.clear();                          // redimensionner vide le bitmap
+// Le dimensionnement (taille affichée x densité d'écran) est géré par la classe
+// elle-même, dans static/js/signature-pad.js : ne pas le refaire ici, l'échelle
+// serait appliquée deux fois et le tracé se retrouverait décalé.
+function signalerErreurSignature(loanId, message) {
+  const canvas = document.getElementById('signaturePad' + loanId);
+  if (!canvas || canvas.parentNode.querySelector('.signature-erreur')) return;
+  const alerte = document.createElement('div');
+  alerte.className = 'alert alert-danger py-2 small mt-2 signature-erreur';
+  alerte.textContent = message;
+  canvas.parentNode.insertBefore(alerte, canvas.nextSibling);
 }
 
 function initSignaturePad(loanId) {
   const canvas = document.getElementById('signaturePad' + loanId);
   if (!canvas) return;
-  if (!signaturePads[loanId]) {
-    signaturePads[loanId] = new SignaturePad(canvas, {
-      penColor: '#111827',
-      minWidth: 0.8,
-      maxWidth: 2.5,
-      backgroundColor: 'rgba(255,255,255,1)'     // fond opaque : PNG lisible à l'export
-    });
+  // Ne jamais échouer en silence : c'est ce qui a rendu la panne indétectable.
+  if (typeof SignaturePad === 'undefined') {
+    signalerErreurSignature(loanId, "La zone de signature n'a pas pu être chargée. Rechargez la page.");
+    return;
   }
-  // Toujours réajuster : la taille affichée dépend de l'orientation du téléphone.
-  ajusterCanvas(canvas, signaturePads[loanId]);
+  try {
+    if (!signaturePads[loanId]) {
+      signaturePads[loanId] = new SignaturePad(canvas, { penColor: '#111827', lineWidth: 2.2 });
+    }
+    // Le modal vient de s'ouvrir : c'est le premier instant où la taille
+    // affichée du canvas est connue.
+    signaturePads[loanId].ajusterTaille();
+  } catch (err) {
+    signalerErreurSignature(loanId, 'Zone de signature indisponible : ' + err.message);
+  }
 }
 
 // Rotation de l'écran : on réajuste, mais jamais au prix d'une signature en cours.
 window.addEventListener('resize', function() {
   Object.keys(signaturePads).forEach(function(loanId) {
     const pad = signaturePads[loanId];
-    const canvas = document.getElementById('signaturePad' + loanId);
-    if (pad && pad.isEmpty()) ajusterCanvas(canvas, pad);
+    if (pad && pad.isEmpty()) pad.ajusterTaille();
   });
 });
 function clearSignature(loanId) {

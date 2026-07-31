@@ -131,22 +131,30 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.5/dist/signature_pad.umd.min.js"></script>
+{# Servi par notre propre serveur, cf. static/js/signature-pad.js #}
+<script src="{{ url_for('static', filename='js/signature-pad.js') }}"></script>
 <script nonce="{{ csp_nonce }}">
 let signaturePad;
 let currentLoanId = null;
 
 function openSignatureModal(loanId) {
   currentLoanId = loanId;
-  const modal = new bootstrap.Modal(document.getElementById('signatureModal'));
-  modal.show();
+  const element = document.getElementById('signatureModal');
 
-  setTimeout(() => {
+  // L'écouteur doit être posé AVANT show() : ne pas dépendre du fait que
+  // l'animation d'ouverture laisse le temps de l'enregistrer.
+  element.addEventListener('shown.bs.modal', function initPad() {
+    this.removeEventListener('shown.bs.modal', initPad);
     const canvas = document.getElementById('signaturePad');
-    canvas.width = canvas.offsetWidth;
-    canvas.height = 200;
-    signaturePad = new SignaturePad(canvas);
-  }, 200);
+    if (!canvas || typeof SignaturePad === 'undefined') return;
+    if (!signaturePad) {
+      signaturePad = new SignaturePad(canvas, { penColor: '#111827', lineWidth: 2.2 });
+    }
+    signaturePad.ajusterTaille();   // dimensionnement + densité d'écran gérés par la classe
+    signaturePad.clear();           // repartir vierge d'un prêt à l'autre
+  });
+
+  new bootstrap.Modal(element).show();
 }
 
 function clearSignature() {
