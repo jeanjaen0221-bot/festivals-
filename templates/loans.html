@@ -110,28 +110,17 @@
           <td>{{ loan.return_date.strftime('%d/%m/%Y %H:%M') if loan.return_date else '' }}</td>
           <td>
             {% if not loan.return_date %}
-              <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#signatureModal{{ loan.id }}">Retourner</button>
-              <!-- Modal pour signature -->
-              <div class="modal fade" id="signatureModal{{ loan.id }}" tabindex="-1" aria-labelledby="signatureModalLabel{{ loan.id }}" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered" style="max-width:95vw;">
-                  <div class="modal-content">
-                    <div class="modal-header">
-                      <h5 class="modal-title" id="signatureModalLabel{{ loan.id }}">Signature de retour</h5>
-                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body text-center">
-                      <canvas id="signaturePad{{ loan.id }}" style="border:1px solid #ccc; width:100%; max-width:400px; height:180px; display:block; margin:0 auto;"></canvas>
-                      <div class="mt-2">
-                        {# Pas d'attribut onclick : la CSP (script-src sans 'unsafe-inline')
-                           bloque les gestionnaires inline, un nonce n'autorisant que les
-                           blocs de script balises. Ces boutons étaient donc totalement inertes. #}
-                        <button type="button" class="btn btn-secondary btn-sm js-clear-signature" data-loan-id="{{ loan.id }}">Effacer</button>
-                        <button type="button" class="btn btn-primary btn-sm js-save-signature" data-loan-id="{{ loan.id }}" id="save-signature-btn-{{ loan.id }}"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Valider</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {# Retour direct : un bouton, une confirmation. Formulaire HTML
+                 classique, donc le retour aboutit même si le JavaScript ne
+                 s'exécute pas — la confirmation n'est qu'un garde-fou. #}
+              <form method="post" action="{{ url_for('main.return_headphone_loan', loan_id=loan.id) }}"
+                    class="d-inline"
+                    data-confirm="Confirmer le retour du casque de {{ loan.first_name }} {{ loan.last_name }} ?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-success btn-sm">
+                  <i class="bi bi-check-lg"></i> Retourner
+                </button>
+              </form>
             {% elif loan.signature %}
               <button class="btn btn-link" data-bs-toggle="modal" data-bs-target="#signatureModal{{ loan.id }}">Voir</button>
               <!-- Modal pour voir la signature -->
@@ -196,119 +185,12 @@
   </div>
 </div>
 
-{# Servi par notre propre serveur : un CDN injoignable ou filtré rendait la
-   signature impossible, sans le moindre message d'erreur. #}
-<script src="{{ url_for('static', filename='js/signature-pad.js') }}"></script>
 <script nonce="{{ csp_nonce }}">
-// Gestion signature dynamique par prêt
-const signaturePads = {};
-
-// Le dimensionnement (taille affichée x densité d'écran) est géré par la classe
-// elle-même, dans static/js/signature-pad.js : ne pas le refaire ici, l'échelle
-// serait appliquée deux fois et le tracé se retrouverait décalé.
-function signalerErreurSignature(loanId, message) {
-  const canvas = document.getElementById('signaturePad' + loanId);
-  if (!canvas || canvas.parentNode.querySelector('.signature-erreur')) return;
-  const alerte = document.createElement('div');
-  alerte.className = 'alert alert-danger py-2 small mt-2 signature-erreur';
-  alerte.textContent = message;
-  canvas.parentNode.insertBefore(alerte, canvas.nextSibling);
-}
-
-function initSignaturePad(loanId) {
-  const canvas = document.getElementById('signaturePad' + loanId);
-  if (!canvas) return;
-  // Ne jamais échouer en silence : c'est ce qui a rendu la panne indétectable.
-  if (typeof SignaturePad === 'undefined') {
-    signalerErreurSignature(loanId, "La zone de signature n'a pas pu être chargée. Rechargez la page.");
-    return;
-  }
-  try {
-    if (!signaturePads[loanId]) {
-      signaturePads[loanId] = new SignaturePad(canvas, { penColor: '#111827', lineWidth: 2.2 });
-    }
-    // Le modal vient de s'ouvrir : c'est le premier instant où la taille
-    // affichée du canvas est connue.
-    signaturePads[loanId].ajusterTaille();
-  } catch (err) {
-    signalerErreurSignature(loanId, 'Zone de signature indisponible : ' + err.message);
-  }
-}
-
-// Rotation de l'écran : on réajuste, mais jamais au prix d'une signature en cours.
-window.addEventListener('resize', function() {
-  Object.keys(signaturePads).forEach(function(loanId) {
-    const pad = signaturePads[loanId];
-    if (pad && pad.isEmpty()) pad.ajusterTaille();
-  });
-});
-function clearSignature(loanId) {
-  if (signaturePads[loanId]) signaturePads[loanId].clear();
-}
-function saveSignature(loanId) {
-  var btn = document.getElementById('save-signature-btn-' + loanId);
-  function basculerBouton(enCours) {
-    if (!btn) return;
-    btn.disabled = enCours;
-    var spinner = btn.querySelector('.spinner-border');
-    if (spinner) spinner.classList.toggle('d-none', !enCours);
-  }
-
-  // Vérifier AVANT de désactiver : le bouton était bloqué définitivement dès
-  // qu'on validait une signature vide ou qu'un envoi échouait.
-  const pad = signaturePads[loanId];
-  if (!pad || pad.isEmpty()) {
-    alert('Merci de signer avant de valider.');
-    return;
-  }
-  basculerBouton(true);
-  const dataUrl = pad.toDataURL();
-  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-  fetch(`/loans/${loanId}/return`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': csrfToken || ''
-    },
-    body: JSON.stringify({ signature: dataUrl })
-  })
-    .then(async resp => {
-      let data;
-      try { data = await resp.json(); } catch (e) {
-        basculerBouton(false);
-        alert('Erreur serveur : réponse non conforme (pas du JSON).');
-        return;
-      }
-      if (resp.ok && data.success) {
-        location.reload();               // pas de réactivation : la page se recharge
-      } else {
-        basculerBouton(false);
-        alert('Erreur : ' + (data && data.error ? data.error : 'Impossible de sauvegarder la signature.'));
-      }
-    })
-    .catch(err => {
-      basculerBouton(false);
-      alert('Erreur réseau : ' + err);
-    });
-}
-// Bootstrap : initialisation du pad à l’ouverture du modal
+// Les gestionnaires sont déclarés ici et non en attributs onclick : notre CSP
+// (script-src sans 'unsafe-inline') bloque les gestionnaires inline, un nonce
+// n'autorisant que les balises de script. En attributs, ils ne s'exécutaient
+// tout simplement jamais.
 window.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.modal.fade[id^="signatureModal"]').forEach(function(modal) {
-    modal.addEventListener('shown.bs.modal', function() {
-      const loanId = this.id.replace('signatureModal', '');
-      initSignaturePad(loanId);
-    });
-  });
-
-  // Les boutons portaient des attributs onclick, inertes sous notre CSP
-  // (script-src sans 'unsafe-inline' : un nonce n'autorise que les blocs
-  // <script>, jamais les gestionnaires inline). On les rebranche ici.
-  document.querySelectorAll('.js-clear-signature').forEach(function(btn) {
-    btn.addEventListener('click', function() { clearSignature(this.dataset.loanId); });
-  });
-  document.querySelectorAll('.js-save-signature').forEach(function(btn) {
-    btn.addEventListener('click', function() { saveSignature(this.dataset.loanId); });
-  });
   var ouvrirPhoto = document.querySelector('.js-open-id-photo');
   if (ouvrirPhoto) {
     ouvrirPhoto.addEventListener('click', function() {
@@ -317,9 +199,6 @@ window.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Mêmes causes, mêmes effets : ces attributs inline ne s'exécutaient pas non
-  // plus. La validation de quantité, l'aperçu de la carte d'identité, le tri de
-  // la liste et les confirmations de suppression étaient tous inopérants.
   var formulairePret = document.getElementById('loan-form');
   if (formulairePret) {
     formulairePret.addEventListener('submit', function(e) {

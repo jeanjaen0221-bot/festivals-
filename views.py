@@ -1219,11 +1219,34 @@ def request_loan_deletion(loan_id):
 @bp.route('/loans/<int:loan_id>/return', methods=['POST'])
 @login_required
 def return_headphone_loan(loan_id):
+    """Marque un prêt comme rendu.
+
+    Deux modes selon la nature de la requête :
+
+    * POST de formulaire — le retour est enregistré sans signature. C'est le
+      parcours utilisé au guichet : un bouton, une confirmation, rien de plus.
+      Aucun JavaScript n'est nécessaire pour que le retour aboutisse.
+    * POST JSON avec une signature PNG — conservé pour l'écran admin, qui
+      recueille toujours une signature.
+    """
     loan = db.get_or_404(HeadphoneLoan, loan_id)
+    data = request.get_json(silent=True)
+
+    # ── Retour simple par formulaire ──────────────────────────────────────────
+    if data is None:
+        if loan.return_date:
+            flash("Ce prêt a déjà été marqué comme rendu.", "info")
+            return redirect(url_for('main.headphone_loans'))
+        loan.return_date = datetime.now(timezone.utc)
+        db.session.commit()
+        log_action(current_user.id, 'return_loan', f'Retour casque prêt:{loan.id}')
+        flash(f"Retour enregistré pour {loan.first_name} {loan.last_name}.", "success")
+        return redirect(url_for('main.headphone_loans'))
+
+    # ── Retour avec signature (JSON) ──────────────────────────────────────────
     if loan.return_date:
         return jsonify({'success': False, 'error': 'Ce prêt a déjà été retourné.'}), 409
-    data = request.get_json(silent=True)
-    if not data or 'signature' not in data:
+    if 'signature' not in data:
         return jsonify({'success': False, 'error': 'Signature manquante'}), 400
     signature = data.get('signature')
     prefix = 'data:image/png;base64,'
