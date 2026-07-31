@@ -594,8 +594,17 @@ def report_item():
             item_distinctive=','.join(found_form.item_distinctive.data) if found_form.item_distinctive.data else None,
         )
         db.session.add(item)
+        # Une photo refusée (HEIC d'iPhone, format exotique) ne doit pas
+        # disparaître en silence : le bénévole croyait l'avoir jointe.
+        refusees = []
         for photo_file in found_form.photos.data or []:
-            _persist_item_photo(item, photo_file)
+            if not (photo_file and photo_file.filename):
+                continue
+            if _persist_item_photo(item, photo_file) is None:
+                refusees.append(photo_file.filename)
+        if refusees:
+            flash("Objet enregistré, mais cette ou ces photos ont été refusées "
+                  f"(formats acceptés : JPEG et PNG) : {', '.join(refusees)}", "warning")
         db.session.commit()
         log_action(current_user.id, 'create_item', f'Ajout objet trouvé ID:{item.id}')
         flash("Objet trouvé enregistré !", "success")

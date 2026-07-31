@@ -11,10 +11,14 @@
 
   function reduireImage(file) {
     return new Promise(function(resolve) {
-      if (!file || !file.type || file.type.indexOf('image/') !== 0
-          || file.size < TAILLE_MIN_POUR_REDUIRE) {
-        return resolve(file);
-      }
+      if (!file || !file.type || file.type.indexOf('image/') !== 0) return resolve(file);
+      // Le serveur n'accepte que JPEG et PNG. Les iPhone produisent du HEIC par
+      // defaut : sans conversion, la photo etait rejetee en silence a
+      // l'enregistrement. On convertit donc tout ce qui n'est ni JPEG ni PNG,
+      // quelle que soit sa taille.
+      var formatAccepte = (file.type === 'image/jpeg' || file.type === 'image/png');
+      if (formatAccepte && file.size < TAILLE_MIN_POUR_REDUIRE) return resolve(file);
+
       var url = URL.createObjectURL(file);
       var img = new Image();
       img.onload = function() {
@@ -27,8 +31,10 @@
           canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         } catch (e) { return resolve(file); }
         canvas.toBlob(function(blob) {
-          // Si la reduction n'apporte rien, on garde l'original.
-          if (!blob || blob.size >= file.size) return resolve(file);
+          if (!blob) return resolve(file);
+          // Un format non accepte doit etre converti meme si le JPEG pese plus
+          // lourd : sinon le fichier repart en HEIC et sera refuse.
+          if (formatAccepte && blob.size >= file.size) return resolve(file);
           var nom = file.name.replace(/\.[^.]+$/, '') + '.jpg';
           resolve(new File([blob], nom, { type: 'image/jpeg', lastModified: Date.now() }));
         }, 'image/jpeg', JPEG_QUALITY);
@@ -203,7 +209,26 @@ document.addEventListener('DOMContentLoaded', function() {
     titreInput.closest('.mb-3').insertAdjacentElement('afterend', panel);
   }
 
+  // form.submit() n'envoie jamais le bouton qui a declenche l'envoi, et un
+  // bouton desactive non plus : sans ce champ cache, submit_lost/submit_found
+  // n'arrive pas au serveur et la declaration n'est jamais enregistree.
+  let dernierBoutonEnvoi = null;
+  itemForm.querySelectorAll('button[type="submit"][name]').forEach(function(btn) {
+    btn.addEventListener('click', function() { dernierBoutonEnvoi = btn; });
+  });
+  function figerIntention(e) {
+    const btn = (e && e.submitter) || dernierBoutonEnvoi;
+    if (!btn || !btn.name) return;
+    if (itemForm.querySelector('input[type="hidden"][name="' + btn.name + '"]')) return;
+    const champ = document.createElement('input');
+    champ.type = 'hidden';
+    champ.name = btn.name;
+    champ.value = btn.value || '1';
+    itemForm.appendChild(champ);
+  }
+
   itemForm.addEventListener('submit', function(e) {
+    figerIntention(e);
     if (submitted) return;
     e.preventDefault();
     const form = this;
