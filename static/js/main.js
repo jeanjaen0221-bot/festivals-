@@ -68,6 +68,10 @@
 document.addEventListener('DOMContentLoaded', function() {
   const itemForm = document.getElementById('itemForm');
   if (!itemForm) return;
+  // Interrupteur serveur (config DECLARATION_CHECKS). Coupé, on n'intercepte plus
+  // du tout la soumission : le formulaire part en POST natif. La réduction des
+  // photos, elle, reste active — c'est un bloc séparé, plus haut dans ce fichier.
+  if (itemForm.dataset.checks !== 'on') return;
 
   function escHtml(s) {
     return String(s == null ? '' : s)

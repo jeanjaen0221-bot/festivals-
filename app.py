@@ -51,6 +51,22 @@ if not app.config['SQLALCHEMY_DATABASE_URI'] or 'user:pass@localhost' in app.con
 # Cookies de session sécurisés
 app.config['SESSION_COOKIE_SECURE'] = not app.debug
 app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+# ── Vérifications avant enregistrement d'une déclaration ──────────────────────
+# Désactivé par défaut : deux scripts interceptaient la soumission du même
+# formulaire (main.js via form.submit(), report.html via requestSubmit()) en
+# pilotant la même modale, ce qui pouvait produire une double soumission ou
+# aucune. Coupé, le formulaire redevient un POST natif — le chemin le plus
+# robuste, et le seul qui compte pendant le festival.
+# Mettre DECLARATION_CHECKS=1 pour réactiver l'aperçu de doublons et de
+# correspondances pendant la saisie. Cela n'affecte NI les suggestions de la
+# fiche objet, NI la page /matches, qui restent pleinement fonctionnelles.
+app.config['DECLARATION_CHECKS'] = os.environ.get('DECLARATION_CHECKS', '0') == '1'
+
+
+@app.context_processor
+def inject_declaration_checks():
+    return {'declaration_checks': app.config['DECLARATION_CHECKS']}
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # Durée de vie des sessions et des tokens CSRF (alignées : un formulaire resté

@@ -28,7 +28,7 @@
                   <div class="alert alert-warning">{{ message }}</div>
                 {% endfor %}
               {% endwith %}
-              <form method="post" enctype="multipart/form-data" autocomplete="off" id="itemForm">
+              <form method="post" enctype="multipart/form-data" autocomplete="off" id="itemForm" data-checks="{{ 'on' if declaration_checks else 'off' }}">
                 {{ found_form.hidden_tag() }}
                 {% set form = found_form %}
                 {% set prefix = 'found-' %}
@@ -73,7 +73,7 @@
                   <div class="alert alert-warning">{{ message }}</div>
                 {% endfor %}
               {% endwith %}
-              <form method="post" autocomplete="off" id="itemForm">
+              <form method="post" autocomplete="off" id="itemForm" data-checks="{{ 'on' if declaration_checks else 'off' }}">
                 {{ lost_form.hidden_tag() }}
                 {% set form = lost_form %}
                 {% set prefix = 'lost-' %}
@@ -137,7 +137,22 @@ document.addEventListener('DOMContentLoaded', function() {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  if(lostForm) {
+  // Interrupteur serveur : coupé, on ne branche que les spinners et le
+  // formulaire part en POST natif, sans aucune interception.
+  if (lostForm && !{{ 'true' if declaration_checks else 'false' }}) {
+    lostForm.addEventListener('submit', function() {
+      if (lostBtn) {
+        lostBtn.disabled = true;
+        var s1 = lostBtn.querySelector('.spinner-border');
+        if (s1) s1.classList.remove('d-none');
+      }
+      if (foundBtn) {
+        foundBtn.disabled = true;
+        var s2 = foundBtn.querySelector('.spinner-border');
+        if (s2) s2.classList.remove('d-none');
+      }
+    });
+  } else if(lostForm) {
     // La vérification photo partait AU MOMENT de l'envoi : le bénévole attendait
     // que la photo monte une première fois pour la vérification, puis une seconde
     // fois avec le formulaire. On la déclenche désormais dès que la photo est

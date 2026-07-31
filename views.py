@@ -540,9 +540,9 @@ def report_item():
             flash("Veuillez sélectionner une catégorie ou en créer une nouvelle.", "lost")
             return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='lost')
         lost_zone = zones.resolve(lost_form.location.data, lost_form.location_other.data)
-        doublons = find_similar_items(lost_form.title.data, category_id, location=lost_zone)
-        if doublons:
-            flash("Attention : des objets similaires existent déjà !", "lost")
+        if current_app.config.get('DECLARATION_CHECKS'):
+            if find_similar_items(lost_form.title.data, category_id, location=lost_zone):
+                flash("Attention : des objets similaires existent déjà !", "lost")
         item = Item(
             status=Status.LOST,
             title=lost_form.title.data,
@@ -576,9 +576,9 @@ def report_item():
             flash("Veuillez sélectionner une catégorie ou en créer une nouvelle.", "found")
             return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='found')
         found_zone = zones.resolve(found_form.found_location.data, found_form.found_location_other.data)
-        doublons = find_similar_items(found_form.title.data, category_id, location=found_zone)
-        if doublons:
-            flash("Attention : des objets similaires existent déjà !", "found")
+        if current_app.config.get('DECLARATION_CHECKS'):
+            if find_similar_items(found_form.title.data, category_id, location=found_zone):
+                flash("Attention : des objets similaires existent déjà !", "found")
         item = Item(
             status=Status.FOUND,
             title=found_form.title.data,
