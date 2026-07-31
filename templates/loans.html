@@ -115,7 +115,7 @@
                  s'exécute pas — la confirmation n'est qu'un garde-fou. #}
               <form method="post" action="{{ url_for('main.return_headphone_loan', loan_id=loan.id) }}"
                     class="d-inline"
-                    data-confirm="Confirmer le retour du casque de {{ loan.first_name }} {{ loan.last_name }} ?">
+                    data-confirm="Confirmer le retour de {{ loan.quantity }} casque{{ 's' if loan.quantity > 1 }} prêté{{ 's' if loan.quantity > 1 }} à {{ loan.first_name }} {{ loan.last_name }} ?">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-success btn-sm">
                   <i class="bi bi-check-lg"></i> Retourner
