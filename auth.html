@@ -1,0 +1,95 @@
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<h3 class="mb-3">Articles Goodies</h3>
+<div class="row g-4">
+  <div class="col-12 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Ajouter un article</h5>
+        <form method="post" enctype="multipart/form-data">
+          {{ form.csrf_token }}
+          <div class="mb-3">
+            {{ form.name.label(class='form-label') }}
+            {{ form.name(class='form-control') }}
+            {% for e in form.name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="row g-3">
+            <div class="col-6">
+              {{ form.price.label(class='form-label') }}
+              {{ form.price(class='form-control', step='0.01') }}
+              {% for e in form.price.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="col-6">
+              {{ form.vat_rate.label(class='form-label') }}
+              {{ form.vat_rate(class='form-select') }}
+              {% for e in form.vat_rate.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+          </div>
+          <div class="mt-3">
+            {{ form.image.label(class='form-label') }}
+            {{ form.image(class='form-control') }}
+            <div class="form-text">Formats acceptés: JPG, PNG.</div>
+            {% for e in form.image.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="form-check mt-3">
+            {{ form.active(class='form-check-input') }}
+            {{ form.active.label(class='form-check-label') }}
+          </div>
+          <div class="mt-3">
+            {{ form.submit(class='btn btn-primary') }}
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Liste des articles</h5>
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead>
+              <tr>
+                <th scope="col">Image</th>
+                <th scope="col">Nom</th>
+                <th scope="col" class="text-end">Prix TTC (€)</th>
+                <th scope="col">TVA</th>
+                <th scope="col">Actif</th>
+                <th scope="col" class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in products %}
+              <tr class="{% if not p.active %}table-secondary{% endif %}">
+                <td style="width:64px;">
+                  {% if p.image_filename %}
+                    <img src="{{ url_for('main.uploaded_file', filename=p.image_filename) }}" alt="{{ p.name }}" class="img-thumbnail" style="width:56px; height:56px; object-fit:cover;" loading="lazy">
+                  {% else %}
+                    <div class="bg-light d-flex align-items-center justify-content-center text-muted" style="width:56px; height:56px; border-radius:0.375rem;">—</div>
+                  {% endif %}
+                </td>
+                <td>{{ p.name }}</td>
+                <td class="text-end">{{ '%.2f'|format(p.price) }}</td>
+                <td>{{ p.vat_rate }}%</td>
+                <td>{% if p.active %}<span class="badge bg-success">Oui</span>{% else %}<span class="badge bg-secondary">Non</span>{% endif %}</td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-primary me-1" href="{{ url_for('admin.goodies_product_edit', pid=p.id) }}" title="Modifier"><i class="bi bi-pencil"></i></a>
+                  <form method="post" action="{{ url_for('admin.goodies_products_toggle', pid=p.id) }}" class="d-inline">
+                    {{ csrf_form.csrf_token }}
+                    <button class="btn btn-sm btn-outline-warning" title="Activer/désactiver"><i class="bi bi-power"></i></button>
+                  </form>
+                  <form method="post" action="{{ url_for('admin.goodies_products_delete', pid=p.id) }}" class="d-inline" onsubmit="return confirm('Supprimer l\'article ?');">
+                    {{ csrf_form.csrf_token }}
+                    <button class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

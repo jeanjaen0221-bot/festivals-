@@ -1,0 +1,31 @@
+{% extends 'admin/base.html' %}
+{% block admin_content %}
+<div class="container mt-2">
+  <h2 class="mb-3"><i class="bi bi-signpost"></i> {{ title or 'Arrêt du parcours' }}</h2>
+  <form method="post">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+      {{ form.name.label(class="form-label") }}
+      {{ form.name(class="form-control") }}
+      {% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.sequence.label(class="form-label") }}
+      {{ form.sequence(class="form-control") }}
+      {% for error in form.sequence.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.dwell_minutes.label(class="form-label") }}
+      {{ form.dwell_minutes(class="form-control") }}
+      {% for error in form.dwell_minutes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      {{ form.note.label(class="form-label") }}
+      {{ form.note(class="form-control") }}
+      {% for error in form.note.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
+    <a href="{{ url_for('admin_shuttle.shuttle_route') }}" class="btn btn-secondary ms-2">Retour</a>
+  </form>
+</div>
+{% endblock %}

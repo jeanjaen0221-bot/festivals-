@@ -1,573 +1,65 @@
-import os
-import sys
-import secrets
-from datetime import datetime, timedelta, timezone
-from dotenv import load_dotenv
-from flask import Flask, g
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-import click
-from flask_wtf.csrf import CSRFProtect
-from flask_login import LoginManager
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-import sqlalchemy
-
-# Charge un .env local si présent ; sans effet sur Railway où les variables
-# sont déjà injectées dans l'environnement du conteneur.
-load_dotenv()
-
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
-raw_url = (os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_PUBLIC_URL') or '').strip()
-if raw_url.startswith('postgres://'):
-    raw_url = 'postgresql://' + raw_url[len('postgres://'):]
-# sslmode n'a de sens que pour Postgres ; un DATABASE_URL sqlite:// (tests locaux)
-# ne doit jamais se voir imposer cette option.
-is_postgres = raw_url.startswith('postgresql://')
-if is_postgres and '+psycopg' not in raw_url and '+psycopg2' not in raw_url:
-    raw_url = 'postgresql+psycopg://' + raw_url[len('postgresql://'):]
-if is_postgres and 'sslmode=' not in raw_url:
-    raw_url = f"{raw_url}{'&' if '?' in raw_url else '?'}sslmode=require"
-app.config['SQLALCHEMY_DATABASE_URI'] = raw_url
-engine_options = {
-    'pool_pre_ping': True,
-    'pool_recycle': int(os.environ.get('DB_POOL_RECYCLE', '300')),
-    'pool_size': int(os.environ.get('DB_POOL_SIZE', '5')),
-    'max_overflow': int(os.environ.get('DB_MAX_OVERFLOW', '5')),
-    'pool_timeout': int(os.environ.get('DB_POOL_TIMEOUT', '30')),
-}
-if is_postgres:
-    engine_options['connect_args'] = {'sslmode': 'require'}
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Sécurité : forcer la présence de secrets en production
-if not app.config['SECRET_KEY'] or app.config['SECRET_KEY'] == 'change_this_in_prod':
-    raise RuntimeError('SECRET_KEY doit être défini dans les variables d\'environnement !')
-if not app.config['SQLALCHEMY_DATABASE_URI'] or 'user:pass@localhost' in app.config['SQLALCHEMY_DATABASE_URI']:
-    raise RuntimeError('DATABASE_URL PostgreSQL doit être défini dans les variables d\'environnement Railway !')
-
-# Cookies de session sécurisés
-app.config['SESSION_COOKIE_SECURE'] = not app.debug
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-
-# Durée de vie des sessions et des tokens CSRF (alignées : un formulaire resté
-# ouvert plusieurs heures sur un stand festival ne doit pas échouer au submit
-# avec une session encore valide mais un jeton CSRF déjà expiré).
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
-app.config['WTF_CSRF_TIME_LIMIT'] = 8 * 3600
-
-# Génération du nonce CSP par requête
-@app.before_request
-def generate_csp_nonce():
-    g.csp_nonce = secrets.token_urlsafe(16)
-
-
-@app.context_processor
-def inject_csp_nonce():
-    return {'csp_nonce': getattr(g, 'csp_nonce', '')}
-
-
-# Headers HTTP de sécurité
-@app.after_request
-def set_security_headers(response):
-    nonce = getattr(g, 'csp_nonce', '')
-    response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload'
-    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), usb=(), payment=(), geolocation=()'
-    response.headers['Content-Security-Policy'] = (
-        "default-src 'self'; "
-        f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
-        "img-src 'self' data:; "
-        "object-src 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self'; "
-        "frame-ancestors 'self'; "
-    )
-    return response
-
-# Upload configuration
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30 MB
-
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
-csrf = CSRFProtect(app)
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["300 per minute"],
-    storage_uri=os.environ.get('REDIS_URL', 'memory://'),
-)
-
-@app.context_processor
-def inject_current_year():
-    return {'current_year': datetime.now(timezone.utc).year}
-
-@app.context_processor
-def inject_whatsapp_support_url():
-    return {'whatsapp_support_url': os.environ.get(
-        'WHATSAPP_SUPPORT_URL', 'https://chat.whatsapp.com/LNrbdbxcOsGGXGvfS65RmS'
-    )}
-
-@app.context_processor
-def inject_unread_count():
-    from flask_login import current_user
-    try:
-        if current_user.is_authenticated:
-            from messaging import total_unread
-            return {'unread_msg_count': total_unread(current_user.id)}
-    except Exception:
-        pass
-    return {'unread_msg_count': 0}
-
-login_manager = LoginManager(app)
-login_manager.login_view = 'main.auth'
-login_manager.login_message_category = 'info'
-
-# Import models and create tables
-import models
-from models import User, ItemPhoto
-
-
-@app.cli.command("index-photo-embeddings")
-@click.option("--force", is_flag=True, help="Recalculate all photos for the configured model version.")
-def index_photo_embeddings_command(force):
-    """Index missing photo embeddings; use --force after a model change."""
-    import click
-    from photo_embeddings import ensure_photo_embedding, current_model_version
-    count = 0
-    for photo in ItemPhoto.query.order_by(ItemPhoto.id).yield_per(50):
-        ensure_photo_embedding(photo, force=force)
-        count += 1
-        if count % 25 == 0:
-            db.session.commit()
-    db.session.commit()
-    click.echo(f"{count} photo(s) indexed for {current_model_version()}.")
-
-
-@app.cli.command("calibrate-matching")
-@click.option("--min-seuil", default=50, help="Seuil le plus bas balayé.")
-@click.option("--max-seuil", default=98, help="Seuil le plus haut balayé.")
-@click.option("--pas", default=5, help="Pas du balayage.")
-def calibrate_matching_command(min_seuil, max_seuil, pas):
-    """Mesure les seuils de matching sur les données réelles du festival.
-
-    Les valeurs par défaut de MATCH_CONFIG ont été calibrées sur un corpus
-    simulé. Cette commande les confronte au terrain en prenant les paires
-    validées (table `matches`) comme vrais positifs et les paires rejetées
-    (`rejected_pairs`) comme faux positifs, puis affiche pour chaque seuil
-    combien de paires seraient proposées, le rappel et la précision.
-
-    À lancer après la première demi-journée d'exploitation, une fois que les
-    agents ont validé et rejeté quelques dizaines de paires.
-    """
-    import matching
-    from models import Item, Status, Match, RejectedPair
-    from views import _item_pair_bonus, _compute_weighted_score, _embedding_similarity_pct
-
-    valides = {(m.lost_id, m.found_id) for m in Match.query.all()}
-    rejetes = {(r.lost_id, r.found_id) for r in RejectedPair.query.all()}
-    if not valides:
-        click.echo("Aucune paire validée : impossible de mesurer le rappel. "
-                   "Relancez après que les agents aient validé des correspondances.")
-        return
-
-    perdus = Item.query.filter_by(status=Status.LOST).all()
-    trouves = Item.query.filter_by(status=Status.FOUND).all()
-    click.echo(f"{len(perdus)} perdus × {len(trouves)} trouvés = "
-               f"{len(perdus) * len(trouves)} paires — "
-               f"{len(valides)} validée(s), {len(rejetes)} rejetée(s)")
-
-    fields_weights = matching.MATCH_CONFIG['fields_weights']
-    scores = {}
-    for lost in perdus:
-        for found in trouves:
-            base = matching.match_score(lost, found, fields_weights)
-            bonus = _item_pair_bonus(lost, found)
-            img = _embedding_similarity_pct(lost, found)
-            scores[(lost.id, found.id)] = _compute_weighted_score(base, img, bonus)
-
-    click.echo("")
-    click.echo(f"{'seuil':>6} {'proposées':>10} {'rappel':>8} {'précision':>10}  (sur paires jugées)")
-    for seuil in range(min_seuil, max_seuil + 1, pas):
-        retenues = {k for k, v in scores.items() if v >= seuil}
-        vp = len(retenues & valides)
-        fp = len(retenues & rejetes)
-        rappel = 100.0 * vp / len(valides)
-        precision = 100.0 * vp / (vp + fp) if (vp + fp) else float('nan')
-        click.echo(f"{seuil:>6} {len(retenues):>10} {rappel:>7.0f}% {precision:>9.1f}%")
-
-    actuel = matching.MATCH_CONFIG['threshold_default']
-    manquees = [k for k in valides if scores.get(k, 0.0) < actuel]
-    click.echo("")
-    click.echo(f"Seuil configuré actuellement : {actuel}")
-    if manquees:
-        click.echo(f"⚠ {len(manquees)} paire(s) validée(s) passeraient SOUS ce seuil :")
-        for lost_id, found_id in manquees[:20]:
-            click.echo(f"   perdu #{lost_id} ↔ trouvé #{found_id} : {scores.get((lost_id, found_id), 0.0)}")
-    else:
-        click.echo("✓ Toutes les paires validées sont au-dessus du seuil configuré.")
-
-
-with app.app_context():
-    db.create_all()
-    # Création sécurisée de la table headphone_loans si elle n'existe pas déjà
-    try:
-        engine = db.get_engine()
-        with engine.connect() as conn:
-            conn.execute(sqlalchemy.text('''
-                CREATE TABLE IF NOT EXISTS headphone_loans (
-                    id SERIAL PRIMARY KEY,
-                    first_name VARCHAR(100) NOT NULL,
-                    last_name VARCHAR(100) NOT NULL,
-                    phone VARCHAR(50) NOT NULL,
-                    deposit_type VARCHAR(20) NOT NULL,
-                    deposit_details VARCHAR(200),
-                    quantity INTEGER NOT NULL DEFAULT 1,
-                    deposit_amount NUMERIC(10,2),
-                    loan_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    return_date TIMESTAMP,
-                    signature TEXT
-                )
-            '''))
-            # Ajout automatique des colonnes manquantes (Railway, PostgreSQL)
-            # Ajoute quantity si manquant
-            result = conn.execute(sqlalchemy.text("""
-                SELECT column_name FROM information_schema.columns WHERE table_name='headphone_loans' AND column_name='quantity'
-            """))
-            if result.fetchone() is None:
-                conn.execute(sqlalchemy.text("ALTER TABLE headphone_loans ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1;"))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-            # Ajoute deposit_amount si manquant
-            result = conn.execute(sqlalchemy.text("""
-                SELECT column_name FROM information_schema.columns WHERE table_name='headphone_loans' AND column_name='deposit_amount'
-            """))
-            if result.fetchone() is None:
-                conn.execute(sqlalchemy.text("ALTER TABLE headphone_loans ADD COLUMN deposit_amount NUMERIC(10,2);"))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-            # Ajoute status si manquant
-            result = conn.execute(sqlalchemy.text("""
-                SELECT column_name FROM information_schema.columns WHERE table_name='headphone_loans' AND column_name='status'
-            """))
-            if result.fetchone() is None:
-                conn.execute(sqlalchemy.text("ALTER TABLE headphone_loans ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active';"))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-            # Ajoute previous_status si manquant
-            result = conn.execute(sqlalchemy.text("""
-                SELECT column_name FROM information_schema.columns WHERE table_name='headphone_loans' AND column_name='previous_status'
-            """))
-            if result.fetchone() is None:
-                conn.execute(sqlalchemy.text("ALTER TABLE headphone_loans ADD COLUMN previous_status VARCHAR(20);"))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-            # Ajoute id_card_photo si manquant
-            result = conn.execute(sqlalchemy.text("""
-                SELECT column_name FROM information_schema.columns WHERE table_name='headphone_loans' AND column_name='id_card_photo'
-            """))
-            if result.fetchone() is None:
-                conn.execute(sqlalchemy.text("ALTER TABLE headphone_loans ADD COLUMN id_card_photo TEXT;"))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-            # --- Ensure shuttle_settings columns exist ---
-            try:
-                # loop_enabled
-                result = conn.execute(sqlalchemy.text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name='shuttle_settings' AND column_name='loop_enabled'
-                """))
-                if result.fetchone() is None:
-                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN loop_enabled BOOLEAN NOT NULL DEFAULT FALSE;"))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-                # bidirectional_enabled
-                result = conn.execute(sqlalchemy.text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name='shuttle_settings' AND column_name='bidirectional_enabled'
-                """))
-                if result.fetchone() is None:
-                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN bidirectional_enabled BOOLEAN NOT NULL DEFAULT FALSE;"))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-                # constrain_to_today_slots
-                result = conn.execute(sqlalchemy.text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name='shuttle_settings' AND column_name='constrain_to_today_slots'
-                """))
-                if result.fetchone() is None:
-                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN constrain_to_today_slots BOOLEAN NOT NULL DEFAULT FALSE;"))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-                # display_direction
-                result = conn.execute(sqlalchemy.text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name='shuttle_settings' AND column_name='display_direction'
-                """))
-                if result.fetchone() is None:
-                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN display_direction VARCHAR(10) NOT NULL DEFAULT 'forward';"))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-                # display_base_stop_sequence
-                result = conn.execute(sqlalchemy.text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name='shuttle_settings' AND column_name='display_base_stop_sequence'
-                """))
-                if result.fetchone() is None:
-                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN display_base_stop_sequence INTEGER NULL;"))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-                # updated_at
-                result = conn.execute(sqlalchemy.text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name='shuttle_settings' AND column_name='updated_at'
-                """))
-                if result.fetchone() is None:
-                    conn.execute(sqlalchemy.text("ALTER TABLE shuttle_settings ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT NOW();"))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-            except Exception as e2:
-                print(f"[WARN] Impossible d'ajouter les colonnes shuttle_settings: {e2}", file=sys.stderr)
-            # --- Ensure products.image_filename exists (Goodies images) ---
-            try:
-                result = conn.execute(sqlalchemy.text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name='products' AND column_name='image_filename'
-                """))
-                if result.fetchone() is None:
-                    conn.execute(sqlalchemy.text("ALTER TABLE products ADD COLUMN image_filename VARCHAR(200);"))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-            except Exception as e3:
-                print(f"[WARN] Impossible d'ajouter la colonne products.image_filename: {e3}", file=sys.stderr)
-
-            # --- Ensure products image columns exist (DB-backed images) ---
-            try:
-                for col, ddl in [
-                    ('image_data', 'ALTER TABLE products ADD COLUMN image_data BYTEA;'),
-                    ('image_mime_type', 'ALTER TABLE products ADD COLUMN image_mime_type VARCHAR(100);'),
-                    ('image_original_filename', 'ALTER TABLE products ADD COLUMN image_original_filename VARCHAR(200);'),
-                ]:
-                    result = conn.execute(sqlalchemy.text(f"""
-                        SELECT column_name FROM information_schema.columns
-                        WHERE table_name='products' AND column_name='{col}'
-                    """))
-                    if result.fetchone() is None:
-                        conn.execute(sqlalchemy.text(ddl))
-                        conn.execute(sqlalchemy.text("COMMIT;"))
-            except Exception as e4:
-                print(f"[WARN] Impossible d'ajouter les colonnes image_* sur products: {e4}", file=sys.stderr)
-
-            # --- Ensure items photo columns exist (DB-backed images) ---
-            try:
-                for col, ddl in [
-                    ('photo_data', 'ALTER TABLE items ADD COLUMN photo_data BYTEA;'),
-                    ('photo_mime_type', 'ALTER TABLE items ADD COLUMN photo_mime_type VARCHAR(100);'),
-                    ('photo_original_filename', 'ALTER TABLE items ADD COLUMN photo_original_filename VARCHAR(200);'),
-                    ('return_photo_data', 'ALTER TABLE items ADD COLUMN return_photo_data BYTEA;'),
-                    ('return_photo_mime_type', 'ALTER TABLE items ADD COLUMN return_photo_mime_type VARCHAR(100);'),
-                    ('return_photo_original_filename', 'ALTER TABLE items ADD COLUMN return_photo_original_filename VARCHAR(200);'),
-                ]:
-                    result = conn.execute(sqlalchemy.text(f"""
-                        SELECT column_name FROM information_schema.columns
-                        WHERE table_name='items' AND column_name='{col}'
-                    """))
-                    if result.fetchone() is None:
-                        conn.execute(sqlalchemy.text(ddl))
-                        conn.execute(sqlalchemy.text("COMMIT;"))
-            except Exception as e5:
-                print(f"[WARN] Impossible d'ajouter les colonnes photo_* sur items: {e5}", file=sys.stderr)
-
-            # --- Ensure item_photos data columns exist (DB-backed images) ---
-            try:
-                for col, ddl in [
-                    ('data', 'ALTER TABLE item_photos ADD COLUMN data BYTEA;'),
-                    ('mime_type', 'ALTER TABLE item_photos ADD COLUMN mime_type VARCHAR(100);'),
-                    ('original_filename', 'ALTER TABLE item_photos ADD COLUMN original_filename VARCHAR(200);'),
-                    ('perceptual_hash', 'ALTER TABLE item_photos ADD COLUMN perceptual_hash VARCHAR(64);'),
-                ]:
-                    result = conn.execute(sqlalchemy.text(f"""
-                        SELECT column_name FROM information_schema.columns
-                        WHERE table_name='item_photos' AND column_name='{col}'
-                    """))
-                    if result.fetchone() is None:
-                        conn.execute(sqlalchemy.text(ddl))
-                        conn.execute(sqlalchemy.text("COMMIT;"))
-                conn.execute(sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ix_item_photos_perceptual_hash ON item_photos (perceptual_hash);"
-                ))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-            except Exception as e6:
-                print(f"[WARN] Impossible d'ajouter les colonnes data/mime_type sur item_photos: {e6}", file=sys.stderr)
-
-            # --- Messagerie interne : enum types + tables ---
-            try:
-                # Types enum PostgreSQL (idempotents)
-                conn.execute(sqlalchemy.text("""
-                    DO $$ BEGIN
-                        CREATE TYPE convtype AS ENUM ('direct', 'group');
-                    EXCEPTION WHEN duplicate_object THEN null;
-                    END $$;
-                """))
-                conn.execute(sqlalchemy.text("""
-                    DO $$ BEGIN
-                        CREATE TYPE participantrole AS ENUM ('member', 'admin');
-                    EXCEPTION WHEN duplicate_object THEN null;
-                    END $$;
-                """))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-
-                # Table conversations
-                conn.execute(sqlalchemy.text("""
-                    CREATE TABLE IF NOT EXISTS conversations (
-                        id SERIAL PRIMARY KEY,
-                        type convtype NOT NULL DEFAULT 'direct',
-                        name VARCHAR(120),
-                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                        is_archived BOOLEAN NOT NULL DEFAULT FALSE
-                    );
-                """))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-
-                # Table conversation_participants
-                conn.execute(sqlalchemy.text("""
-                    CREATE TABLE IF NOT EXISTS conversation_participants (
-                        id SERIAL PRIMARY KEY,
-                        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        role participantrole NOT NULL DEFAULT 'member',
-                        joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        last_read_at TIMESTAMP
-                    );
-                """))
-                conn.execute(sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ix_cp_conv ON conversation_participants(conversation_id);"
-                ))
-                conn.execute(sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ix_cp_user ON conversation_participants(user_id);"
-                ))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-
-                # Table messages
-                conn.execute(sqlalchemy.text("""
-                    CREATE TABLE IF NOT EXISTS messages (
-                        id SERIAL PRIMARY KEY,
-                        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        body TEXT NOT NULL,
-                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                        pinned BOOLEAN NOT NULL DEFAULT FALSE,
-                        pinned_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL
-                    );
-                """))
-                conn.execute(sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ix_msg_conv ON messages(conversation_id);"
-                ))
-                conn.execute(sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ix_msg_sender ON messages(sender_id);"
-                ))
-                conn.execute(sqlalchemy.text(
-                    "CREATE INDEX IF NOT EXISTS ix_msg_created ON messages(created_at);"
-                ))
-                conn.execute(sqlalchemy.text("COMMIT;"))
-                print("[INFO] Tables messagerie vérifiées/créées avec succès.", file=sys.stderr)
-            except Exception as e_msg:
-                print(f"[WARN] Impossible de créer les tables messagerie : {e_msg}", file=sys.stderr)
-
-            # --- Ensure users.is_vendor_goodies exists ---
-            try:
-                result = conn.execute(sqlalchemy.text("""
-                    SELECT column_name FROM information_schema.columns
-                    WHERE table_name='users' AND column_name='is_vendor_goodies'
-                """))
-                if result.fetchone() is None:
-                    conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN is_vendor_goodies BOOLEAN NOT NULL DEFAULT FALSE;"))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-            except Exception as e_vendor:
-                print(f"[WARN] Impossible d'ajouter la colonne users.is_vendor_goodies: {e_vendor}", file=sys.stderr)
-
-            # --- Ensure items structured matching columns exist ---
-            for col_def in [
-                ("item_color",       "VARCHAR(150)"),
-                ("item_brand",       "VARCHAR(100)"),
-                ("item_distinctive", "VARCHAR(200)"),
-            ]:
-                col_name, col_type = col_def
-                try:
-                    res = conn.execute(sqlalchemy.text(
-                        "SELECT column_name FROM information_schema.columns "
-                        f"WHERE table_name='items' AND column_name='{col_name}'"
-                    ))
-                    if res.fetchone() is None:
-                        conn.execute(sqlalchemy.text(
-                            f"ALTER TABLE items ADD COLUMN {col_name} {col_type};"
-                        ))
-                        conn.execute(sqlalchemy.text("COMMIT;"))
-                        print(f"[INFO] Colonne items.{col_name} ajoutée.", file=sys.stderr)
-                except Exception as e_col:
-                    print(f"[WARN] Impossible d'ajouter items.{col_name}: {e_col}", file=sys.stderr)
-
-            # --- Ensure categories.family exists (regroupement + matching) ---
-            try:
-                res = conn.execute(sqlalchemy.text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name='categories' AND column_name='family'"
-                ))
-                if res.fetchone() is None:
-                    conn.execute(sqlalchemy.text(
-                        "ALTER TABLE categories ADD COLUMN family VARCHAR(50);"
-                    ))
-                    conn.execute(sqlalchemy.text(
-                        "CREATE INDEX IF NOT EXISTS ix_categories_family ON categories(family);"
-                    ))
-                    conn.execute(sqlalchemy.text("COMMIT;"))
-                    print("[INFO] Colonne categories.family ajoutée.", file=sys.stderr)
-            except Exception as e_fam:
-                print(f"[WARN] Impossible d'ajouter categories.family: {e_fam}", file=sys.stderr)
-
-        # Renseigner la famille des catégories qui n'en ont pas encore. Idempotent :
-        # ne touche que les lignes NULL, donc une famille corrigée à la main reste.
-        try:
-            from models import Category
-            from categories_families import CATEGORY_TO_FAMILY, guess_family
-            manquantes = Category.query.filter(Category.family.is_(None)).all()
-            for cat in manquantes:
-                cat.family = CATEGORY_TO_FAMILY.get(cat.name) or guess_family(cat.name)
-            if manquantes:
-                db.session.commit()
-                print(f"[INFO] Famille renseignée pour {len(manquantes)} catégorie(s).", file=sys.stderr)
-        except Exception as e_backfill:
-            db.session.rollback()
-            print(f"[WARN] Impossible de renseigner les familles: {e_backfill}", file=sys.stderr)
-
-    except Exception as e:
-        print(f"[WARN] Impossible de créer la table headphone_loans automatiquement : {e}", file=sys.stderr)
-
-@login_manager.user_loader
-def load_user(user_id):
-    return db.session.get(User, int(user_id))
-
-# Register blueprints
-import views
-app.register_blueprint(views.bp)
-import admin
-
-# Register API blueprints
-from api.trains import bp as trains_bp
-app.register_blueprint(trains_bp)
-app.register_blueprint(admin.bp_admin)
-
-# --- Navette admin et API ---
-
-from api_navette import api_navette_bp
-app.register_blueprint(api_navette_bp)
-import admin_shuttle
-app.register_blueprint(admin_shuttle.bp)
-
-import messaging
-app.register_blueprint(messaging.bp_msg)
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+{% extends 'base.html' %}
+{% block title %}Nouveau groupe{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="d-flex align-items-center gap-2 mb-4">
+      <a href="{{ url_for('messaging.inbox') }}" class="btn btn-sm btn-outline-secondary" aria-label="Retour à la messagerie">
+        <i class="bi bi-arrow-left"></i>
+      </a>
+      <h2 class="fw-bold mb-0"><i class="bi bi-people-fill text-primary me-2"></i>Créer un groupe</h2>
+    </div>
+    <div class="card shadow-sm border-0 rounded-4">
+      <div class="card-body p-4">
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-4">
+            <label class="form-label fw-semibold" for="groupName"><i class="bi bi-pencil me-1"></i>Nom du groupe <span class="text-danger">*</span></label>
+            <input type="text" id="groupName" name="name" class="form-control form-control-lg" placeholder="Ex : Équipe Technique, Bénévoles Zone A…" maxlength="120" required autofocus value="{{ name_val or '' }}">
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold"><i class="bi bi-person-plus me-1"></i>Membres <span class="text-danger">*</span></label>
+            <p class="text-muted small mb-2">Sélectionnez au moins un autre membre. Vous serez automatiquement admin du groupe.</p>
+            <div class="border rounded-3 p-3" style="max-height:300px;overflow-y:auto;">
+              {% if all_users %}
+                {% for u in all_users %}
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="members" value="{{ u.id }}" id="u{{ u.id }}" {% if selected_ids and u.id in selected_ids %}checked{% endif %}>
+                  <label class="form-check-label d-flex align-items-center gap-2" for="u{{ u.id }}">
+                    <div class="avatar-sm rounded-circle d-inline-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+                         style="width:28px;height:28px;font-size:.75rem;background:linear-gradient(135deg,#6c757d,#adb5bd);">
+                      {{ (u.first_name[:1])|upper }}
+                    </div>
+                    <span>{{ u.first_name }} {{ u.last_name }}</span>
+                    {% if u.is_admin %}<span class="badge bg-primary" style="font-size:.7rem;">Admin</span>{% endif %}
+                  </label>
+                </div>
+                {% endfor %}
+              {% else %}
+                <p class="text-muted small">Aucun autre utilisateur disponible.</p>
+              {% endif %}
+            </div>
+            <div class="d-flex gap-2 mt-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAll">Tout sélectionner</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAll">Tout désélectionner</button>
+            </div>
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg rounded-3">
+              <i class="bi bi-people-fill me-2"></i>Créer le groupe
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script nonce="{{ csp_nonce }}">
+  document.getElementById('selectAll').addEventListener('click', function() {
+    document.querySelectorAll('input[name="members"]').forEach(cb => cb.checked = true);
+  });
+  document.getElementById('deselectAll').addEventListener('click', function() {
+    document.querySelectorAll('input[name="members"]').forEach(cb => cb.checked = false);
+  });
+</script>
+{% endblock %}

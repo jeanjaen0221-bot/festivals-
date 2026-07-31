@@ -1,0 +1,422 @@
+// JS moderne pour la page horaires de train (iRail) avec affichage split-flap (aéroport)
+let suggestionsTimeout = null;
+let autoRefreshId = null;
+let currentStation = null; // id or name sent to backend
+let currentStationName = null; // display name for UI
+let allStations = [];
+let selectedStationId = null;
+let rateRetryId = null;
+const openStopsSet = new Set(); // vehicle IDs with expanded stops panel
+
+function showSuggestions(list) {
+  const suggDiv = document.getElementById('station-suggestions');
+  suggDiv.innerHTML = '';
+  if (!list.length) { suggDiv.style.display = 'none'; return; }
+  list.forEach(station => {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'list-group-item list-group-item-action';
+    el.textContent = station.name;
+    el.onclick = () => {
+      document.getElementById('station-input').value = station.name;
+      selectedStationId = station.id || null;
+      suggDiv.innerHTML = '';
+      suggDiv.style.display = 'none';
+    };
+    suggDiv.appendChild(el);
+  });
+  suggDiv.style.display = 'block';
+}
+
+function normalizeStr(s){
+  if (!s) return '';
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[’'\-]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function localStationSuggestions(query){
+  if (!query) return [];
+  const nq = normalizeStr(query);
+  const starts = allStations.filter(s => normalizeStr(s.name).startsWith(nq));
+  const contains = allStations.filter(s => !normalizeStr(s.name).startsWith(nq) && normalizeStr(s.name).includes(nq));
+  return [...starts, ...contains].slice(0, 12);
+}
+
+function fmtTime(tsSec) {
+  return new Date(tsSec * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+function fmtDateDDMMYYFromEpoch(tsSec){
+  const d = new Date(tsSec * 1000);
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}${mm}${yy}`;
+}
+
+function fmtEpochHHMM(tsSec, delaySec) {
+  if (!tsSec) return '';
+  return new Date((tsSec + (delaySec || 0)) * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+function normalizeStopName(s) {
+  return normalizeStr(s);
+}
+
+async function toggleStops(vehicleId, destName, rowEl) {
+  // Remove any other open stops rows (only one open at a time)
+  document.querySelectorAll('.stops-row').forEach(el => {
+    if (el.dataset.vehicle !== vehicleId) {
+      openStopsSet.delete(el.dataset.vehicle);
+      el.remove();
+    }
+  });
+
+  // Toggle: if already open, close it
+  const existing = rowEl.nextElementSibling;
+  if (existing && existing.classList.contains('stops-row') && existing.dataset.vehicle === vehicleId) {
+    openStopsSet.delete(vehicleId);
+    existing.remove();
+    return;
+  }
+
+  // Create placeholder row
+  const stopsRow = document.createElement('div');
+  stopsRow.className = 'stops-row';
+  stopsRow.dataset.vehicle = vehicleId;
+  stopsRow.innerHTML = `<div class="stops-inline"><span class="stops-label"><i class="bi bi-signpost-split"></i> Arrêts :</span><span class="text-muted" style="font-size:.85rem"><span class="spinner-border spinner-border-sm me-1" role="status"></span>Chargement…</span></div>`;
+  rowEl.insertAdjacentElement('afterend', stopsRow);
+  openStopsSet.add(vehicleId);
+
+  try {
+    const resp = await fetch(`/api/trains/vehicle?id=${encodeURIComponent(vehicleId)}`);
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}));
+      if (resp.status === 429) {
+        stopsRow.innerHTML = `<span class="stops-err"><i class="bi bi-hourglass-split"></i> API saturée, réessayez dans ${d.retry_after || 30} s.</span>`;
+      } else {
+        stopsRow.innerHTML = `<span class="stops-err"><i class="bi bi-exclamation-triangle"></i> Impossible de charger les arrêts.</span>`;
+      }
+      return;
+    }
+    const data = await resp.json();
+    if (data.error) { stopsRow.innerHTML = `<span class="stops-err">${data.error}</span>`; return; }
+
+    const allStops = data.stops || [];
+    const normOrigin = normalizeStopName(currentStationName);
+    const normDest   = normalizeStopName(destName);
+
+    // Find origin and destination indices
+    const idxOrigin = allStops.findIndex(s => normalizeStopName(s.name) === normOrigin);
+    const idxDest   = allStops.findIndex(s => normalizeStopName(s.name) === normDest);
+
+    let slice;
+    if (idxOrigin >= 0 && idxDest > idxOrigin) {
+      // Origin found before destination: show stops after origin up to and including destination
+      slice = allStops.slice(idxOrigin, idxDest + 1);
+    } else if (idxDest >= 0) {
+      // Couldn't pin origin precisely — show all stops up to destination
+      slice = allStops.slice(0, idxDest + 1);
+    } else {
+      // Fallback: show all stops
+      slice = allStops;
+    }
+
+    if (!slice.length) {
+      stopsRow.innerHTML = `<span class="stops-label">Aucun arrêt intermédiaire trouvé.</span>`;
+      return;
+    }
+
+    const chips = slice.map((s, i) => {
+      const isOrigin = i === 0 && idxOrigin >= 0;
+      const isDest   = i === slice.length - 1;
+      const timeStr  = fmtEpochHHMM(s.time, s.delay);
+      const delayStr = s.delay > 0 ? `<span class="stop-delay">+${Math.round(s.delay/60)}'</span>` : '';
+      const cls = ['stop-chip', s.passed ? 'passed' : '', isOrigin ? 'origin' : '', isDest ? 'dest' : ''].filter(Boolean).join(' ');
+      return `<span class="${cls}"><b>${s.name}</b>${timeStr ? `<span class="stop-time">${timeStr}</span>` : ''}${delayStr}</span>`;
+    });
+
+    const parts = [];
+    chips.forEach((chip, i) => {
+      parts.push(chip);
+      if (i < chips.length - 1) parts.push(`<span class="stop-arrow">›</span>`);
+    });
+
+    stopsRow.innerHTML = `<div class="stops-inline"><span class="stops-label"><i class="bi bi-signpost-split"></i> Arrêts :</span>${parts.join('')}</div>`;
+  } catch (e) {
+    stopsRow.innerHTML = `<span class="stops-err"><i class="bi bi-exclamation-triangle"></i> Erreur réseau.</span>`;
+  }
+}
+
+function renderFlapBoard(container, stationName, departures, bannerText, opts={}) {
+  const animate = opts.animate !== undefined ? opts.animate : true;
+  let html = `
+    <div class='flap-board'>
+      <div class='d-flex justify-content-between align-items-center px-1 pb-2'>
+        <h2 class='mb-0 station-title'><i class='bi bi-clock-history'></i> Prochains départs de <b>${stationName}</b></h2>
+        <div class='train-autorefresh'>MAJ auto 30 s</div>
+      </div>
+      ${bannerText ? `<div class='px-1 pb-2 text-warning small'>${bannerText}</div>` : ''}
+      <div class='d-flex gap-1 align-items-center px-1 pb-1' style='font-size:.8rem;color:#6c757d'>
+        <i class='bi bi-hand-index-thumb'></i> Cliquer sur une destination pour voir les gares intermédiaires
+      </div>
+      <div class='flap-header'>
+        <div class='flap-cell center muted'>Heure</div>
+        <div class='flap-cell muted'>Destination</div>
+        <div class='flap-cell center muted'>Voie</div>
+        <div class='flap-cell center muted'>Type</div>
+        <div class='flap-cell center muted'>Retard</div>
+      </div>
+  `;
+  departures.forEach(dep => {
+    const time = fmtTime(dep.time);
+    const platform = dep.platform || '-';
+    const type = (dep.vehicle || '').replace('BE.NMBS.', '');
+    const delay = dep.delay ? '+' + Math.round(dep.delay/60) + ' min' : '';
+    const dest = dep.destination || dep.station || '';
+    const vehicleId = dep.vehicle || '';
+    const destAttr = dest.replace(/'/g, '&apos;');
+    const hasVehicle = vehicleId ? '' : ' style="pointer-events:none;text-decoration:none;opacity:.7"';
+    html += `
+      <div class='flap-row' data-vehicle='${vehicleId}' data-dest='${destAttr}'>
+        <div class='flap-cell center ${animate ? 'flip' : ''}'>${time}</div>
+        <div class='flap-cell ${animate ? 'flip' : ''} ${vehicleId ? 'clickable-dest' : ''}' title='${vehicleId ? 'Cliquer pour voir les gares intermédiaires' : ''}' data-vehicle='${vehicleId}' data-dest='${destAttr}'${hasVehicle}>${dest}</div>
+        <div class='flap-cell center ${animate ? 'flip' : ''}'>${platform}</div>
+        <div class='flap-cell center ${animate ? 'flip' : ''}'>${type}</div>
+        <div class='flap-cell center ${animate ? 'flip' : ''} ${delay ? 'delay' : ''}'>${delay}</div>
+      </div>
+    `;
+  });
+  html += `</div>`;
+  // Avoid unnecessary DOM work if nothing changed
+  const prev = container.getAttribute('data-flap-html');
+  if (prev !== html) {
+    container.innerHTML = html;
+    container.setAttribute('data-flap-html', html);
+    // Attach click handlers to destination cells
+    container.querySelectorAll('.clickable-dest').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const vid = cell.dataset.vehicle;
+        const dname = cell.dataset.dest;
+        if (!vid) return;
+        const row = cell.closest('.flap-row');
+        toggleStops(vid, dname, row);
+      });
+    });
+    // Re-open previously expanded stops after a refresh
+    if (openStopsSet.size > 0) {
+      container.querySelectorAll('.flap-row[data-vehicle]').forEach(row => {
+        const vid = row.dataset.vehicle;
+        if (vid && openStopsSet.has(vid)) {
+          const dname = row.dataset.dest || '';
+          toggleStops(vid, dname, row);
+        }
+      });
+    }
+  }
+}
+
+function handleLiveboardRateLimit(resultsDiv, retryAfterSec, retryFn) {
+  const ra = Number(retryAfterSec || 30);
+  resultsDiv.innerHTML = `<div class='alert alert-warning'>L'API trains est momentanément saturée. Nouvelle tentative dans ${ra}s…</div>`;
+  if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
+  if (rateRetryId) clearTimeout(rateRetryId);
+  rateRetryId = setTimeout(retryFn, ra * 1000);
+}
+
+async function loadLiveboard(stationParam, resultsDiv, displayName, options={}) {
+  const showSpinner = options.showSpinner !== undefined ? options.showSpinner : true;
+  if (showSpinner) {
+    resultsDiv.innerHTML = '<div class="text-center py-4"><div class="spinner-border" role="status"></div> Chargement...</div>';
+  }
+  try {
+    const resp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}`);
+    if (resp.status === 429) {
+      const d = await resp.json().catch(()=>({}));
+      handleLiveboardRateLimit(resultsDiv, d.retry_after, () => loadLiveboard(stationParam, resultsDiv, displayName));
+      return;
+    }
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    const raw = data.departures;
+    let list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.departure) ? raw.departure : []);
+    if (!list.length) {
+      // Fallback 1: retry with fast=false
+      const resp2 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}&fast=false`);
+      if (resp2.status === 429) {
+        const d2 = await resp2.json().catch(()=>({}));
+        handleLiveboardRateLimit(resultsDiv, d2.retry_after, () => loadLiveboard(stationParam, resultsDiv, displayName));
+        return;
+      }
+      const data2 = await resp2.json();
+      if (!data2.error) {
+        const raw2 = data2.departures;
+        const list2 = Array.isArray(raw2) ? raw2 : (raw2 && Array.isArray(raw2.departure) ? raw2.departure : []);
+        if (list2 && list2.length) {
+          renderFlapBoard(resultsDiv, displayName || stationParam, list2.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs.", { animate: true });
+          return;
+        }
+      }
+      // Fallback 1b: resolve station id using backend stations search, then retry fast=false
+      try {
+        const typed = (document.getElementById('station-input')?.value || '').trim();
+        if (typed) {
+          const rs = await fetch(`/api/trains/stations?lang=fr&only_be=1&q=${encodeURIComponent(typed)}`);
+          const ds = await rs.json();
+          const best = Array.isArray(ds.stations) && ds.stations.length ? ds.stations[0] : null;
+          if (best && best.id) {
+            const r3 = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(best.id)}&fast=false`);
+            if (r3.status === 429) {
+              const d3j = await r3.json().catch(()=>({}));
+              handleLiveboardRateLimit(resultsDiv, d3j.retry_after, () => loadLiveboard(best.id, resultsDiv, best.name || typed));
+              return;
+            }
+            const d3 = await r3.json();
+            const rw3 = d3.departures;
+            const l3 = Array.isArray(rw3) ? rw3 : (rw3 && Array.isArray(rw3.departure) ? rw3.departure : []);
+            if (l3 && l3.length) { renderFlapBoard(resultsDiv, best.name || typed, l3.slice(0,3), "Aucun train à l'heure demandée — affichage des 3 prochains départs."); return; }
+          }
+        }
+      } catch(e) {}
+      // Fallback 2: probe next hours (+1h .. +6h) with fast=false using epoch time
+      const now = Math.floor(Date.now() / 1000);
+      for (let h = 1; h <= 6; h++) {
+        const t = now + h * 3600;
+        try {
+          const date = fmtDateDDMMYYFromEpoch(t);
+          const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}&fast=false&time=${t}&date=${date}`);
+          if (rp.status === 429) {
+            const dj2 = await rp.json().catch(()=>({}));
+            handleLiveboardRateLimit(resultsDiv, dj2.retry_after, () => loadLiveboard(stationParam, resultsDiv, displayName));
+            return;
+          }
+          const dj = await rp.json();
+          if (!dj.error) {
+            const rw = dj.departures;
+            const lst = Array.isArray(rw) ? rw : (rw && Array.isArray(rw.departure) ? rw.departure : []);
+            if (lst && lst.length) {
+              const when = new Date(t * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+              renderFlapBoard(resultsDiv, displayName || stationParam, lst.slice(0,3), `Aucun train à l'heure demandée — prochains départs vers ${when}.`, { animate: true });
+              return;
+            }
+          }
+        } catch (e) {}
+      }
+      // Fallback 3: probe anchor hours 06:00, 07:00, 08:00 (today if upcoming, else tomorrow)
+      try {
+        const nowD = new Date();
+        const anchors = [6,7,8];
+        const candidates = [];
+        const today = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate());
+        anchors.forEach(hh => {
+          const dt = new Date(today.getTime());
+          dt.setHours(hh, 0, 0, 0);
+          if (dt.getTime() / 1000 > now) candidates.push(dt);
+        });
+        if (!candidates.length) {
+          const tomorrow = new Date(today.getTime() + 24*3600*1000);
+          anchors.forEach(hh => {
+            const dt2 = new Date(tomorrow.getTime());
+            dt2.setHours(hh, 0, 0, 0);
+            candidates.push(dt2);
+          });
+        }
+        for (const dt of candidates) {
+          const t = Math.floor(dt.getTime()/1000);
+          const date = fmtDateDDMMYYFromEpoch(t);
+          const rp = await fetch(`/api/trains/liveboard?station=${encodeURIComponent(stationParam)}&fast=false&time=${t}&date=${date}`);
+          if (rp.status === 429) {
+            const dj2 = await rp.json().catch(()=>({}));
+            handleLiveboardRateLimit(resultsDiv, dj2.retry_after, () => loadLiveboard(stationParam, resultsDiv, displayName));
+            return;
+          }
+          const dj = await rp.json();
+          if (!dj.error) {
+            const rw = dj.departures;
+            const lst = Array.isArray(rw) ? rw : (rw && Array.isArray(rw.departure) ? rw.departure : []);
+            if (lst && lst.length) {
+              const when = dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+              renderFlapBoard(resultsDiv, displayName || stationParam, lst.slice(0,3), `Aucun train à l'heure demandée — prochains départs vers ${when}.`, { animate: true });
+              return;
+            }
+          }
+        }
+      } catch(e) {}
+      resultsDiv.innerHTML = '<div class="alert alert-warning">Aucun départ trouvé pour cette gare.</div>';
+      return;
+    }
+    // On normal load, animate on first render (when spinner visible), else no animation
+    renderFlapBoard(resultsDiv, displayName || stationParam, list.slice(0, 12), null, { animate: showSpinner });
+  } catch (err) {
+    // Handle backend explicit rate_limited JSON errors (e.g., 200 with error string)
+    if (String(err.message).includes('rate_limited')) {
+      handleLiveboardRateLimit(resultsDiv, 30, () => loadLiveboard(stationParam, resultsDiv, displayName));
+    } else {
+      resultsDiv.innerHTML = `<div class='alert alert-danger'>Erreur : ${err.message || 'Impossible de récupérer les horaires.'}</div>`;
+    }
+  }
+}
+
+async function resolveBestStation(typed){
+  // Try local list first
+  let best = localStationSuggestions(typed)[0];
+  if (best) return best;
+  try {
+    const rs = await fetch(`/api/trains/stations?lang=fr&only_be=1&q=${encodeURIComponent(typed)}`);
+    const ds = await rs.json();
+    if (Array.isArray(ds.stations) && ds.stations.length) return ds.stations[0];
+  } catch(e) {}
+  return { id: null, name: typed };
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('station-input');
+  const form = document.getElementById('station-search-form');
+  const resultsDiv = document.getElementById('train-results');
+  const suggDiv = document.getElementById('station-suggestions');
+
+  // Preload stations list (FR, only Belgian stations)
+  (async () => {
+    try {
+      const r = await fetch('/api/trains/stations?lang=fr&only_be=1');
+      const d = await r.json();
+      if (Array.isArray(d.stations)) allStations = d.stations;
+    } catch (e) {}
+  })();
+
+  input.addEventListener('input', async e => {
+    const val = input.value.trim();
+    clearTimeout(suggestionsTimeout);
+    if (val.length < 2) { suggDiv.innerHTML=''; suggDiv.style.display='none'; return; }
+    suggestionsTimeout = setTimeout(async () => {
+      const suggestions = localStationSuggestions(val);
+      showSuggestions(suggestions);
+    }, 250);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!suggDiv.contains(e.target) && e.target !== input) {
+      suggDiv.innerHTML = '';
+      suggDiv.style.display = 'none';
+    }
+  });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const typed = input.value.trim();
+    if (!typed) return;
+    // Resolve to id + display name before querying
+    let best = null;
+    if (selectedStationId) {
+      best = { id: selectedStationId, name: typed };
+    } else {
+      best = await resolveBestStation(typed);
+    }
+    currentStation = best.id || best.name || typed;
+    currentStationName = best.name || typed;
+    if (autoRefreshId) { clearInterval(autoRefreshId); autoRefreshId = null; }
+    await loadLiveboard(currentStation, resultsDiv, currentStationName, { showSpinner: true });
+    autoRefreshId = setInterval(() => {
+      if (currentStation) loadLiveboard(currentStation, resultsDiv, currentStationName, { showSpinner: false });
+    }, 30000);
+  });
+});

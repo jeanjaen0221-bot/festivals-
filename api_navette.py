@@ -1,84 +1,150 @@
-from flask import Blueprint, jsonify
-from datetime import date
-from models import ShuttleScheduleDay, ShuttleScheduleSlot, ShuttleRouteStop, ShuttleSettings
-from app import limiter
+{% extends 'base.html' %}
+{% block title %}Messagerie{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h2 class="fw-bold mb-0">
+    <i class="bi bi-chat-dots text-primary me-2"></i>Messagerie
+    {% if show_archived %}<span class="badge bg-warning text-dark ms-2" style="font-size:.65rem;">Archivées</span>{% endif %}
+  </h2>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if current_user.is_admin %}
+      {% if show_archived %}
+        <a href="{{ url_for('messaging.inbox') }}" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-arrow-left me-1"></i>Retour inbox
+        </a>
+      {% else %}
+        <a href="{{ url_for('messaging.inbox', show_archived=1) }}" class="btn btn-sm btn-outline-warning">
+          <i class="bi bi-archive me-1"></i>Archivées
+        </a>
+      {% endif %}
+    {% endif %}
+    {% if not show_archived %}
+    <a href="{{ url_for('messaging.new_group') }}" class="btn btn-outline-primary">
+      <i class="bi bi-people-fill me-1"></i> Nouveau groupe
+    </a>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newDirectModal">
+      <i class="bi bi-chat-plus me-1"></i> Nouveau message
+    </button>
+    {% endif %}
+  </div>
+</div>
 
-api_navette_bp = Blueprint('api_navette', __name__)
+{% if convs %}
+<div class="list-group shadow-sm rounded-4">
+  {% for c in convs %}
+  <div class="list-group-item d-flex align-items-center gap-2 py-3 px-3 {% if c.unread > 0 %}bg-light fw-semibold{% endif %} {% if loop.first %}rounded-top-4{% endif %} {% if loop.last %}rounded-bottom-4{% endif %}">
+    <a href="{{ url_for('messaging.conversation', conv_id=c.conv.id) }}" class="d-flex align-items-center gap-3 flex-grow-1 min-width-0 text-decoration-none text-reset">
+    <div class="flex-shrink-0">
+      {% if c.conv.type.value == 'group' %}
+        <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+             style="width:44px;height:44px;background:linear-gradient(135deg,#6f42c1,#0d6efd);font-size:1.1rem;">
+          <i class="bi bi-people-fill"></i>
+        </div>
+      {% else %}
+        {% set initials = (c.display_name[:1])|upper %}
+        <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+             style="width:44px;height:44px;background:linear-gradient(135deg,#0d6efd,#0dcaf0);font-size:1.1rem;">
+          {{ initials }}
+        </div>
+      {% endif %}
+    </div>
+    <div class="flex-grow-1 min-width-0">
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="text-truncate {% if c.unread > 0 %}fw-bold{% endif %}">
+          {% if c.conv.type.value == 'group' %}<i class="bi bi-people text-purple me-1" style="color:#6f42c1;"></i>{% endif %}
+          {{ c.display_name }}
+        </span>
+        <small class="text-muted ms-2 flex-shrink-0">
+          {% if c.last_ts %}{{ c.last_ts.strftime('%d/%m %H:%M') }}{% endif %}
+        </small>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-1">
+        <small class="text-muted text-truncate">
+          {% if c.last_msg %}
+            {% if not c.last_msg.is_deleted %}
+              {% if c.last_msg.sender_id == current_user.id %}<span class="text-primary">Moi :</span>{% endif %}
+              {{ c.last_msg.body[:60] }}{% if c.last_msg.body|length > 60 %}…{% endif %}
+            {% else %}
+              <em>Message supprimé</em>
+            {% endif %}
+          {% else %}
+            <em>Nouvelle conversation</em>
+          {% endif %}
+        </small>
+        {% if c.unread > 0 %}
+          <span class="badge bg-danger rounded-pill ms-2 flex-shrink-0">{{ c.unread }}</span>
+        {% endif %}
+      </div>
+    </div>
+    </a><!-- end clickable area -->
+    {% if current_user.is_admin %}
+    <div class="flex-shrink-0 ms-1">
+      <div class="dropdown">
+        <button class="btn btn-link p-0 text-muted" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions admin">
+          <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:.9rem;min-width:180px;">
+          <li>
+            <form method="POST" action="{{ url_for('messaging.archive_conversation', conv_id=c.conv.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="dropdown-item">
+                <i class="bi bi-archive me-2 {% if c.conv.is_archived %}text-success{% else %}text-warning{% endif %}"></i>
+                {% if c.conv.is_archived %}Désarchiver{% else %}Archiver{% endif %}
+              </button>
+            </form>
+          </li>
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <form method="POST" action="{{ url_for('messaging.delete_conversation', conv_id=c.conv.id) }}"
+                  onsubmit="return confirm('Supprimer définitivement cette conversation et tous ses messages ?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="dropdown-item text-danger">
+                <i class="bi bi-trash3 me-2"></i>Supprimer définitivement
+              </button>
+            </form>
+          </li>
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-chat-square-dots display-3 mb-3 d-block"></i>
+  <p class="fs-5">Aucune conversation pour le moment.</p>
+  <p>Démarrez un message direct ou créez un groupe.</p>
+</div>
+{% endif %}
 
-@api_navette_bp.route('/api/navette/schedule')
-@limiter.limit("60 per minute")
-def navette_schedule():
-    days = ShuttleScheduleDay.query.order_by(ShuttleScheduleDay.date).all()
-    result = []
-    for day in days:
-        slots = [
-            {
-                'start_time': slot.start_time.strftime('%H:%M'),
-                'end_time': slot.end_time.strftime('%H:%M'),
-                'from_location': slot.from_location,
-                'to_location': slot.to_location,
-                'note': slot.note or ''
-            }
-            for slot in sorted(day.slots, key=lambda s: s.start_time)
-        ]
-        result.append({
-            'date': day.date.isoformat(),
-            'label': day.label,
-            'note': day.note or '',
-            'slots': slots
-        })
-    return jsonify(result)
-
-@api_navette_bp.route('/api/navette/route')
-@limiter.limit("60 per minute")
-def navette_route():
-    stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
-    return jsonify([
-        {
-            'id': s.id,
-            'name': s.name,
-            'sequence': s.sequence,
-            'dwell_minutes': s.dwell_minutes,
-            'note': s.note or ''
-        } for s in stops
-    ])
-
-@api_navette_bp.route('/api/navette/settings')
-@limiter.limit("60 per minute")
-def navette_settings():
-    settings = ShuttleSettings.query.first()
-    if not settings:
-        settings = ShuttleSettings(mean_leg_minutes=5)
-    return jsonify({
-        'mean_leg_minutes': settings.mean_leg_minutes,
-        'loop_enabled': bool(getattr(settings, 'loop_enabled', False)),
-        'bidirectional_enabled': bool(getattr(settings, 'bidirectional_enabled', False)),
-        'constrain_to_today_slots': bool(getattr(settings, 'constrain_to_today_slots', False)),
-        'display_direction': getattr(settings, 'display_direction', 'forward'),
-        'display_base_stop_sequence': getattr(settings, 'display_base_stop_sequence', None),
-    })
-
-@api_navette_bp.route('/api/navette/today')
-@limiter.limit("60 per minute")
-def navette_today():
-    today = date.today()
-    day = ShuttleScheduleDay.query.filter_by(date=today).first()
-    if not day:
-        return jsonify({'date': today.isoformat(), 'label': '', 'note': '', 'slots': []})
-    slots = [
-        {
-            'start_time': slot.start_time.strftime('%H:%M'),
-            'end_time': slot.end_time.strftime('%H:%M'),
-            'from_location': slot.from_location,
-            'to_location': slot.to_location,
-            'note': slot.note or ''
-        }
-        for slot in sorted(day.slots, key=lambda s: s.start_time)
-    ]
-    return jsonify({'date': day.date.isoformat(), 'label': day.label, 'note': day.note or '', 'slots': slots})
-
-# ---
-# Pour intégrer ce module :
-# 1. Dans ton app Flask principale, fais :
-#    from api_navette import api_navette_bp
-#    app.register_blueprint(api_navette_bp)
+<!-- Modal nouveau message direct -->
+<div class="modal fade" id="newDirectModal" tabindex="-1" aria-labelledby="newDirectModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="newDirectModalLabel">
+          <i class="bi bi-chat-plus text-primary me-2"></i>Nouveau message direct
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <form method="POST" action="{{ url_for('messaging.new_direct') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <label class="form-label fw-semibold" for="selectTargetUser">Destinataire</label>
+          <select name="target_user_id" id="selectTargetUser" class="form-select" required>
+            <option value="">Sélectionnez un utilisateur…</option>
+            {% for u in all_users %}
+              <option value="{{ u.id }}">{{ u.first_name }} {{ u.last_name }}{% if u.is_admin %} ⭐{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Démarrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

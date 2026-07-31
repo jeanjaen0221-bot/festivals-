@@ -1,237 +1,296 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request
-from flask_login import login_required
-from admin import admin_required
-from app import db
-from models import ShuttleScheduleDay, ShuttleScheduleSlot, ShuttleRouteStop, ShuttleSettings
-from forms import ShuttleScheduleDayForm, ShuttleScheduleSlotForm, ShuttleRouteStopForm, ShuttleSettingsForm, SimpleCsrfForm
-bp = Blueprint('admin_shuttle', __name__, url_prefix='/admin/shuttle')
+{% extends 'base.html' %}
+{% block title %}{{ conv.display_name(current_user.id) }} — Messagerie{% endblock %}
+{% block extra_head %}
+<style>
+  .msg-thread { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: .5rem; padding: 1rem; background: #f8f9fa; border-radius: .75rem; }
+  .msg-bubble { max-width: 70%; word-break: break-word; }
+  .msg-me .msg-bubble { background: #0d6efd; color: #fff; border-radius: 1.1rem 1.1rem 0.2rem 1.1rem; }
+  .msg-other .msg-bubble { background: #fff; border: 1px solid #dee2e6; color: #212529; border-radius: 1.1rem 1.1rem 1.1rem 0.2rem; }
+  .msg-deleted { opacity: .55; font-style: italic; }
+  .msg-pinned-bar { background: #fff3cd; border-left: 4px solid #ffc107; border-radius: .5rem; padding: .5rem .75rem; font-size: .9rem; }
+  .avatar-sm { width:32px; height:32px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:700; color:#fff; flex-shrink:0; }
+  @media(max-width:576px){ .msg-bubble { max-width: 90%; } .msg-thread { max-height: 55vh; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <a href="{{ url_for('messaging.inbox') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  {% if conv.type == ConvType.GROUP %}
+    <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+         style="width:38px;height:38px;background:linear-gradient(135deg,#6f42c1,#0d6efd);">
+      <i class="bi bi-people-fill" style="font-size:.9rem;"></i>
+    </div>
+  {% else %}
+    {% set other_name = conv.display_name(current_user.id) %}
+    <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+         style="width:38px;height:38px;background:linear-gradient(135deg,#0d6efd,#0dcaf0);">
+      {{ (other_name[:1])|upper }}
+    </div>
+  {% endif %}
+  <div class="flex-grow-1">
+    <span class="fw-bold fs-5">{{ conv.display_name(current_user.id) }}</span>
+    {% if conv.type == ConvType.GROUP %}
+      <small class="text-muted ms-2">{{ participants|length }} membre{% if participants|length > 1 %}s{% endif %}</small>
+    {% endif %}
+  </div>
+  <!-- Actions -->
+  <div class="d-flex gap-2 flex-wrap">
+    {% if conv.type == ConvType.GROUP %}
+      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="offcanvas" data-bs-target="#groupPanel">
+        <i class="bi bi-gear"></i> Groupe
+      </button>
+    {% endif %}
+    {% if conv.type == ConvType.GROUP %}
+      <form method="POST" action="{{ url_for('messaging.leave_group', conv_id=conv.id) }}"
+            onsubmit="return confirm('Quitter ce groupe ?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-right"></i> Quitter</button>
+      </form>
+    {% endif %}
+    {% if current_user.is_admin %}
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions admin">
+          <i class="bi bi-shield-check text-warning"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:.9rem;min-width:200px;">
+          <li><span class="dropdown-item-text text-muted small fw-semibold">Actions admin</span></li>
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <form method="POST" action="{{ url_for('messaging.archive_conversation', conv_id=conv.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="dropdown-item">
+                <i class="bi bi-archive me-2 {% if conv.is_archived %}text-success{% else %}text-warning{% endif %}"></i>
+                {% if conv.is_archived %}Désarchiver{% else %}Archiver{% endif %}
+              </button>
+            </form>
+          </li>
+          <li>
+            <form method="POST" action="{{ url_for('messaging.delete_conversation', conv_id=conv.id) }}"
+                  onsubmit="return confirm('Supprimer définitivement cette conversation et tous ses messages ? Cette action est irréversible.')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="dropdown-item text-danger">
+                <i class="bi bi-trash3 me-2"></i>Supprimer définitivement
+              </button>
+            </form>
+          </li>
+        </ul>
+      </div>
+    {% endif %}
+  </div>
+</div>
 
-@bp.route('/')
-@login_required
-@admin_required
-def shuttle_schedule():
-    days = ShuttleScheduleDay.query.order_by(ShuttleScheduleDay.date.asc()).all()
-    stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
-    stop_names = [s.name for s in stops]
-    csrf_form = SimpleCsrfForm()
-    return render_template('admin/shuttle_schedule.html', days=days, stop_names=stop_names, csrf_form=csrf_form)
+<!-- Messages épinglés -->
+{% if pinned %}
+<div class="mb-3">
+  {% for m in pinned %}
+  <div class="msg-pinned-bar d-flex align-items-start gap-2 mb-1">
+    <i class="bi bi-pin-fill text-warning mt-1 flex-shrink-0"></i>
+    <div class="flex-grow-1">
+      <span class="fw-semibold small">{{ m.sender.first_name if m.sender else '?' }} :</span>
+      <span class="small">{{ m.body[:120] }}{% if m.body|length > 120 %}…{% endif %}</span>
+    </div>
+    <form method="POST" action="{{ url_for('messaging.pin_message', conv_id=conv.id, msg_id=m.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-link text-muted p-0 ms-1" title="Désépingler" aria-label="Désépingler"><i class="bi bi-x"></i></button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
-# Days
-@bp.route('/days/add', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def add_shuttle_day():
-    form = ShuttleScheduleDayForm()
-    if form.validate_on_submit():
-        day = ShuttleScheduleDay(date=form.date.data, label=form.label.data.strip(), note=form.note.data or None)
-        db.session.add(day)
-        db.session.commit()
-        flash('Jour navette ajouté.', 'success')
-        return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    return render_template('admin/shuttle_day_form.html', form=form, title='Ajouter un jour')
+<!-- Charger messages précédents -->
+{% if has_more %}
+<div class="text-center mb-2">
+  <a href="{{ url_for('messaging.conversation', conv_id=conv.id, before=messages[0].id) }}"
+     class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-up-circle me-1"></i>Charger les messages précédents
+  </a>
+</div>
+{% endif %}
 
-@bp.route('/days/<int:day_id>/edit', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def edit_shuttle_day(day_id):
-    day = db.get_or_404(ShuttleScheduleDay, day_id)
-    form = ShuttleScheduleDayForm(obj=day)
-    if form.validate_on_submit():
-        day.date = form.date.data
-        day.label = form.label.data.strip()
-        day.note = form.note.data or None
-        db.session.commit()
-        flash('Jour navette mis à jour.', 'success')
-        return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    return render_template('admin/shuttle_day_form.html', form=form, title='Modifier le jour')
+<!-- Thread -->
+<div class="msg-thread" id="msgThread">
+  {% for m in messages %}
+    {% if m.is_deleted %}
+      <div class="d-flex {% if m.sender_id == current_user.id %}justify-content-end{% else %}justify-content-start{% endif %}">
+        <div class="msg-bubble px-3 py-2 msg-deleted {% if m.sender_id == current_user.id %}msg-me{% else %}msg-other{% endif %}">
+          <i class="bi bi-trash3 me-1"></i>Message supprimé
+        </div>
+      </div>
+    {% else %}
+      <div class="d-flex {% if m.sender_id == current_user.id %}justify-content-end msg-me{% else %}justify-content-start msg-other{% endif %} align-items-end gap-2"
+           id="msg-{{ m.id }}">
+        {% if m.sender_id != current_user.id %}
+          {% set s = m.sender %}
+          <div class="avatar-sm flex-shrink-0" style="background:linear-gradient(135deg,#6c757d,#adb5bd);">
+            {{ (s.first_name[:1] if s else '?')|upper }}
+          </div>
+        {% endif %}
+        <div class="d-flex flex-column {% if m.sender_id == current_user.id %}align-items-end{% else %}align-items-start{% endif %}">
+          {% if m.sender_id != current_user.id %}
+            <small class="text-muted mb-1">{{ m.sender.first_name ~ ' ' ~ m.sender.last_name if m.sender else '?' }}</small>
+          {% endif %}
+          <div class="msg-bubble px-3 py-2 shadow-sm">
+            {{ m.body | e | replace('\n', '<br>') | safe }}
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <small class="text-muted" style="font-size:.75rem;">{{ m.created_at.strftime('%d/%m %H:%M') }}</small>
+            {% if m.pinned %}<i class="bi bi-pin-fill text-warning" style="font-size:.75rem;" title="Épinglé"></i>{% endif %}
+            <!-- Actions message -->
+            <div class="dropdown">
+              <button class="btn btn-link p-0 text-muted" style="font-size:.75rem;" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions du message">
+                <i class="bi bi-three-dots"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:.9rem;min-width:150px;">
+                <li>
+                  <form method="POST" action="{{ url_for('messaging.pin_message', conv_id=conv.id, msg_id=m.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="dropdown-item">
+                      <i class="bi bi-pin {% if m.pinned %}text-warning{% endif %} me-2"></i>
+                      {% if m.pinned %}Désépingler{% else %}Épingler{% endif %}
+                    </button>
+                  </form>
+                </li>
+                {% if m.sender_id == current_user.id or current_user.is_admin or (my_role == ParticipantRole.ADMIN) %}
+                <li>
+                  <form method="POST" action="{{ url_for('messaging.delete_message', conv_id=conv.id, msg_id=m.id) }}"
+                        onsubmit="return confirm('Supprimer ce message ?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="dropdown-item text-danger">
+                      <i class="bi bi-trash3 me-2"></i>Supprimer
+                    </button>
+                  </form>
+                </li>
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+        </div>
+        {% if m.sender_id == current_user.id %}
+          <div class="avatar-sm flex-shrink-0" style="background:linear-gradient(135deg,#0d6efd,#0dcaf0);">
+            {{ (current_user.first_name[:1])|upper }}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-chat-square display-4 d-block mb-2"></i>
+      Aucun message. Soyez le premier à écrire !
+    </div>
+  {% endfor %}
+  <div id="bottom"></div>
+</div>
 
-@bp.route('/days/<int:day_id>/delete', methods=['POST'])
-@login_required
-@admin_required
-def delete_shuttle_day(day_id):
-    form = SimpleCsrfForm()
-    if not form.validate_on_submit():
-        flash('Erreur CSRF.', 'danger')
-        return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    day = db.get_or_404(ShuttleScheduleDay, day_id)
-    db.session.delete(day)
-    db.session.commit()
-    flash('Jour navette supprimé.', 'success')
-    return redirect(url_for('admin_shuttle.shuttle_schedule'))
+<!-- Bandeau conversation archivée -->
+{% if conv.is_archived %}
+<div class="alert alert-warning d-flex align-items-center gap-2 mt-3 mb-0" role="alert">
+  <i class="bi bi-archive-fill flex-shrink-0"></i>
+  <span>Cette conversation est <strong>archivée</strong>. Les nouveaux messages sont désactivés.</span>
+</div>
+{% endif %}
 
-# Slots
-@bp.route('/days/<int:day_id>/slots/add', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def add_shuttle_slot(day_id):
-    day = db.get_or_404(ShuttleScheduleDay, day_id)
-    form = ShuttleScheduleSlotForm()
-    if form.validate_on_submit():
-        stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
-        stop_names = {s.name for s in stops}
-        valid = True
-        from_loc = form.from_location.data.strip()
-        to_loc = form.to_location.data.strip()
-        if from_loc not in stop_names:
-            form.from_location.errors.append("Cet arrêt n'existe pas dans le parcours")
-            valid = False
-        if to_loc not in stop_names:
-            form.to_location.errors.append("Cet arrêt n'existe pas dans le parcours")
-            valid = False
-        if not valid:
-            return render_template('admin/shuttle_slot_form.html', form=form, title='Ajouter un créneau', stops=stops)
-        slot = ShuttleScheduleSlot(
-            day=day,
-            start_time=form.start_time.data,
-            end_time=form.end_time.data,
-            from_location=from_loc,
-            to_location=to_loc,
-            note=form.note.data or None,
-        )
-        db.session.add(slot)
-        db.session.commit()
-        flash('Créneau ajouté.', 'success')
-        return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
-    return render_template('admin/shuttle_slot_form.html', form=form, title='Ajouter un créneau', stops=stops)
+<!-- Formulaire d'envoi -->
+<form method="POST" action="{{ url_for('messaging.send_message', conv_id=conv.id) }}"
+      class="mt-3 {% if conv.is_archived %}opacity-50 pe-none{% endif %}" id="sendForm">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="input-group shadow-sm">
+    <textarea name="body" id="msgInput" class="form-control rounded-start-4"
+              rows="2" placeholder="Écrire un message…" maxlength="2000"
+              style="resize:none;" required aria-label="Message"></textarea>
+    <button type="submit" class="btn btn-primary rounded-end-4 px-3" aria-label="Envoyer">
+      <i class="bi bi-send-fill"></i>
+    </button>
+  </div>
+  <div class="text-end">
+    <small id="charCount" class="text-muted">0 / 2000</small>
+  </div>
+</form>
 
-@bp.route('/slots/<int:slot_id>/edit', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def edit_shuttle_slot(slot_id):
-    slot = db.get_or_404(ShuttleScheduleSlot, slot_id)
-    form = ShuttleScheduleSlotForm(obj=slot)
-    if form.validate_on_submit():
-        stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
-        stop_names = {s.name for s in stops}
-        valid = True
-        from_loc = form.from_location.data.strip()
-        to_loc = form.to_location.data.strip()
-        if from_loc not in stop_names:
-            form.from_location.errors.append("Cet arrêt n'existe pas dans le parcours")
-            valid = False
-        if to_loc not in stop_names:
-            form.to_location.errors.append("Cet arrêt n'existe pas dans le parcours")
-            valid = False
-        if not valid:
-            return render_template('admin/shuttle_slot_form.html', form=form, title='Modifier le créneau', stops=stops)
-        slot.start_time = form.start_time.data
-        slot.end_time = form.end_time.data
-        slot.from_location = from_loc
-        slot.to_location = to_loc
-        slot.note = form.note.data or None
-        db.session.commit()
-        flash('Créneau mis à jour.', 'success')
-        return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
-    return render_template('admin/shuttle_slot_form.html', form=form, title='Modifier le créneau', stops=stops)
+<!-- Offcanvas gestion groupe -->
+{% if conv.type == ConvType.GROUP %}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="groupPanel" aria-labelledby="groupPanelLabel">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title fw-bold" id="groupPanelLabel">
+      <i class="bi bi-people-fill text-primary me-2"></i>Paramètres du groupe
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
+  </div>
+  <div class="offcanvas-body">
 
-@bp.route('/slots/<int:slot_id>/delete', methods=['POST'])
-@login_required
-@admin_required
-def delete_shuttle_slot(slot_id):
-    form = SimpleCsrfForm()
-    if not form.validate_on_submit():
-        flash('Erreur CSRF.', 'danger')
-        return redirect(url_for('admin_shuttle.shuttle_schedule'))
-    slot = db.get_or_404(ShuttleScheduleSlot, slot_id)
-    db.session.delete(slot)
-    db.session.commit()
-    flash('Créneau supprimé.', 'success')
-    return redirect(url_for('admin_shuttle.shuttle_schedule'))
+    {% if my_role == ParticipantRole.ADMIN or current_user.is_admin %}
+    <!-- Renommer -->
+    <h6 class="fw-semibold mb-2"><i class="bi bi-pencil me-1"></i>Renommer le groupe</h6>
+    <form method="POST" action="{{ url_for('messaging.rename_group', conv_id=conv.id) }}" class="mb-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="input-group input-group-sm">
+        <input type="text" name="name" class="form-control" value="{{ conv.name or '' }}" placeholder="Nom du groupe" required>
+        <button class="btn btn-outline-primary" type="submit">OK</button>
+      </div>
+    </form>
+    {% endif %}
 
-# Route (parcours)
-@bp.route('/route')
-@login_required
-@admin_required
-def shuttle_route():
-    stops = ShuttleRouteStop.query.order_by(ShuttleRouteStop.sequence.asc()).all()
-    csrf_form = SimpleCsrfForm()
-    return render_template('admin/shuttle_route.html', stops=stops, csrf_form=csrf_form)
+    <!-- Membres -->
+    <h6 class="fw-semibold mb-2"><i class="bi bi-people me-1"></i>Membres ({{ participants|length }})</h6>
+    <ul class="list-group list-group-flush mb-4">
+      {% for p in participants %}
+      <li class="list-group-item d-flex align-items-center justify-content-between px-0 py-2">
+        <div class="d-flex align-items-center gap-2">
+          <div class="avatar-sm" style="background:linear-gradient(135deg,#6c757d,#adb5bd);font-size:.75rem;">
+            {{ (p.user.first_name[:1] if p.user else '?')|upper }}
+          </div>
+          <span>{{ p.user.first_name ~ ' ' ~ p.user.last_name if p.user else 'Utilisateur supprimé' }}</span>
+          {% if p.role == ParticipantRole.ADMIN %}
+            <span class="badge bg-primary" style="font-size:.7rem;">Admin</span>
+          {% endif %}
+        </div>
+        {% if (my_role == ParticipantRole.ADMIN or current_user.is_admin) and p.user_id != current_user.id %}
+        <div class="d-flex gap-1">
+          <form method="POST" action="{{ url_for('messaging.promote_member', conv_id=conv.id, uid=p.user_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-secondary py-0 px-1" title="Changer le rôle" aria-label="Changer le rôle" style="font-size:.75rem;">
+              <i class="bi bi-arrow-up-down"></i>
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('messaging.remove_member', conv_id=conv.id, uid=p.user_id) }}"
+                onsubmit="return confirm('Retirer ce membre ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Retirer" aria-label="Retirer le membre" style="font-size:.75rem;">
+              <i class="bi bi-person-dash"></i>
+            </button>
+          </form>
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
 
-@bp.route('/route/add', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def add_route_stop():
-    form = ShuttleRouteStopForm()
-    if form.validate_on_submit():
-        if ShuttleRouteStop.query.filter_by(sequence=form.sequence.data).first():
-            form.sequence.errors.append("Cette position est déjà utilisée par un autre arrêt.")
-            return render_template('admin/shuttle_route_form.html', form=form, title='Ajouter un arrêt')
-        stop = ShuttleRouteStop(
-            name=form.name.data.strip(),
-            sequence=form.sequence.data,
-            dwell_minutes=form.dwell_minutes.data,
-            note=form.note.data or None,
-        )
-        db.session.add(stop)
-        db.session.commit()
-        flash("Arrêt ajouté.", 'success')
-        return redirect(url_for('admin_shuttle.shuttle_route'))
-    return render_template('admin/shuttle_route_form.html', form=form, title='Ajouter un arrêt')
+    {% if my_role == ParticipantRole.ADMIN or current_user.is_admin %}
+    <!-- Ajouter membre -->
+    <h6 class="fw-semibold mb-2"><i class="bi bi-person-plus me-1"></i>Ajouter un membre</h6>
+    <form method="POST" action="{{ url_for('messaging.add_member', conv_id=conv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="input-group input-group-sm">
+        <select name="user_id" class="form-select" required aria-label="Membre à ajouter">
+          <option value="">Choisir…</option>
+          {% set member_ids = participants | map(attribute='user_id') | list %}
+          {% for u in all_users %}
+            {% if u.id not in member_ids %}
+              <option value="{{ u.id }}">{{ u.first_name }} {{ u.last_name }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+        <button class="btn btn-outline-primary" type="submit">Ajouter</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 
-@bp.route('/route/<int:stop_id>/edit', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def edit_route_stop(stop_id):
-    stop = db.get_or_404(ShuttleRouteStop, stop_id)
-    form = ShuttleRouteStopForm(obj=stop)
-    if form.validate_on_submit():
-        duplicate = ShuttleRouteStop.query.filter(
-            ShuttleRouteStop.sequence == form.sequence.data,
-            ShuttleRouteStop.id != stop.id,
-        ).first()
-        if duplicate:
-            form.sequence.errors.append("Cette position est déjà utilisée par un autre arrêt.")
-            return render_template('admin/shuttle_route_form.html', form=form, title='Modifier un arrêt')
-        stop.name = form.name.data.strip()
-        stop.sequence = form.sequence.data
-        stop.dwell_minutes = form.dwell_minutes.data
-        stop.note = form.note.data or None
-        db.session.commit()
-        flash('Arrêt mis à jour.', 'success')
-        return redirect(url_for('admin_shuttle.shuttle_route'))
-    return render_template('admin/shuttle_route_form.html', form=form, title='Modifier un arrêt')
-
-@bp.route('/route/<int:stop_id>/delete', methods=['POST'])
-@login_required
-@admin_required
-def delete_route_stop(stop_id):
-    form = SimpleCsrfForm()
-    if not form.validate_on_submit():
-        flash('Erreur CSRF.', 'danger')
-        return redirect(url_for('admin_shuttle.shuttle_route'))
-    stop = db.get_or_404(ShuttleRouteStop, stop_id)
-    db.session.delete(stop)
-    db.session.commit()
-    flash('Arrêt supprimé.', 'success')
-    return redirect(url_for('admin_shuttle.shuttle_route'))
-
-# Réglages navette
-@bp.route('/settings', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def shuttle_settings():
-    settings = ShuttleSettings.query.first()
-    if not settings:
-        settings = ShuttleSettings(mean_leg_minutes=5)
-        db.session.add(settings)
-        db.session.commit()
-    form = ShuttleSettingsForm(obj=settings)
-    if form.validate_on_submit():
-        seq = form.display_base_stop_sequence.data if form.display_base_stop_sequence.data else None
-        if seq:
-            exists = ShuttleRouteStop.query.filter_by(sequence=seq).first() is not None
-            if not exists:
-                flash("Séquence de départ invalide : aucun arrêt du parcours avec cette séquence.", 'danger')
-                return render_template('admin/shuttle_settings.html', form=form)
-        settings.mean_leg_minutes = form.mean_leg_minutes.data
-        settings.loop_enabled = bool(form.loop_enabled.data)
-        settings.bidirectional_enabled = bool(form.bidirectional_enabled.data)
-        settings.constrain_to_today_slots = bool(form.constrain_to_today_slots.data)
-        settings.display_direction = (form.display_direction.data or 'forward')
-        settings.display_base_stop_sequence = seq
-        db.session.commit()
-        flash('Réglages navette enregistrés.', 'success')
-        return redirect(url_for('admin_shuttle.shuttle_settings'))
-    return render_template('admin/shuttle_settings.html', form=form)
+<script nonce="{{ csp_nonce }}">
+  initConversation({{ conv.id }}, {{ last_msg_id }}, {{ current_user.id }});
+</script>
+{% endblock %}

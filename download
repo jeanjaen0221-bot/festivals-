@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center align-items-center">
+    <div class="col-12 col-md-8 col-lg-6 text-center">
+      <h1 class="fw-bold mb-4">Déclarer un objet perdu ou trouvé</h1>
+<p class="lead mb-4 text-center bg-warning-subtle border border-warning rounded-4 py-3 px-2">
+  <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+  <span class="fw-semibold">Attention&nbsp;:</span> Choisissez bien le bon bouton&nbsp;!<br>
+  <span class="text-danger">«&nbsp;J'ai perdu un objet&nbsp;»</span> = vous êtes le propriétaire et vous cherchez votre objet.<br>
+  <span class="text-success">«&nbsp;J'ai trouvé un objet&nbsp;»</span> = vous avez trouvé un objet qui ne vous appartient pas.
+</p>
+<div class="d-flex flex-column flex-md-row gap-4 justify-content-center mt-5">
+  <a href="{{ url_for('main.report_item', tab='lost') }}" class="btn btn-danger btn-lg px-5 py-4 shadow rounded-4 d-flex flex-column align-items-center gap-2 flex-fill border border-3 border-danger-subtle focus-ring" aria-label="Déclarer un objet perdu">
+    <i class="bi bi-emoji-frown display-4"></i>
+    <span class="fw-bold fs-3">J'ai perdu un objet</span>
+    <span class="small">Je cherche mon bien</span>
+  </a>
+  <a href="{{ url_for('main.report_item', tab='found') }}" class="btn btn-success btn-lg px-5 py-4 shadow rounded-4 d-flex flex-column align-items-center gap-2 flex-fill border border-3 border-success-subtle focus-ring" aria-label="Déclarer un objet trouvé">
+    <i class="bi bi-emoji-smile display-4"></i>
+    <span class="fw-bold fs-3">J'ai trouvé un objet</span>
+    <span class="small">Je rends un objet trouvé</span>
+  </a>
+</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

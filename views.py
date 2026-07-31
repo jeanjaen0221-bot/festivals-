@@ -6,8 +6,6 @@ import requests
 from decimal import Decimal, ROUND_HALF_UP
 import matching
 import visual_matcher
-import zones
-from categories_families import guess_family
 from photo_embeddings import ensure_photo_embedding, item_embedding_similarity
 from registration_policy import compute_registration_open
 from io import BytesIO
@@ -207,7 +205,9 @@ def _db_image_bytes_by_filename(filename: str):
 def _item_pair_bonus(lost, found) -> float:
     """Bonus/malus catégorie + date + champs structurés pour une paire Lost↔Found."""
     _cfg = matching.MATCH_CONFIG
-    bonus = matching.family_bonus(lost, found)
+    bonus = 0.0
+    if lost.category_id and lost.category_id == found.category_id:
+        bonus += _cfg['bonus_same_category']
     try:
         if lost.date_reported and found.date_reported:
             days = abs((lost.date_reported - found.date_reported).total_seconds()) / 86400.0
@@ -228,9 +228,7 @@ def _compute_weighted_score(base_score: float, img_img_pct: float | None, bonus:
         combined = base_score
     else:
         combined = _cfg['text_weight'] * base_score + _cfg['img_img_weight'] * img_img_pct
-    # Le bonus s'applique sur la marge restante (cf. matching.apply_bonus) pour
-    # que les scores ne s'agglutinent plus à 100.
-    return matching.apply_bonus(combined, bonus)
+    return max(0.0, min(100.0, round(combined + bonus, 2)))
 
 
 def _embedding_similarity_pct(item1: Item, item2: Item) -> float | None:
@@ -245,17 +243,10 @@ def _embedding_similarity_pct(item1: Item, item2: Item) -> float | None:
     return round(100.0 * max(0.0, similarity), 2)
 
 
-def find_similar_items(titre, category_id, seuil=None, location=''):
+def find_similar_items(titre, category_id, seuil=70, location=''):
     """Retourne des objets similaires (même catégorie) triés par score descendant.
     Utilise le score complet (titre + description + lieu) via matching.match_score.
-
-    Le seuil par défaut vient de MATCH_CONFIG : la sonde n'a pas de description,
-    or un champ vide face à un champ rempli score 0 et pèse malgré tout 0,25.
-    Un doublon parfait dont le candidat a des commentaires plafonnait donc à 63 —
-    sous l'ancien seuil de 70, aucun doublon n'était jamais signalé.
     """
-    if seuil is None:
-        seuil = matching.MATCH_CONFIG['threshold_duplicate']
     similaires = []
     probe = SimpleNamespace(title=titre or '', comments='', location=location or '')
     candidats = Item.query.filter(
@@ -289,8 +280,6 @@ def find_similar_items(titre, category_id, seuil=None, location=''):
                 'id': obj.id,
                 'title': obj.title,
                 'score': score,
-                'confidence': matching.confidence_level(score),
-                'confidence_label': matching.confidence_label(score),
                 'category_name': obj.category.name if obj.category else None,
                 'photo_url': photo_url,
                 'category_icon_url': cat_icon_url,
@@ -398,19 +387,12 @@ def get_or_create_category(category_id, new_category_name):
         
         if existing_category:
             return existing_category.id
-
-        # Créer une nouvelle catégorie. La famille est devinée par rapprochement
-        # flou (« Sacoche » → Accessoires) : sans elle, la catégorie serait
-        # absente du menu déroulant et son objet ne bénéficierait d'aucun
-        # regroupement. None en cas de doute — le matching traite alors la
-        # famille comme neutre plutôt que de pénaliser à tort.
-        nom = new_category_name.strip()
-        famille = guess_family(nom)
-        new_category = Category(name=nom, family=famille)
+            
+        # Créer une nouvelle catégorie
+        new_category = Category(name=new_category_name.strip())
         db.session.add(new_category)
         db.session.flush()  # Pour obtenir l'ID de la nouvelle catégorie
-        log_action(current_user.id, 'create_category',
-                   f'Nouvelle catégorie: {new_category.name} (famille: {famille or "indéterminée"})')
+        log_action(current_user.id, 'create_category', f'Nouvelle catégorie: {new_category.name}')
         return new_category.id
     return category_id
 
@@ -535,15 +517,14 @@ def report_item():
         if not category_id:
             flash("Veuillez sélectionner une catégorie ou en créer une nouvelle.", "lost")
             return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='lost')
-        lost_zone = zones.resolve(lost_form.location.data, lost_form.location_other.data)
-        doublons = find_similar_items(lost_form.title.data, category_id, location=lost_zone)
+        doublons = find_similar_items(lost_form.title.data, category_id, 70)
         if doublons:
             flash("Attention : des objets similaires existent déjà !", "lost")
         item = Item(
             status=Status.LOST,
             title=lost_form.title.data,
             comments=lost_form.comments.data,
-            location=lost_zone,
+            location=lost_form.location_other.data.strip() if lost_form.location.data == 'autre' else dict(lost_form.location.choices).get(lost_form.location.data, ''),
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
@@ -571,16 +552,15 @@ def report_item():
         if not category_id:
             flash("Veuillez sélectionner une catégorie ou en créer une nouvelle.", "found")
             return render_template('report.html', lost_form=lost_form, found_form=found_form, active_tab='found')
-        found_zone = zones.resolve(found_form.found_location.data, found_form.found_location_other.data)
-        doublons = find_similar_items(found_form.title.data, category_id, location=found_zone)
+        doublons = find_similar_items(found_form.title.data, category_id, 70)
         if doublons:
             flash("Attention : des objets similaires existent déjà !", "found")
         item = Item(
             status=Status.FOUND,
             title=found_form.title.data,
             comments=found_form.comments.data,
-            found_location=found_zone,
-            storage_location=zones.resolve(found_form.storage_location.data, found_form.storage_location_other.data),
+            found_location=(found_form.found_location_other.data.strip() if found_form.found_location.data == 'autre' else dict(found_form.found_location.choices).get(found_form.found_location.data, '')),
+            storage_location=found_form.storage_location_other.data.strip() if found_form.storage_location.data == 'autre' else (dict(found_form.storage_location.choices).get(found_form.storage_location.data) if found_form.storage_location.data else ''),
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
@@ -727,8 +707,6 @@ def detail_item(item_id):
                 'id': c.id,
                 'title': c.title,
                 'score': final_score,
-                'confidence': matching.confidence_level(final_score),
-                'confidence_label': matching.confidence_label(final_score),
                 'url_detail': url_for('main.detail_item', item_id=c.id),
                 'photo_url': photo_url,
                 'category_name': (c.category.name if c.category else None),
@@ -809,16 +787,13 @@ def edit_item(item_id):
     if request.method == 'GET':
         form.title.data = item.title
         form.comments.data = item.comments
-        # La base stocke le libellé de la zone ; le select attend sa valeur.
-        # Un libellé hors liste bascule sur « Autre » sans perdre le texte.
-        form.location.data, form.location_other.data = zones.to_form_values(item.location)
+        form.location.data = item.location
         form.category.data = item.category_id
         form.reporter_name.data = item.reporter_name
         form.reporter_email.data = item.reporter_email
         form.reporter_phone.data = item.reporter_phone
         if item.status.name == 'FOUND':
-            form.found_location.data, form.found_location_other.data = zones.to_form_values(item.found_location)
-            form.storage_location.data, form.storage_location_other.data = zones.to_form_values(item.storage_location)
+            form.found_location_other.data = item.found_location or ''
         form.item_color.data = item.item_color.split(',') if item.item_color else []
         form.item_brand.data = item.item_brand or ''
         form.item_distinctive.data = item.item_distinctive.split(',') if item.item_distinctive else []
@@ -826,13 +801,7 @@ def edit_item(item_id):
     if form.validate_on_submit():
         item.title = form.title.data
         item.comments = form.comments.data
-        # zones.resolve stocke le libellé, comme à la création : l'édition
-        # enregistrait auparavant la valeur technique (« camping_famille »), ce
-        # qui rendait le lieu incomparable avec celui des autres déclarations.
-        # Réservé aux objets perdus : sur un objet trouvé, `location` masquerait
-        # `found_location` dans _get_location().
-        if item.status.name != 'FOUND':
-            item.location = zones.resolve(form.location.data, form.location_other.data)
+        item.location = form.location.data
         item.category_id = form.category.data
         item.reporter_name = form.reporter_name.data
         item.reporter_email = form.reporter_email.data
@@ -842,8 +811,8 @@ def edit_item(item_id):
         item.item_brand = (form.item_brand.data or '').strip() or None
         item.item_distinctive = ','.join(form.item_distinctive.data) if form.item_distinctive.data else None
         if item.status.name == 'FOUND':
-            item.found_location = zones.resolve(form.found_location.data, form.found_location_other.data)
-            item.storage_location = zones.resolve(form.storage_location.data, form.storage_location_other.data)
+            item.found_location = form.found_location_other.data.strip() if form.found_location_other.data else ''
+            item.storage_location = form.storage_location_other.data.strip() if form.storage_location.data == 'autre' else (dict(form.storage_location.choices).get(form.storage_location.data) if form.storage_location.data else '')
         db.session.commit()
         # Suppression des photos cochées
         photo_ids_to_delete = request.form.getlist('delete_photos')
@@ -982,7 +951,7 @@ def api_check_similar():
     current_status = request.form.get('status', '')  # 'lost' ou 'found'
 
     # Doublons (même statut)
-    similars = find_similar_items(titre, cat_id, location=location)
+    similars = find_similar_items(titre, cat_id, seuil=70, location=location)
 
     # Correspondances croisées (statut opposé) — preview temps réel
     candidates = []
@@ -996,23 +965,17 @@ def api_check_similar():
             Item.category_id == cat_id,
             Item.status == opposite,
         ).order_by(Item.date_reported.desc()).limit(200).all()
-        # Les candidats sont filtrés sur la même catégorie que la déclaration en
-        # cours : on applique donc le même bonus que sur la fiche objet, sans
-        # quoi l'aperçu serait systématiquement plus sévère que /item/<id>.
-        same_cat_bonus = matching.MATCH_CONFIG['bonus_same_category']
         for obj in opp_items:
             struct_b = matching.structured_field_bonus(probe, obj)
             threshold = matching.effective_threshold(struct_b)
             base = matching.match_score(probe, obj)
-            score = matching.apply_bonus(base, struct_b + same_cat_bonus)
+            score = max(0.0, min(100.0, round(base + struct_b, 2)))
             if score >= threshold:
                 candidates.append({
                     'id': obj.id,
                     'title': obj.title,
                     'category': obj.category.name if obj.category else '',
                     'score': score,
-                    'confidence': matching.confidence_level(score),
-                    'confidence_label': matching.confidence_label(score),
                     'date': obj.date_reported.strftime('%d/%m/%Y') if obj.date_reported else '',
                     'item_color': obj.item_color or '',
                     'item_brand': obj.item_brand or '',
@@ -1226,20 +1189,13 @@ def return_headphone_loan(loan_id):
 # ───────────────────────────────────────────────────────────────────────────────
 # Routes de correspondance globale Lost↔Found (nouvelles)
 # ───────────────────────────────────────────────────────────────────────────────
-def get_all_candidate_pairs(seuil=None, skip_set=None):
+def get_all_candidate_pairs(seuil=60, skip_set=None):
     """Calcule toutes les paires Lost↔Found dont le score >= seuil.
     skip_set: ensemble de tuples (lost_id, found_id) à ignorer (déjà validés/rejetés si non affichés).
     Utilise _compute_weighted_score pour que les scores soient identiques à ceux de detail_item.
     Compare les images via les embeddings DINOv2 déjà persistés : jamais d'inférence
     (donc jamais de N×M appels modèle) dans cette boucle O(lost × found).
-
-    L'explication détaillée n'est PAS calculée ici : match_explanation() coûte
-    ~2,2 ms par paire (elle balaie tous les synonymes en regex) et n'était
-    utilisée par aucun template — matches.html la récupère en AJAX via
-    /api/match_explain quand un agent clique sur « Détails ».
     """
-    if seuil is None:
-        seuil = matching.MATCH_CONFIG['threshold_default']
     pairs = []
     lost_items  = Item.query.filter_by(status=Status.LOST).all()
     found_items = Item.query.filter_by(status=Status.FOUND).all()
@@ -1254,21 +1210,17 @@ def get_all_candidate_pairs(seuil=None, skip_set=None):
             img_img_pct = _embedding_similarity_pct(lost, found)
             score = _compute_weighted_score(base_score, img_img_pct, bonus)
             if score >= seuil:
-                pairs.append((lost, found, round(score, 2)))
+                explanation = matching.match_explanation(lost, found, fields_weights)
+                pairs.append((lost, found, round(score, 2), explanation))
     return pairs
-
-MATCHES_PER_PAGE = 25
-
 
 @bp.route('/matches')
 @login_required
 def list_matches():
-    _default_seuil = matching.MATCH_CONFIG['threshold_default']
     try:
-        seuil = int(request.args.get('threshold', _default_seuil))
+        seuil = int(request.args.get('threshold', 60))
     except (TypeError, ValueError):
-        seuil = _default_seuil
-    page = request.args.get('page', 1, type=int) or 1
+        seuil = 60
     show_validated = request.args.get('show_validated', '0') == '1'
     show_rejected  = request.args.get('show_rejected',  '0') == '1'
 
@@ -1293,9 +1245,9 @@ def list_matches():
     all_pairs = get_all_candidate_pairs(seuil=seuil, skip_set=skip_set if skip_set else None)
     all_pairs = sorted(all_pairs, key=lambda x: x[2], reverse=True)
 
-    visible = []
+    pairs_with_status = []
     n_pending = n_validated = n_rejected = 0
-    for lost, found, score in all_pairs:
+    for lost, found, score, explanation in all_pairs:
         key = (lost.id, found.id)
         is_validated = key in validated_set
         is_rejected  = key in rejected_set
@@ -1312,27 +1264,14 @@ def list_matches():
         if is_rejected and not show_rejected:
             continue
 
-        visible.append((lost, found, score, is_validated, is_rejected))
-
-    # Pagination : la page rendait auparavant toutes les paires d'un coup
-    # (plusieurs centaines de cartes sur un festival réel).
-    total_visible = len(visible)
-    total_pages = max(1, (total_visible + MATCHES_PER_PAGE - 1) // MATCHES_PER_PAGE)
-    page = min(max(1, page), total_pages)
-    start = (page - 1) * MATCHES_PER_PAGE
-    page_slice = visible[start:start + MATCHES_PER_PAGE]
-
-    # Pas de match_explanation() ici : le bouton « Détails » de matches.html la
-    # récupère en AJAX via /api/match_explain, à la demande et pour une seule paire.
-    pairs_with_status = [{
-        'lost': lost,
-        'found': found,
-        'score': score,
-        'confidence': matching.confidence_level(score),
-        'confidence_label': matching.confidence_label(score),
-        'is_validated': is_validated,
-        'is_rejected': is_rejected,
-    } for lost, found, score, is_validated, is_rejected in page_slice]
+        pairs_with_status.append({
+            'lost': lost,
+            'found': found,
+            'score': score,
+            'is_validated': is_validated,
+            'is_rejected': is_rejected,
+            'explanation': explanation,
+        })
 
     stats = {'pending': n_pending, 'validated': n_validated, 'rejected': n_rejected}
     return render_template(
@@ -1342,9 +1281,6 @@ def list_matches():
         show_validated=show_validated,
         show_rejected=show_rejected,
         stats=stats,
-        page=page,
-        total_pages=total_pages,
-        total_visible=total_visible,
     )
 
 

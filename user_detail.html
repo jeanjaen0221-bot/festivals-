@@ -1,0 +1,68 @@
+{% extends 'admin/base.html' %}
+{% block admin_title %}Logs{% endblock %}
+{% block admin_content %}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <form class="row g-2 mb-3" method="get">
+      <div class="col-md-4">
+        <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="Recherche (action ou détails)" aria-label="Rechercher dans les logs">
+      </div>
+      <div class="col-md-3">
+        <select name="action_type" class="form-select" aria-label="Filtrer par type d'action">
+          <option value="">Tous types d'action</option>
+          {% for atype in action_types %}
+            <option value="{{ atype }}" {% if atype == action_type %}selected{% endif %}>{{ atype }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Filtrer</button>
+      </div>
+      <div class="col-md-3 text-end text-muted d-none d-md-block">
+        <small>{{ logs.total }} résultat{{ logs.total > 1 and 's' or '' }}</small>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <thead class="table-light">
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Utilisateur</th>
+            <th scope="col">Action</th>
+            <th scope="col">Détails</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs.items %}
+          <tr>
+            <td>{{ log.timestamp.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td>{% if log.user %}{{ log.user.email }}{% else %}<i>System</i>{% endif %}</td>
+            <td>{{ log.action_type }}</td>
+            <td>{{ log.details }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center">Aucun log trouvé</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Pagination -->
+    <nav aria-label="Pagination logs">
+      <ul class="pagination justify-content-center">
+        <li class="page-item {% if not logs.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.admin_logs', page=logs.prev_num, search=search, action_type=action_type) }}" aria-label="Page précédente">&laquo;</a>
+        </li>
+        {% for p in range(1, logs.pages+1) %}
+          <li class="page-item {% if logs.page == p %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('admin.admin_logs', page=p, search=search, action_type=action_type) }}">{{ p }}</a>
+          </li>
+        {% endfor %}
+        <li class="page-item {% if not logs.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.admin_logs', page=logs.next_num, search=search, action_type=action_type) }}" aria-label="Page suivante">&raquo;</a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+</div>
+{% endblock %}

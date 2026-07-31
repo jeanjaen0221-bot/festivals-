@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+{% block title %}Admin | {{ super() }}{% endblock %}
+{% block extra_head %}
+<style>
+  body {
+    background-color: #f8f9fa;
+  }
+  .sidebar {
+    min-height: 100vh;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+    background: linear-gradient(180deg, #212529 80%, #343a40 100%);
+    position: relative;
+  }
+  .sidebar .nav-link.active {
+    background: #0d6efd;
+    color: #fff !important;
+    font-weight: bold;
+    border-radius: 5px;
+  }
+  .sidebar .nav-link {
+    transition: background 0.2s;
+    border-radius: 5px;
+    margin-bottom: 2px;
+    font-size: 1.08rem;
+  }
+  .sidebar .nav-link:hover {
+    background: #0d6efd33;
+    color: #fff !important;
+  }
+  .btn-close[aria-label="Fermer le menu"] {
+    display: none;
+  }
+  @media (max-width: 991.98px) {
+    #sidebarMenu {
+      position: fixed;
+      z-index: 9999;
+      left: 0;
+      top: 0;
+      height: 100vh;
+      width: 220px;
+      background: #212529;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease-in-out;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.15);
+      display: block !important;
+    }
+    #sidebarMenu.show {
+      transform: translateX(0);
+    }
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 9998;
+    }
+    .btn-close[aria-label="Fermer le menu"] {
+      display: block;
+    }
+    .position-sticky.pt-3 {
+      padding-top: 3.5rem !important;
+    }
+    .zindex-tooltip {
+      z-index: 1052 !important;
+    }
+  }
+  @media (max-width: 767.98px) {
+    main, #adminMainContent {
+      padding: 1rem 0.5rem !important;
+    }
+    .sidebar {
+      font-size: 1rem;
+    }
+    .navbar, .d-flex.justify-content-between.flex-wrap.flex-md-nowrap.align-items-center.pb-2.mb-3.border-bottom {
+      position: sticky;
+      top: 0;
+      z-index: 1030;
+      background: #fff;
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+    }
+  }
+  html, body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  @media (min-width: 992px) {
+    .lf-layout, .lf-sidebar { display: none !important; }
+    .lf-content { margin-left: 0 !important; }
+    .img-border-left, .img-border-right { display: none !important; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <!-- Hamburger menu for mobile -->
+  <button class="btn btn-primary d-lg-none position-fixed top-0 start-0 m-2 zindex-tooltip" style="z-index: 1052;" type="button" aria-label="Ouvrir le menu admin" data-bs-toggle="sidebar" aria-controls="sidebarMenu" aria-expanded="false">
+    <span class="navbar-toggler-icon"></span>
+  </button>
+  <div class="row">
+    <!-- Sidebar -->
+    <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-block bg-dark sidebar" aria-label="Menu administratif">
+      <!-- Mobile close button -->
+      <button type="button" class="btn-close btn-close-white d-lg-none position-absolute top-0 end-0 m-3" style="z-index:1051;" aria-label="Fermer le menu" onclick="toggleSidebar(false)"></button>
+      <div class="position-sticky pt-3">
+        <ul class="nav flex-column">
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path == url_for('admin.admin_dashboard') %}active{% endif %}" href="{{ url_for('admin.admin_dashboard') }}">
+              <i class="bi bi-speedometer2"></i> Tableau de bord
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white d-flex justify-content-between align-items-center {% if request.path.startswith(url_for('admin.deletion_requests')) %}active{% endif %}" href="{{ url_for('admin.deletion_requests') }}">
+              <span><i class="bi bi-trash"></i> Demandes de suppression</span>
+              {% if admin_counts.deletions_total > 0 %}
+              <span class="badge bg-danger">{{ admin_counts.deletions_total }}</span>
+              {% endif %}
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.admin_users')) %}active{% endif %}" href="{{ url_for('admin.admin_users') }}">
+              <i class="bi bi-people"></i> Utilisateurs
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.admin_logs')) %}active{% endif %}" href="{{ url_for('admin.admin_logs') }}">
+              <i class="bi bi-journal-text"></i> Logs
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path.startswith(url_for('admin.helmet_rentals')) %}active{% endif %}" href="{{ url_for('admin.helmet_rentals') }}">
+              <i class="bi bi-headphones"></i> Locations casques
+            </a>
+          </li>
+
+          {% set shuttle_active = request.path.startswith(url_for('admin_shuttle.shuttle_schedule')) or request.path.startswith(url_for('admin_shuttle.shuttle_route')) or request.path.startswith(url_for('admin_shuttle.shuttle_settings')) %}
+          <li class="nav-item">
+            <a class="nav-link text-white d-flex justify-content-between align-items-center {% if shuttle_active %}active{% endif %}" data-bs-toggle="collapse" href="#collapseShuttle" role="button" aria-expanded="{{ 'true' if shuttle_active else 'false' }}" aria-controls="collapseShuttle">
+              <span><i class="bi bi-bus-front"></i> Navette</span>
+              <i class="bi bi-caret-down-fill small"></i>
+            </a>
+            <div class="collapse {% if shuttle_active %}show{% endif %}" id="collapseShuttle">
+              <ul class="nav flex-column ms-3 my-1">
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin_shuttle.shuttle_schedule')) %}active{% endif %}" href="{{ url_for('admin_shuttle.shuttle_schedule') }}">
+                    <i class="bi bi-calendar-week"></i> Planning
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin_shuttle.shuttle_route')) %}active{% endif %}" href="{{ url_for('admin_shuttle.shuttle_route') }}">
+                    <i class="bi bi-signpost"></i> Parcours
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin_shuttle.shuttle_settings')) %}active{% endif %}" href="{{ url_for('admin_shuttle.shuttle_settings') }}">
+                    <i class="bi bi-gear"></i> Réglages
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link text-white {% if request.path == url_for('main.list_matches') %}active{% endif %}" href="{{ url_for('main.list_matches') }}">
+              <i class="bi bi-link-45deg"></i> Correspondances
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-white d-flex justify-content-between align-items-center {% if request.path.startswith(url_for('admin.admin_messages')) %}active{% endif %}" href="{{ url_for('admin.admin_messages') }}">
+              <span><i class="bi bi-chat-dots"></i> Messagerie</span>
+              {% if unread_msg_count > 0 %}<span class="badge bg-danger rounded-pill msg-unread-badge">{{ unread_msg_count }}</span>{% else %}<span class="badge bg-danger rounded-pill msg-unread-badge" style="display:none;">0</span>{% endif %}
+            </a>
+          </li>
+
+          {% set goodies_active = request.path == url_for('main.caisse') or request.path.startswith(url_for('admin.goodies_products')) or request.path.startswith(url_for('admin.goodies_z')) or request.path.startswith(url_for('admin.goodies_sales')) %}
+          <li class="nav-item">
+            <a class="nav-link text-white d-flex justify-content-between align-items-center {% if goodies_active %}active{% endif %}" data-bs-toggle="collapse" href="#collapseGoodies" role="button" aria-expanded="{{ 'true' if goodies_active else 'false' }}" aria-controls="collapseGoodies">
+              <span><i class="bi bi-gift"></i> Goodies</span>
+              <i class="bi bi-caret-down-fill small"></i>
+            </a>
+            <div class="collapse {% if goodies_active %}show{% endif %}" id="collapseGoodies">
+              <ul class="nav flex-column ms-3 my-1">
+                <li class="nav-item">
+                  <a class="nav-link text-white d-flex justify-content-between align-items-center {% if request.path == url_for('main.caisse') %}active{% endif %}" href="{{ url_for('main.caisse') }}">
+                    <span><i class="bi bi-cart3"></i> Caisse (ventes)</span>
+                    {% if admin_counts.sales_today_count > 0 %}
+                    <span class="badge bg-primary">{{ admin_counts.sales_today_count }}</span>
+                    {% endif %}
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_products')) %}active{% endif %}" href="{{ url_for('admin.goodies_products') }}">
+                    <i class="bi bi-box-seam"></i> Articles
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_sales')) %}active{% endif %}" href="{{ url_for('admin.goodies_sales') }}">
+                    <i class="bi bi-list-ul"></i> Ventes (liste)
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_z')) %}active{% endif %}" href="{{ url_for('admin.goodies_z') }}">
+                    <i class="bi bi-receipt"></i> Rapport Z
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link text-white {% if request.path.startswith(url_for('admin.goodies_z_tickets_list')) %}active{% endif %}" href="{{ url_for('admin.goodies_z_tickets_list') }}">
+                    <i class="bi bi-filetype-pdf"></i> Tickets Z
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </li>
+
+          <li class="nav-item mt-3">
+            <a class="nav-link text-success fw-bold" href="{{ whatsapp_support_url }}" target="_blank" rel="noopener"><i class="bi bi-whatsapp"></i> Contact WhatsApp</a>
+          </li>
+          <li class="nav-item mt-3">
+            <a class="nav-link text-secondary" href="{{ url_for('main.index') }}">
+              <i class="bi bi-arrow-left"></i> Retour au site
+            </a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4" id="adminMainContent">
+
+      <!-- Header admin -->
+      <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+        <div class="d-flex align-items-center gap-3">
+          <span class="fs-4 fw-bold text-primary"><i class="bi bi-shield-lock-fill me-2"></i>Administration</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="text-muted small">{{ current_user.first_name }} {{ current_user.last_name }}</span>
+        </div>
+      </div>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block admin_content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+  // Sidebar responsive toggle
+  document.addEventListener('DOMContentLoaded', function() {
+    var sidebar = document.getElementById('sidebarMenu');
+    var backdrop;
+    function toggleSidebar(show) {
+      if (show) {
+        sidebar.classList.add('show');
+        backdrop = document.createElement('div');
+        backdrop.className = 'sidebar-backdrop';
+        backdrop.onclick = function() { toggleSidebar(false); };
+        document.body.appendChild(backdrop);
+        // Prevent scrolling when sidebar is open
+        document.body.style.overflow = 'hidden';
+      } else {
+        sidebar.classList.remove('show');
+        if (backdrop) backdrop.remove();
+        document.body.style.overflow = '';
+      }
+    }
+    document.body.addEventListener('click', function(e) {
+      if (e.target.matches('[data-bs-toggle="sidebar"]')) {
+        e.preventDefault();
+        toggleSidebar(true);
+      }
+    });
+    window.toggleSidebar = toggleSidebar;
+  });
+</script>
+{% endblock %}

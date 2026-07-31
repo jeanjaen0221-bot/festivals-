@@ -1,0 +1,60 @@
+{% extends 'admin/base.html' %}
+{% block admin_title %}Utilisateurs{% endblock %}
+{% block admin_content %}
+<div class="card shadow-sm border-0 mb-3">
+  <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+      <strong>Inscriptions publiques :</strong>
+      {% if settings.registration_open %}
+        <span class="badge bg-success">Ouvertes</span>
+      {% else %}
+        <span class="badge bg-secondary">Fermées</span>
+      {% endif %}
+      <div class="text-muted small mt-1">Une fois un premier administrateur créé, l'inscription publique se ferme automatiquement. Rouvrez-la ici si de nouveaux comptes doivent pouvoir s'inscrire eux-mêmes.</div>
+    </div>
+    <form method="post" action="{{ url_for('admin.toggle_registration') }}" class="d-inline">
+      {{ csrf_form.hidden_tag() }}
+      {% if settings.registration_open %}
+        <button class="btn btn-outline-secondary btn-sm" type="submit">Fermer les inscriptions</button>
+      {% else %}
+        <button class="btn btn-outline-success btn-sm" type="submit">Rouvrir les inscriptions</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+<div class="mb-3">
+  <a href="{{ url_for('admin.create_user') }}" class="btn btn-primary"><i class="bi bi-person-plus me-1"></i>Créer un utilisateur</a>
+</div>
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th scope="col">#</th>
+          <th scope="col">Nom</th>
+          <th scope="col">Email</th>
+          <th scope="col">Admin</th>
+          <th scope="col">Vendeur goodies</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td><a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="text-decoration-none">{{ user.id }}</a></td>
+          <td><a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="text-decoration-none">{{ user.first_name }} {{ user.last_name }}</a></td>
+          <td><a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="text-decoration-none">{{ user.email }}</a></td>
+          <td>{% if user.is_admin %}<span class="badge bg-success">Oui</span>{% else %}Non{% endif %}</td>
+          <td>{% if user.is_vendor_goodies %}<span class="badge bg-warning text-dark"><i class="bi bi-cart3"></i> Oui</span>{% else %}Non{% endif %}</td>
+          <td>
+            <a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">Détail</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+</div>
+{% endblock %}
