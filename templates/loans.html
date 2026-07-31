@@ -190,35 +190,39 @@
 // (script-src sans 'unsafe-inline') bloque les gestionnaires inline, un nonce
 // n'autorisant que les balises de script. En attributs, ils ne s'exécutaient
 // tout simplement jamais.
-window.addEventListener('DOMContentLoaded', function() {
-  var ouvrirPhoto = document.querySelector('.js-open-id-photo');
-  if (ouvrirPhoto) {
-    ouvrirPhoto.addEventListener('click', function() {
-      var input = document.getElementById('id-card-photo-input');
-      if (input) input.click();
-    });
+// ── Délégation obligatoire sur cette page ────────────────────────────────────
+// La recherche en direct (static/js/loans-search.js) remplace tout le bloc
+// #loans-results par du DOM fraîchement construit. Des écouteurs posés élément
+// par élément au chargement sont donc détruits dès la première recherche : les
+// boutons du tableau redeviennent inertes, sans le moindre signe.
+// On écoute donc sur `document`, qui lui n'est jamais remplacé.
+document.addEventListener('submit', function(e) {
+  var form = e.target;
+  if (form.matches('form[data-confirm]') && !window.confirm(form.dataset.confirm)) {
+    e.preventDefault();
+    return;
   }
+  if (form.id === 'loan-form'
+      && typeof validateQuantity === 'function' && validateQuantity() === false) {
+    e.preventDefault();
+  }
+});
 
-  var formulairePret = document.getElementById('loan-form');
-  if (formulairePret) {
-    formulairePret.addEventListener('submit', function(e) {
-      if (typeof validateQuantity === 'function' && validateQuantity() === false) {
-        e.preventDefault();
-      }
-    });
+document.addEventListener('click', function(e) {
+  var declencheur = e.target.closest('.js-open-id-photo');
+  if (declencheur) {
+    var input = document.getElementById('id-card-photo-input');
+    if (input) input.click();
   }
-  var photoIdentite = document.getElementById('id-card-photo-input');
-  if (photoIdentite && typeof previewIdCardPhoto === 'function') {
-    photoIdentite.addEventListener('change', previewIdCardPhoto);
+});
+
+document.addEventListener('change', function(e) {
+  if (e.target.matches('.js-submit-on-change') && e.target.form) {
+    e.target.form.submit();
   }
-  document.querySelectorAll('.js-submit-on-change').forEach(function(champ) {
-    champ.addEventListener('change', function() { if (this.form) this.form.submit(); });
-  });
-  document.querySelectorAll('form[data-confirm]').forEach(function(form) {
-    form.addEventListener('submit', function(e) {
-      if (!window.confirm(this.dataset.confirm)) e.preventDefault();
-    });
-  });
+  if (e.target.id === 'id-card-photo-input' && typeof previewIdCardPhoto === 'function') {
+    previewIdCardPhoto(e);
+  }
 });
 // Affiche/masque le champ montant selon le choix de la caution
 function updateDepositAmountField() {
