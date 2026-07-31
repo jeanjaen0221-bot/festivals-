@@ -138,30 +138,73 @@ document.addEventListener('DOMContentLoaded', function() {
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
   if(lostForm) {
+    // La vérification photo partait AU MOMENT de l'envoi : le bénévole attendait
+    // que la photo monte une première fois pour la vérification, puis une seconde
+    // fois avec le formulaire. On la déclenche désormais dès que la photo est
+    // choisie (et réduite), pendant qu'il finit de remplir les champs. Au moment
+    // d'envoyer, le résultat est déjà là : plus aucun upload sur ce chemin.
+    var doublonsVisuels = [];
+    var verificationEnCours = null;
+    var photoInput = lostForm.querySelector('input[type="file"][name$="photos"]');
+
+    function lancerVerificationPhoto() {
+      if (!photoInput || !photoInput.files || !photoInput.files.length) {
+        doublonsVisuels = []; visualCheckDone = true; return;
+      }
+      var body = new FormData();
+      Array.prototype.forEach.call(photoInput.files, function(file) { body.append('photos', file); });
+      verificationEnCours = fetch('{{ url_for("main.api_check_visual_duplicates") }}', {
+        method: 'POST', body: body,
+        headers: {'X-CSRFToken': lostForm.querySelector('input[name$="csrf_token"]').value}
+      }).then(function(response) { return response.json(); })
+        .then(function(data) { doublonsVisuels = data.duplicates || []; })
+        .catch(function() { doublonsVisuels = []; })   // panne réseau : ne bloque pas la déclaration
+        .then(function() { visualCheckDone = true; verificationEnCours = null; });
+    }
+
+    // 'photosPretes' est émis par main.js une fois les images réduites.
+    if (photoInput) {
+      photoInput.addEventListener('photosPretes', lancerVerificationPhoto);
+      photoInput.addEventListener('change', function() {
+        visualCheckDone = false;
+        doublonsVisuels = [];
+        // Repli si la réduction n'a pas pu se faire (navigateur trop ancien).
+        if (typeof DataTransfer === 'undefined') lancerVerificationPhoto();
+      });
+    }
+
+    function afficherDoublonsPhoto(onConfirm) {
+      var list = document.getElementById('doublonList');
+      list.innerHTML = doublonsVisuels.map(function(row) {
+        return '<li class="border-bottom py-2"><a href="' + row.url_detail + '" target="_blank" class="fw-semibold">'
+          + escHtml(row.title) + ' (#' + row.item_id + ')</a> — photo très proche (distance ' + row.distance + ')'
+          + (row.photo_url ? '<br><img src="' + row.photo_url + '" alt="Photo similaire" class="mt-2 rounded" style="max-height:90px;max-width:120px">' : '') + '</li>';
+      }).join('');
+      document.getElementById('noDoublon').classList.add('d-none');
+      document.getElementById('doublonModalTitle').textContent = 'Photo possiblement déjà déclarée';
+      var modal = new bootstrap.Modal(document.getElementById('doublonModal'));
+      document.getElementById('confirmSubmit').onclick = function() { modal.hide(); onConfirm(); };
+      modal.show();
+    }
+
     lostForm.addEventListener('submit', function(e) {
-      var photoInput = lostForm.querySelector('input[type="file"][name$="photos"]');
-      if (!visualCheckDone && photoInput && photoInput.files && photoInput.files.length) {
+      var aDesPhotos = photoInput && photoInput.files && photoInput.files.length;
+      if (aDesPhotos && !visualCheckDone) {
+        // La vérification lancée à la sélection n'est pas encore revenue : on
+        // attend son résultat au lieu de relancer un envoi.
         e.preventDefault();
-        var body = new FormData();
-        Array.prototype.forEach.call(photoInput.files, function(file) { body.append('photos', file); });
-        fetch('{{ url_for("main.api_check_visual_duplicates") }}', {
-          method: 'POST', body: body,
-          headers: {'X-CSRFToken': lostForm.querySelector('input[name$="csrf_token"]').value}
-        }).then(function(response) { return response.json(); }).then(function(data) {
-          var duplicates = data.duplicates || [];
-          if (!duplicates.length) { visualCheckDone = true; lostForm.requestSubmit(); return; }
-          var list = document.getElementById('doublonList');
-          list.innerHTML = duplicates.map(function(row) {
-            return '<li class="border-bottom py-2"><a href="' + row.url_detail + '" target="_blank" class="fw-semibold">'
-              + escHtml(row.title) + ' (#' + row.item_id + ')</a> — photo très proche (distance ' + row.distance + ')'
-              + (row.photo_url ? '<br><img src="' + row.photo_url + '" alt="Photo similaire" class="mt-2 rounded" style="max-height:90px;max-width:120px">' : '') + '</li>';
-          }).join('');
-          document.getElementById('noDoublon').classList.add('d-none');
-          document.getElementById('doublonModalTitle').textContent = 'Photo possiblement déjà déclarée';
-          var modal = new bootstrap.Modal(document.getElementById('doublonModal'));
-          document.getElementById('confirmSubmit').onclick = function() { visualCheckDone = true; modal.hide(); lostForm.requestSubmit(); };
-          modal.show();
-        }).catch(function() { visualCheckDone = true; lostForm.requestSubmit(); });
+        Promise.resolve(verificationEnCours).then(function() {
+          visualCheckDone = true;
+          lostForm.requestSubmit();
+        });
+        return;
+      }
+      if (aDesPhotos && doublonsVisuels.length) {
+        e.preventDefault();
+        afficherDoublonsPhoto(function() {
+          doublonsVisuels = [];          // acquitté : on n'avertit plus
+          lostForm.requestSubmit();
+        });
         return;
       }
       // Désactive les boutons et affiche les spinners

@@ -8,7 +8,7 @@ import matching
 import visual_matcher
 import zones
 from categories_families import guess_family
-from photo_embeddings import ensure_photo_embedding, item_embedding_similarity
+from photo_embeddings import item_embedding_similarity
 from registration_policy import compute_registration_open
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
@@ -175,10 +175,14 @@ def _persist_item_photo(item: Item, file: FileStorage) -> ItemPhoto | None:
         perceptual_hash=_perceptual_hash(data),
     )
     db.session.add(photo)
-    # Un flush attribue les IDs nécessaires à la persistance de l'embedding,
-    # calculé une seule fois ici pour ne jamais inférer dans le chemin de matching.
+    # Pas d'appel à ensure_photo_embedding() ici : charger DINOv2 (et parfois
+    # télécharger ses poids) prenait des dizaines de secondes DANS la requête du
+    # bénévole, worker gunicorn bloqué pendant tout ce temps. Sur un festival
+    # cela figeait le site entier — deux workers suffisent à saturer.
+    # Les vecteurs sont désormais calculés hors requête par la commande
+    # `flask index-photo-embeddings`, à lancer périodiquement. En attendant,
+    # item_embedding_similarity() renvoie None et le score reste 100 % textuel.
     db.session.flush()
-    ensure_photo_embedding(photo)
     return photo
 
 

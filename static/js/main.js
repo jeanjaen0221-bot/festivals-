@@ -1,3 +1,70 @@
+// ── Reduction des photos avant envoi ────────────────────────────────────────
+// Une photo de telephone fait 8 a 12 Mo. Sur le reseau d'un festival, l'envoi
+// bloquait un worker gunicorn pendant plus d'une minute et figeait tout le site
+// (les logs montraient /messages/api/unread a 58 s au lieu de 16 ms). Reduite a
+// 1600 px en JPEG, la meme photo pese ~300 Ko : environ 30 fois moins de donnees,
+// pour une qualite largement suffisante a l'identification d'un objet perdu.
+(function() {
+  var MAX_DIMENSION = 1600;
+  var JPEG_QUALITY = 0.82;
+  var TAILLE_MIN_POUR_REDUIRE = 400 * 1024;   // en dessous, ca n'en vaut pas la peine
+
+  function reduireImage(file) {
+    return new Promise(function(resolve) {
+      if (!file || !file.type || file.type.indexOf('image/') !== 0
+          || file.size < TAILLE_MIN_POUR_REDUIRE) {
+        return resolve(file);
+      }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function() {
+        URL.revokeObjectURL(url);
+        var ratio = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        try {
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        } catch (e) { return resolve(file); }
+        canvas.toBlob(function(blob) {
+          // Si la reduction n'apporte rien, on garde l'original.
+          if (!blob || blob.size >= file.size) return resolve(file);
+          var nom = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+          resolve(new File([blob], nom, { type: 'image/jpeg', lastModified: Date.now() }));
+        }, 'image/jpeg', JPEG_QUALITY);
+      };
+      img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+
+  // Expose pour les scripts de page (report.html) qui doivent attendre la fin.
+  window.photosReduites = Promise.resolve();
+
+  function brancher(input) {
+    if (input.dataset.reductionBranchee === '1') return;
+    input.dataset.reductionBranchee = '1';
+    input.addEventListener('change', function() {
+      if (input.dataset.reductionEnCours === '1' || !input.files || !input.files.length) return;
+      if (typeof DataTransfer === 'undefined') return;   // navigateur trop ancien
+      window.photosReduites = Promise.all(Array.prototype.map.call(input.files, reduireImage))
+        .then(function(fichiers) {
+          var dt = new DataTransfer();
+          fichiers.forEach(function(f) { dt.items.add(f); });
+          input.dataset.reductionEnCours = '1';
+          input.files = dt.files;                        // n'emet pas de 'change'
+          input.dataset.reductionEnCours = '';
+          input.dispatchEvent(new CustomEvent('photosPretes', { bubbles: true }));
+        })
+        .catch(function() { /* on garde les fichiers d'origine */ });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('input[type="file"][name$="photos"]').forEach(brancher);
+  });
+})();
+
 document.addEventListener('DOMContentLoaded', function() {
   const itemForm = document.getElementById('itemForm');
   if (!itemForm) return;
