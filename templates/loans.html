@@ -4,7 +4,7 @@
 <div class="card shadow-sm border-0 mb-4">
   <div class="card-body">
     <h2>Enregistrer un prêt de casque</h2>
-    <form method="post" enctype="multipart/form-data" onsubmit="return validateQuantity();">
+    <form method="post" enctype="multipart/form-data" id="loan-form">
       {{ form.hidden_tag() }}
       <div class="row g-3">
         <div class="col-md-3">
@@ -45,8 +45,8 @@
         <div class="col-md-6" id="id-card-photo-field" style="display:none;">
           {{ form.id_card_photo.label(class="form-label") }}
           <div class="input-group">
-            {{ form.id_card_photo(class="form-control d-none", id="id-card-photo-input", accept="image/*", capture="environment", onchange="previewIdCardPhoto(event)") }}
-            <button type="button" class="btn btn-primary" onclick="document.getElementById('id-card-photo-input').click();">
+            {{ form.id_card_photo(class="form-control d-none", id="id-card-photo-input", accept="image/*", capture="environment", ) }}
+            <button type="button" class="btn btn-primary js-open-id-photo">
               Prendre une photo / Choisir une image
             </button>
           </div>
@@ -70,7 +70,7 @@
           <input type="text" name="q" value="{{ search }}" class="form-control" placeholder="Filtrer par nom ou prénom" autocomplete="off">
         </div>
         <div class="col-auto">
-          <select name="sort" class="form-select" onchange="this.form.submit()">
+          <select name="sort" class="form-select js-submit-on-change">
             <option value="date" {% if request.args.get('sort', 'date') == 'date' %}selected{% endif %}>Trié par heure de prêt</option>
             <option value="name" {% if request.args.get('sort') == 'name' %}selected{% endif %}>Trié par nom (A-Z)</option>
           </select>
@@ -122,8 +122,11 @@
                     <div class="modal-body text-center">
                       <canvas id="signaturePad{{ loan.id }}" style="border:1px solid #ccc; width:100%; max-width:400px; height:180px; display:block; margin:0 auto;"></canvas>
                       <div class="mt-2">
-                        <button class="btn btn-secondary btn-sm" onclick="clearSignature(Number('{{ loan.id }}'))">Effacer</button>
-                        <button class="btn btn-primary btn-sm" id="save-signature-btn-{{ loan.id }}" onclick="saveSignature(Number('{{ loan.id }}'))"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Valider</button>
+                        {# Pas d'attribut onclick : la CSP (script-src sans 'unsafe-inline')
+                           bloque les gestionnaires inline, un nonce n'autorisant que les
+                           blocs de script balises. Ces boutons étaient donc totalement inertes. #}
+                        <button type="button" class="btn btn-secondary btn-sm js-clear-signature" data-loan-id="{{ loan.id }}">Effacer</button>
+                        <button type="button" class="btn btn-primary btn-sm js-save-signature" data-loan-id="{{ loan.id }}" id="save-signature-btn-{{ loan.id }}"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Valider</button>
                       </div>
                     </div>
                   </div>
@@ -152,7 +155,7 @@
               <span class="badge bg-warning text-dark">En attente suppression</span>
             {% elif not loan.return_date %}
               <div class="d-flex flex-column flex-md-row align-items-start gap-1">
-                <form method="post" action="{{ url_for('main.request_loan_deletion', loan_id=loan.id) }}" style="display:inline;" onsubmit="return confirm('Demander la suppression de ce prêt ?');">
+                <form method="post" action="{{ url_for('main.request_loan_deletion', loan_id=loan.id) }}" style="display:inline;" data-confirm="Demander la suppression de ce prêt ?">
                   {{ form.csrf_token }}
                   <button type="submit" class="btn btn-outline-danger btn-sm ms-2">Demander suppression</button>
                 </form>
@@ -291,6 +294,47 @@ window.addEventListener('DOMContentLoaded', function() {
     modal.addEventListener('shown.bs.modal', function() {
       const loanId = this.id.replace('signatureModal', '');
       initSignaturePad(loanId);
+    });
+  });
+
+  // Les boutons portaient des attributs onclick, inertes sous notre CSP
+  // (script-src sans 'unsafe-inline' : un nonce n'autorise que les blocs
+  // <script>, jamais les gestionnaires inline). On les rebranche ici.
+  document.querySelectorAll('.js-clear-signature').forEach(function(btn) {
+    btn.addEventListener('click', function() { clearSignature(this.dataset.loanId); });
+  });
+  document.querySelectorAll('.js-save-signature').forEach(function(btn) {
+    btn.addEventListener('click', function() { saveSignature(this.dataset.loanId); });
+  });
+  var ouvrirPhoto = document.querySelector('.js-open-id-photo');
+  if (ouvrirPhoto) {
+    ouvrirPhoto.addEventListener('click', function() {
+      var input = document.getElementById('id-card-photo-input');
+      if (input) input.click();
+    });
+  }
+
+  // Mêmes causes, mêmes effets : ces attributs inline ne s'exécutaient pas non
+  // plus. La validation de quantité, l'aperçu de la carte d'identité, le tri de
+  // la liste et les confirmations de suppression étaient tous inopérants.
+  var formulairePret = document.getElementById('loan-form');
+  if (formulairePret) {
+    formulairePret.addEventListener('submit', function(e) {
+      if (typeof validateQuantity === 'function' && validateQuantity() === false) {
+        e.preventDefault();
+      }
+    });
+  }
+  var photoIdentite = document.getElementById('id-card-photo-input');
+  if (photoIdentite && typeof previewIdCardPhoto === 'function') {
+    photoIdentite.addEventListener('change', previewIdCardPhoto);
+  }
+  document.querySelectorAll('.js-submit-on-change').forEach(function(champ) {
+    champ.addEventListener('change', function() { if (this.form) this.form.submit(); });
+  });
+  document.querySelectorAll('form[data-confirm]').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+      if (!window.confirm(this.dataset.confirm)) e.preventDefault();
     });
   });
 });

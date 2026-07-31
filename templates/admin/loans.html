@@ -31,8 +31,8 @@
 <div class="col-md-6" id="id-card-photo-field" style="display:none;">
   {{ form.id_card_photo.label(class="form-label") }}
   <div class="input-group">
-    {{ form.id_card_photo(class="form-control d-none", id="id-card-photo-input", accept="image/*", capture="environment", onchange="previewIdCardPhoto(event)") }}
-    <button type="button" class="btn btn-primary" onclick="document.getElementById('id-card-photo-input').click();">
+    {{ form.id_card_photo(class="form-control d-none", id="id-card-photo-input", accept="image/*", capture="environment", ) }}
+    <button type="button" class="btn btn-primary js-open-id-photo">
       Prendre une photo / Choisir une image
     </button>
   </div>
@@ -99,7 +99,7 @@
             {% if loan.signature %}
               <img src="{{ loan.signature }}" alt="Signature du retour" class="img-fluid" style="max-width:120px; border:1px solid #ccc; background:#fff;">
             {% elif not loan.return_date %}
-            <button class="btn btn-sm btn-outline-success" data-loan-id="{{ loan.id }}" onclick="openSignatureModal('{{ loan.id }}')">Retourner & signer</button>
+            <button type="button" class="btn btn-sm btn-outline-success js-open-signature" data-loan-id="{{ loan.id }}">Retourner & signer</button>
             {% endif %}
           </td>
         </tr>
@@ -123,8 +123,8 @@
       <div class="modal-body">
         <canvas id="signaturePad" style="border:1px solid #ccc; width:100%; height:200px;"></canvas>
         <div class="mt-2">
-          <button type="button" class="btn btn-secondary" onclick="clearSignature()">Effacer</button>
-          <button type="button" class="btn btn-primary" onclick="saveSignature()">Enregistrer la signature</button>
+          <button type="button" class="btn btn-secondary js-clear-signature">Effacer</button>
+          <button type="button" class="btn btn-primary js-save-signature">Enregistrer la signature</button>
         </div>
       </div>
     </div>
@@ -240,6 +240,28 @@ document.addEventListener('DOMContentLoaded', function() {
     depositTypeSelect.addEventListener('change', toggleIdCardPhotoField);
   }
   toggleIdCardPhotoField();
+
+  // Ces boutons portaient des attributs onclick, inertes sous notre CSP
+  // (script-src sans 'unsafe-inline' : un nonce n'autorise que les blocs
+  // <script>, jamais les gestionnaires inline). On les rebranche ici.
+  document.querySelectorAll('.js-open-signature').forEach(function(btn) {
+    btn.addEventListener('click', function() { openSignatureModal(this.dataset.loanId); });
+  });
+  var btnEffacer = document.querySelector('.js-clear-signature');
+  if (btnEffacer) btnEffacer.addEventListener('click', clearSignature);
+  var btnEnregistrer = document.querySelector('.js-save-signature');
+  if (btnEnregistrer) btnEnregistrer.addEventListener('click', saveSignature);
+  var ouvrirPhoto = document.querySelector('.js-open-id-photo');
+  if (ouvrirPhoto) {
+    ouvrirPhoto.addEventListener('click', function() {
+      var input = document.getElementById('id-card-photo-input');
+      if (input) input.click();
+    });
+  }
+  var photoIdentite = document.getElementById('id-card-photo-input');
+  if (photoIdentite && typeof previewIdCardPhoto === 'function') {
+    photoIdentite.addEventListener('change', previewIdCardPhoto);
+  }
 });
 </script>
 {% endblock %}
