@@ -20,19 +20,27 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   // Le lieu est stocke en base sous son LIBELLE (dict(choices).get(...)), pas
   // sous la valeur technique : on envoie donc le texte de l'option selectionnee.
-  function getLocationText() {
-    if (getFormStatus() === 'found') {
-      var foundEl = itemForm.querySelector('[name$="found_location_other"]');
-      return foundEl ? foundEl.value.trim() : '';
-    }
-    var sel = itemForm.querySelector('select[name$="-location"], select[name="location"]');
+  function selectedZoneText(selectSelector, otherSelector) {
+    var sel = itemForm.querySelector(selectSelector);
     if (!sel) return '';
     if (sel.value === 'autre') {
-      var otherEl = itemForm.querySelector('[name$="location_other"]');
+      var otherEl = itemForm.querySelector(otherSelector);
       return otherEl ? otherEl.value.trim() : '';
     }
+    if (!sel.value) return '';
     var opt = sel.options[sel.selectedIndex];
     return opt ? opt.text.trim() : '';
+  }
+
+  function getLocationText() {
+    // Perdus et trouves partagent la meme liste de zones (zones.py), donc la
+    // meme logique des deux cotes : libelle de l'option, ou saisie libre si
+    // « Autre ». C'est le libelle qui est stocke en base.
+    if (getFormStatus() === 'found') {
+      return selectedZoneText('select[name$="found_location"]', '[name$="found_location_other"]');
+    }
+    return selectedZoneText('select[name$="-location"], select[name="location"]',
+                            '[name$="location_other"]');
   }
 
   function buildBody(titre, categoryId) {
@@ -112,7 +120,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (catSelect)  catSelect.addEventListener('change', triggerLivePreview);
   document.addEventListener('structuredFieldChange', triggerLivePreview);
   // Le lieu compte pour 20 % du score : reevaluer quand il change.
-  itemForm.querySelectorAll('select[name$="-location"], select[name="location"], [name$="location_other"]')
+  itemForm.querySelectorAll('select[name$="-location"], select[name="location"], select[name$="found_location"], [name$="location_other"]')
     .forEach(function(el) {
       el.addEventListener('change', triggerLivePreview);
       el.addEventListener('input', triggerLivePreview);

@@ -12,26 +12,41 @@
       <label class="form-label"><i class="bi bi-chat-left-text"></i> {{ form.comments.label.text }}</label>
       {{ form.comments(class="form-control", rows="3", placeholder="Description ou détails de l’objet, circonstances, etc.") }}
     </div>
-    <div class="mb-3">
-      <label class="form-label"><i class="bi bi-geo-alt"></i> {{ form.location.label.text }}</label>
-      {{ form.location(class="form-control", placeholder="Lieu précis (ex : Scène B, camping…)") }}
-    </div>
+    {# Lieu de perte : uniquement pour les objets perdus. Le renseigner sur un
+       objet trouvé masquerait son lieu de découverte, car _get_location()
+       (matching.py) donne la priorité à `location`. #}
+    {% if item.status.name != 'FOUND' %}
+      <div class="mb-3">
+        <label class="form-label"><i class="bi bi-geo-alt"></i> {{ form.location.label.text }}</label>
+        {{ form.location(class="form-select", id="edit-location-select") }}
+      </div>
+      <div class="mb-3" id="edit-location-other-group" style="display:none;">
+        <label class="form-label"><i class="bi bi-pencil"></i> {{ form.location_other.label.text }}</label>
+        {{ form.location_other(class="form-control", placeholder="Ex : derrière la scène Nova, près des douches…") }}
+      </div>
+    {% endif %}
     <div class="mb-3">
       {{ form.category.label(class="form-label") }}
       {{ form.category(class="form-select") }}
     </div>
     {% if item.status.name == 'FOUND' %}
+      {# Mêmes listes de zones qu'à la déclaration : le champ « autre » ne sert
+         que si la zone « Autre » est choisie, d'où la bascule JS en bas de page. #}
       <div class="mb-3">
-        <label class="form-label"><i class="bi bi-geo-alt"></i> {{ form.found_location_other.label.text }}</label>
-        {{ form.found_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
+        <label class="form-label"><i class="bi bi-geo-alt"></i> {{ form.found_location.label.text }}</label>
+        {{ form.found_location(class="form-select", id="edit-found-location-select") }}
+      </div>
+      <div class="mb-3" id="edit-found-location-other-group" style="display:none;">
+        <label class="form-label"><i class="bi bi-pencil"></i> {{ form.found_location_other.label.text }}</label>
+        {{ form.found_location_other(class="form-control", placeholder="Ex : derrière la scène Nova, près des douches…") }}
       </div>
       <div class="mb-3">
         <label class="form-label"><i class="bi bi-geo-alt-fill"></i> {{ form.storage_location.label.text }}</label>
-        {{ form.storage_location(class="form-select") }}
+        {{ form.storage_location(class="form-select", id="edit-storage-location-select") }}
       </div>
-      <div class="mb-3">
+      <div class="mb-3" id="edit-storage-location-other-group" style="display:none;">
         <label class="form-label"><i class="bi bi-pencil-fill"></i> {{ form.storage_location_other.label.text }}</label>
-        {{ form.storage_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
+        {{ form.storage_location_other(class="form-control", placeholder="Ex : local technique…") }}
       </div>
     {% endif %}
     {# ── Signes distinctifs ── #}
@@ -95,6 +110,20 @@
         sync();
         chip.addEventListener('click', function(e) { if (e.target === cb) return; cb.checked = !cb.checked; sync(); });
         cb.addEventListener('change', sync);
+      });
+      // Champ « précisez » affiché seulement quand la zone « Autre » est choisie.
+      ['location', 'found-location', 'storage-location'].forEach(function(name) {
+        var sel = document.getElementById('edit-' + name + '-select');
+        var grp = document.getElementById('edit-' + name + '-other-group');
+        if (!sel || !grp) return;
+        function toggle() {
+          var isOther = sel.value === 'autre';
+          grp.style.display = isOther ? 'block' : 'none';
+          var input = grp.querySelector('input');
+          if (input) input.required = isOther;
+        }
+        sel.addEventListener('change', toggle);
+        toggle();
       });
     });
     </script>

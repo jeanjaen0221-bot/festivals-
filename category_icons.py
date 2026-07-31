@@ -1,124 +1,82 @@
-{% extends "base.html" %}
-{% block title %}Navette Esperanzah{% endblock %}
-{% block extra_head %}
-<style>
-  #shuttle-eta-table thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
-  #shuttle-eta-table tbody tr td:first-child { width: 60%; }
-  #shuttle-eta-table tbody tr td:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  #shuttle-today-slots .list-group-item strong { font-variant-numeric: tabular-nums; }
-  #shuttle-route .badge { font-variant-numeric: tabular-nums; }
-  #shuttle-route .list-group-item { padding-top: .5rem; padding-bottom: .5rem; }
-  #shuttle-today-slots .list-group-item { padding-top: .5rem; padding-bottom: .5rem; }
-  #shuttle-route + .small, #shuttle-today + .small { color: #6c757d; }
-  .shuttle-line { position: relative; padding: 18px 28px 32px 28px; }
-  .shuttle-line-track { position: absolute; left: 48px; right: 48px; top: 32px; height: 8px; background: linear-gradient(90deg,#e9ecef,#dee2e6); border-radius: 999px; box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
-  .shuttle-stops { position: relative; display: flex; justify-content: space-between; align-items: flex-start; }
-  .shuttle-stop { position: relative; text-align: center; flex: 1 1 0; min-width: 0; }
-  .shuttle-stop .dot { width: 16px; height: 16px; border-radius: 999px; background: #adb5bd; border: 2px solid #fff; box-shadow: 0 0 0 2px #adb5bd; margin: 0 auto; position: relative; top: 24px; }
-  .shuttle-stop .label { margin-top: 36px; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; margin-left: auto; margin-right: auto; }
-  .shuttle-stop .badge { margin-left: 6px; vertical-align: middle; }
-  .shuttle-led { position: absolute; top: 28px; left: 48px; width: 16px; height: 16px; border-radius: 999px; background: #0dcaf0; box-shadow: 0 0 0 4px rgba(13,202,240,.25), 0 0 12px rgba(13,202,240,.6); transform: translateX(0); transition: transform .6s ease; }
-  @media (max-width: 576px) {
-    .shuttle-stop .label { max-width: 88px; font-size: .8rem; }
-    .shuttle-line-track { left: 32px; right: 32px; }
-    .shuttle-led { left: 32px; }
-  }
-</style>
-{% endblock %}
-{% block content %}
-<div class="container py-4">
-  <h1 class="mb-3"><i class="bi bi-bus-front"></i> Navette Esperanzah</h1>
-  <div class="alert alert-info py-2 small" role="alert">
-    <span class="me-3"><i class="bi bi-lightbulb"></i> LED bleue = position approximative</span>
-    <span class="me-3"><i class="bi bi-arrow-right-circle"></i> Ligne surlignée = prochain arrêt</span>
-    <span class="me-3"><span class="badge bg-success">En service</span> / <span class="badge bg-warning text-dark">Reprise à HH:MM</span> / <span class="badge bg-secondary">Hors service</span></span>
-  </div>
-  <div class="d-flex justify-content-end mb-2">
-    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#volunteerGuide" aria-expanded="false" aria-controls="volunteerGuide">
-      <i class="bi bi-mortarboard"></i> Guide bénévoles
-    </button>
-  </div>
-  <div class="collapse" id="volunteerGuide">
-    <div class="card card-body small mb-3">
-      <div class="row g-2">
-        <div class="col-md-6">
-          <div><i class="bi bi-traffic-light text-success"></i> État du service : badge en haut du planning.</div>
-          <div><i class="bi bi-dot"></i> LED bleue sur la ligne = position approximative.</div>
-          <div><i class="bi bi-calendar-event"></i> Créneaux : <span class="badge bg-success">En cours</span> ou <span class="badge bg-warning text-dark">À venir</span>.</div>
-        </div>
-        <div class="col-md-6">
-          <div><i class="bi bi-list-check"></i> Tableau : ligne bleue = prochain arrêt; heures estimées.</div>
-          <div><i class="bi bi-arrow-clockwise"></i> Rafraîchissement auto toutes les 30 s.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="row g-4">
-    <div class="col-lg-6">
-      <div class="card shadow rounded-3 border-0">
-        <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center">
-          <span><i class="bi bi-signpost"></i> Parcours</span>
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="popover" data-bs-placement="bottom" title="Parcours"
-            data-bs-content="Ligne des arrêts du parcours. LED bleue : position approximative. ‘Départ’ : point de départ affiché."><i class="bi bi-question-circle"></i></button>
-        </div>
-        <div class="card-body">
-          <div id="shuttle-line" class="shuttle-line mb-2">
-            <div class="shuttle-line-track"></div>
-            <div class="shuttle-led" title="Position approximative"></div>
-            <div id="shuttle-stops" class="shuttle-stops"></div>
-          </div>
-          <div class="text-muted small">LED bleue : position approximative · Les points : arrêts</div>
-        </div>
-      </div>
-      <div class="card shadow rounded-3 border-0 mt-3">
-        <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center">
-          <span><i class="bi bi-calendar-event"></i> Planning d'aujourd'hui</span>
-          <div class="d-flex align-items-center gap-2">
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="popover" data-bs-placement="bottom" title="Planning du jour"
-              data-bs-content="Créneaux où la navette circule. ‘En cours’ = actuellement actif. ‘À venir’ = prochain créneau."><i class="bi bi-question-circle"></i></button>
-            <span id="shuttle-service-badge" class="badge rounded-pill ms-2"></span>
-          </div>
-        </div>
-        <div class="card-body">
-          <div id="shuttle-today" class="small text-muted"></div>
-          <ul id="shuttle-today-slots" class="list-group mt-2"></ul>
-          <div class="text-muted small mt-2">Légende: <span class="badge bg-success">En cours</span> service actif · <span class="badge bg-warning text-dark">À venir</span> prochain créneau · <span class="badge bg-info text-dark">Note</span> précision.</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow rounded-3 border-0">
-        <div class="card-header bg-white fw-semibold border-bottom d-flex justify-content-between align-items-center">
-          <span><i class="bi bi-clock"></i> Tableau d'arrivée (approx.)</span>
-          <div class="d-flex align-items-center gap-2">
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="popover" data-bs-placement="bottom" title="Arrivées estimées"
-              data-bs-content="Heures calculées à partir des réglages et du parcours. Ligne surlignée = prochain arrêt."><i class="bi bi-question-circle"></i></button>
-            <small id="shuttle-clock" class="text-muted"></small>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="table-responsive mt-1">
-            <table class="table table-striped table-hover table-sm align-middle mb-0" id="shuttle-eta-table">
-              <thead>
-                <tr><th>Arrêt</th><th>Arrivée estimée</th></tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <div class="alert alert-warning mt-2 d-none" id="shuttle-eta-warning"></div>
-          <div class="text-muted small mt-1">Ligne surlignée: prochain arrêt. Horaires estimés. Actualisation toutes les 30 s.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-<script nonce="{{ csp_nonce }}">
-  document.addEventListener('DOMContentLoaded', function(){
-    if (window.bootstrap && bootstrap.Popover) {
-      [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
-        .forEach(function (el) { new bootstrap.Popover(el, {container: 'body'}); });
-    }
-  });
-</script>
-<script src="{{ url_for('static', filename='js/shuttle_eta.js') }}?v=20260103-3"></script>
-{% endblock %}
+# Mapping des catégories vers les icônes Bootstrap Icons
+# Utilisé pour assigner automatiquement des icônes aux catégories
+
+CATEGORY_ICON_MAP = {
+    # Objets personnels
+    'Portefeuille': 'bi-wallet2',
+    'Porte-monnaie': 'bi-wallet',
+    'Téléphone': 'bi-phone',
+    'Trousseau': 'bi-key',
+    'Clés': 'bi-key-fill',
+    'Badge d\'accès': 'bi-credit-card-2-front',
+    'Carte d\'identité': 'bi-person-vcard',
+    
+    # Bijoux et accessoires
+    'Bague': 'bi-gem',
+    'Montre': 'bi-smartwatch',
+    'Lunettes': 'bi-eyeglasses',
+    'Collier': 'bi-heart',
+    'Bracelet': 'bi-circle',
+    
+    # Vêtements
+    'T-shirt': 'bi-person',
+    'Sweat': 'bi-person-fill',
+    'Pull': 'bi-person-fill',
+    'Veste': 'bi-person-arms-up',
+    'Pantalon': 'bi-person-standing',
+    'Chaussures': 'bi-shoe-print',
+    'Casquette': 'bi-cap',
+    'Chapeau': 'bi-circle-fill',
+    
+    # Électronique
+    'Batterie externe': 'bi-battery-charging',
+    'Chargeur': 'bi-plug',
+    'Écouteurs': 'bi-headphones',
+    'Appareil auditif': 'bi-ear',
+    'Tablette': 'bi-tablet',
+    'Ordinateur portable': 'bi-laptop',
+    'Appareil photo': 'bi-camera',
+    
+    # Objets divers
+    'Sac': 'bi-bag',
+    'Banane': 'bi-apple',
+    'Tapis de sol': 'bi-square',
+    'Parapluie': 'bi-umbrella',
+    'Livre': 'bi-book',
+    'Cahier': 'bi-journal',
+    'Stylo': 'bi-pen',
+    'Bouteille': 'bi-cup-straw',
+}
+
+# Icône par défaut si aucune correspondance trouvée
+DEFAULT_ICON = 'bi-box-seam'
+
+def get_icon_for_category(category_name):
+    """
+    Retourne la classe d'icône Bootstrap pour une catégorie donnée.
+    
+    Args:
+        category_name (str): Nom de la catégorie
+        
+    Returns:
+        str: Classe CSS de l'icône Bootstrap (ex: 'bi-wallet')
+    """
+    if not category_name:
+        return DEFAULT_ICON
+    
+    # Recherche exacte
+    if category_name in CATEGORY_ICON_MAP:
+        return CATEGORY_ICON_MAP[category_name]
+    
+    # Recherche insensible à la casse
+    for cat_name, icon_class in CATEGORY_ICON_MAP.items():
+        if cat_name.lower() == category_name.lower():
+            return icon_class
+    
+    # Recherche partielle (contient le mot)
+    category_lower = category_name.lower()
+    for cat_name, icon_class in CATEGORY_ICON_MAP.items():
+        if any(word in category_lower for word in cat_name.lower().split()):
+            return icon_class
+    
+    return DEFAULT_ICON

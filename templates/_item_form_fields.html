@@ -1,3 +1,31 @@
+{# ── Intention de déclaration ───────────────────────────────────────────────
+   Elle doit voyager dans les données du formulaire, PAS via le bouton d'envoi :
+   la soumission passe par form.submit() (main.js) ou requestSubmit() (bas de
+   report.html), et ni l'un ni l'autre n'inclut le bouton d'envoi dans la
+   requête. Sans ce champ, 'submit_lost'/'submit_found' est absent de
+   request.form, la condition de views.py est fausse et la déclaration n'est
+   jamais enregistrée : la page se recharge en silence. #}
+{% if prefix in ('lost-', 'found-') %}
+  <input type="hidden" name="submit_{{ 'lost' if prefix == 'lost-' else 'found' }}" value="1">
+{% endif %}
+
+{# Erreurs de validation : sans ce bloc, un champ obligatoire non rempli
+   provoquait le même rechargement silencieux, sans aucune explication. #}
+{% if form.errors %}
+  <div class="alert alert-danger">
+    <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill"></i> La déclaration n'a pas pu être enregistrée :</div>
+    <ul class="mb-0 ps-3">
+      {# Parcourir les champs plutot que form.errors : ce dict peut contenir
+         une cle None (erreurs de formulaire) qui ferait echouer form[champ]. #}
+      {% for field in form if field.errors %}
+        {% for message in field.errors %}
+          <li><b>{{ field.label.text }}</b> — {{ message }}</li>
+        {% endfor %}
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
 <div class="mb-3">
   <label class="form-label"><i class="bi bi-tag"></i> {{ form.title.label.text }}</label>
   {{ form.title(class="form-control", placeholder="Titre de l’objet (ex : Porte-monnaie noir)") }}
@@ -50,10 +78,17 @@
   </div>
 {% elif prefix == 'found-' %}
   <!-- SECTION LIEU DE DÉCOUVERTE -->
+  {# Le select doit rester rendu : s'il ne l'est pas, WTForms laisse .data à None
+     et le lieu saisi est silencieusement perdu à l'enregistrement. #}
   <div class="mb-3">
     <label class="form-label"><i class="bi bi-geo-alt text-info"></i> <strong>Où l’objet a-t-il été trouvé&nbsp;?</strong></label>
-    {{ form.found_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
-    <div class="form-text text-info small">Saisissez librement l'endroit précis où l'objet a été trouvé.</div>
+    {{ form.found_location(class="form-select", id=prefix ~ 'found-location-select') }}
+    <div class="form-text text-info small">Choisissez la zone du site. <b>Même liste que pour les objets perdus : c'est ce qui permet de rapprocher les deux déclarations.</b></div>
+  </div>
+  <div class="mb-3" id="{{ prefix }}found-location-other-group" style="display: none;">
+    <label class="form-label"><i class="bi bi-pencil"></i> Précisez le lieu de découverte</label>
+    {{ form.found_location_other(class="form-control", placeholder="Ex : derrière la scène Nova, près des douches…") }}
+    <div class="form-text small">Soyez aussi précis que possible.</div>
   </div>
   <!-- SECTION LIEU DE STOCKAGE -->
   <div class="mb-3">

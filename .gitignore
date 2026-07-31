@@ -24,6 +24,10 @@ _poubelles/
 Thumbs.db
 .vscode/
 .idea/
+.claude/
+
+# Cache de tests
+.pytest_cache/
 
 # Logs
 *.log

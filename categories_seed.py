@@ -1,182 +1,32 @@
+"""Insertion des catégories de référence, avec leur famille.
 
-{% extends "base.html" %}
-{% block content %}
-  <div class="text-center mb-4">
-  <span class="fs-1 text-primary"><i class="bi bi-flag"></i></span>
-  <h2 class="fw-bold">Signaler un objet</h2>
-  <p class="text-muted">Déclarez un objet perdu ou trouvé lors du festival</p>
-</div>
-  {% if active_tab == 'found' %}
-  <ul class="nav nav-tabs mb-3" id="reportTab" role="tablist">
-    <li class="nav-item" role="presentation">
-      <button class="nav-link active d-flex align-items-center gap-2" id="found-tab" type="button" role="tab" aria-controls="found" aria-selected="true" disabled><i class="bi bi-emoji-smile text-success"></i> Objet trouvé</button>
-    </li>
-  </ul>
-  <div class="tab-content" id="reportTabContent">
-    <div class="tab-pane fade show active" id="found" role="tabpanel" aria-labelledby="found-tab">
-      <div class="accordion mb-4 shadow-sm rounded-4" id="accordionFound">
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="headingFound">
-            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFound" aria-expanded="true" aria-controls="collapseFound">
-              Formulaire objet trouvé
-            </button>
-          </h2>
-          <div id="collapseFound" class="accordion-collapse collapse show" aria-labelledby="headingFound" data-bs-parent="#accordionFound">
-            <div class="accordion-body">
-              {% with messages = get_flashed_messages(category_filter=['found']) %}
-                {% for message in messages %}
-                  <div class="alert alert-warning">{{ message }}</div>
-                {% endfor %}
-              {% endwith %}
-              <form method="post" enctype="multipart/form-data" autocomplete="off" id="itemForm">
-                {{ found_form.hidden_tag() }}
-                {% set form = found_form %}
-                {% set prefix = 'found-' %}
-                <div class="border border-success border-3 rounded-4 p-3 mb-3 bg-light-subtle">
-                  <div class="mb-2 text-success fw-bold fs-5 d-flex align-items-center gap-2">
-                    <i class="bi bi-emoji-smile"></i> Déclaration d'objet TROUVÉ
-                  </div>
-                  <div class="mb-2 text-success-emphasis small">
-                    Vous avez trouvé un objet ? Remplissez ce formulaire.<br>
-                    <span class="fw-semibold">Attention :</span> Si vous avez <em>perdu</em> un objet, utilisez le formulaire <strong>Objet perdu</strong>.
-                  </div>
-                  {% include '_item_form_fields.html' with context %}
+La liste des catégories n'est plus dupliquée ici : elle est dérivée de
+``categories_families.FAMILLES``, seule source de vérité, également utilisée par
+le menu déroulant du formulaire et par le moteur de correspondance. Auparavant
+les deux listes pouvaient diverger — une catégorie présente ici mais absente des
+familles disparaissait purement et simplement du menu.
+"""
+from app import app, db
+from models import Category
+from categories_families import FAMILLES
 
-                  <button type="submit" name="submit_found" id="submit-found-btn" class="btn btn-success w-100 mt-2 found-confirm-btn"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Signaler objet TROUVÉ</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-{% else %}
-  <ul class="nav nav-tabs mb-3" id="reportTab" role="tablist">
-    <li class="nav-item" role="presentation">
-      <button class="nav-link active d-flex align-items-center gap-2" id="lost-tab" type="button" role="tab" aria-controls="lost" aria-selected="true" disabled><i class="bi bi-emoji-frown text-primary"></i> Objet perdu</button>
-    </li>
-  </ul>
-  <div class="tab-content" id="reportTabContent">
-    <div class="tab-pane fade show active" id="lost" role="tabpanel" aria-labelledby="lost-tab">
-      <div class="accordion mb-4 shadow-sm rounded-4" id="accordionLost">
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="headingLost">
-            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLost" aria-expanded="true" aria-controls="collapseLost">
-              Formulaire objet perdu
-            </button>
-          </h2>
-          <div id="collapseLost" class="accordion-collapse collapse show" aria-labelledby="headingLost" data-bs-parent="#accordionLost">
-            <div class="accordion-body">
-              {% with messages = get_flashed_messages(category_filter=['lost']) %}
-                {% for message in messages %}
-                  <div class="alert alert-warning">{{ message }}</div>
-                {% endfor %}
-              {% endwith %}
-              <form method="post" autocomplete="off" id="itemForm">
-                {{ lost_form.hidden_tag() }}
-                {% set form = lost_form %}
-                {% set prefix = 'lost-' %}
-                <div class="border border-danger border-3 rounded-4 p-3 mb-3 bg-light-subtle">
-                  <div class="mb-2 text-danger fw-bold fs-5 d-flex align-items-center gap-2">
-                    <i class="bi bi-emoji-frown"></i> Déclaration d'objet PERDU
-                  </div>
-                  <div class="mb-2 text-danger-emphasis small">
-                    Vous avez perdu un objet ? Remplissez ce formulaire.<br>
-                    <span class="fw-semibold">Attention :</span> Si vous avez <em>trouvé</em> un objet, utilisez le formulaire <strong>Objet trouvé</strong> depuis la page de déclaration.
-                  </div>
-                  {% include '_item_form_fields.html' with context %}
 
-                  <button type="submit" name="submit_lost" id="submit-lost-btn" class="btn btn-primary w-100 mt-2 lost-confirm-btn"><span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>Signaler objet PERDU</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-{% endif %}
-  <!-- Modal de suggestion de doublons -->
-  <div class="modal fade" id="doublonModal" tabindex="-1" aria-labelledby="doublonModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="doublonModalLabel">
-            <i class="bi bi-search-heart text-warning me-2"></i><span id="doublonModalTitle">Vérification avant envoi</span>
-          </h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
-        </div>
-        <div class="modal-body">
-          <div id="doublonListContainer">
-            <ul id="doublonList" class="list-unstyled mb-0"></ul>
-          </div>
-          <div id="noDoublon" class="text-muted d-none">Aucun objet similaire trouvé.</div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-          <button type="button" class="btn btn-primary" id="confirmSubmit">Signaler quand même</button>
-        </div>
-      </div>
-    </div>
-  </div>
-<script nonce="{{ csp_nonce }}">
-function confirmLostSubmit() {
-  return confirm("Confirmez-vous que vous voulez déclarer un objet PERDU ?\n\nAssurez-vous d'utiliser ce formulaire uniquement si vous êtes le propriétaire de l'objet perdu.");
-}
-function confirmFoundSubmit() {
-  return confirm("Confirmez-vous que vous voulez déclarer un objet TROUVÉ ?\n\nUtilisez ce formulaire uniquement si vous rendez un objet trouvé.");
-}
-document.addEventListener('DOMContentLoaded', function() {
-  var lostForm = document.getElementById('itemForm');
-  var lostBtn = document.getElementById('submit-lost-btn');
-  var foundBtn = document.getElementById('submit-found-btn');
-  var visualCheckDone = false;
+def seed_categories():
+    with app.app_context():
+        crees = rattrapees = 0
+        for famille, noms in FAMILLES:
+            for n in noms:
+                existe = Category.query.filter_by(name=n).first()
+                if not existe:
+                    db.session.add(Category(name=n, family=famille))
+                    crees += 1
+                elif not existe.family:
+                    # Rattrape les bases créées avant l'ajout de la colonne.
+                    existe.family = famille
+                    rattrapees += 1
+        db.session.commit()
+        print(f"Catégories : {crees} créée(s), {rattrapees} famille(s) renseignée(s).")
 
-  function escHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-  if(lostForm) {
-    lostForm.addEventListener('submit', function(e) {
-      var photoInput = lostForm.querySelector('input[type="file"][name$="photos"]');
-      if (!visualCheckDone && photoInput && photoInput.files && photoInput.files.length) {
-        e.preventDefault();
-        var body = new FormData();
-        Array.prototype.forEach.call(photoInput.files, function(file) { body.append('photos', file); });
-        fetch('{{ url_for("main.api_check_visual_duplicates") }}', {
-          method: 'POST', body: body,
-          headers: {'X-CSRFToken': lostForm.querySelector('input[name$="csrf_token"]').value}
-        }).then(function(response) { return response.json(); }).then(function(data) {
-          var duplicates = data.duplicates || [];
-          if (!duplicates.length) { visualCheckDone = true; lostForm.requestSubmit(); return; }
-          var list = document.getElementById('doublonList');
-          list.innerHTML = duplicates.map(function(row) {
-            return '<li class="border-bottom py-2"><a href="' + row.url_detail + '" target="_blank" class="fw-semibold">'
-              + escHtml(row.title) + ' (#' + row.item_id + ')</a> — photo très proche (distance ' + row.distance + ')'
-              + (row.photo_url ? '<br><img src="' + row.photo_url + '" alt="Photo similaire" class="mt-2 rounded" style="max-height:90px;max-width:120px">' : '') + '</li>';
-          }).join('');
-          document.getElementById('noDoublon').classList.add('d-none');
-          document.getElementById('doublonModalTitle').textContent = 'Photo possiblement déjà déclarée';
-          var modal = new bootstrap.Modal(document.getElementById('doublonModal'));
-          document.getElementById('confirmSubmit').onclick = function() { visualCheckDone = true; modal.hide(); lostForm.requestSubmit(); };
-          modal.show();
-        }).catch(function() { visualCheckDone = true; lostForm.requestSubmit(); });
-        return;
-      }
-      // Désactive les boutons et affiche les spinners
-      if(lostBtn) {
-        lostBtn.disabled = true;
-        var sp = lostBtn.querySelector('.spinner-border');
-        if(sp) sp.classList.remove('d-none');
-      }
-      if(foundBtn) {
-        foundBtn.disabled = true;
-        var sp2 = foundBtn.querySelector('.spinner-border');
-        if(sp2) sp2.classList.remove('d-none');
-      }
-    });
-  }
-});
-</script>
-{% endblock %}
+
+if __name__ == '__main__':
+    seed_categories()

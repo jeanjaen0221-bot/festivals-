@@ -59,6 +59,59 @@ def test_structured_field_bonus_brand_match():
     assert bonus >= matching.MATCH_CONFIG['bonus_brand_match']
 
 
+def test_text_field_score_is_none_when_one_side_is_empty():
+    """Un champ rempli face a un champ vide n'est pas une divergence : c'est une
+    absence d'information. Le compter 0 coutait tout le poids du champ."""
+    assert matching._text_field_score('', 'sac noir') is None
+    assert matching._text_field_score('sac noir', '') is None
+    assert matching._text_field_score('', '') is None
+    assert matching._text_field_score('sac noir', 'sac noir') is not None
+
+
+def test_empty_field_does_not_drag_the_score_down():
+    """Regression : une sonde sans description ne doit plus etre penalisee face
+    a un candidat qui en a une."""
+    probe = _item(title="Portefeuille noir")
+    candidate = _item(title="Portefeuille noir", comments="trouve pres du bar")
+    assert matching.match_score(probe, candidate) >= 95
+
+
+def test_short_unrelated_titles_are_no_longer_perfect():
+    """partial_ratio donnait 100 a « cles de voiture » vs « cle usb »."""
+    a = matching.normalize_text("Cles de voiture")
+    b = matching.normalize_text("Cle USB")
+    assert matching._text_field_score(a, b) < 80
+
+
+def test_unrelated_objects_stay_apart():
+    score = matching.match_score(_item(title="Telephone noir"), _item(title="Sac a dos noir"))
+    assert score < 70, f"objets sans rapport trop proches : {score}"
+
+
+def test_apply_bonus_never_saturates_identically():
+    """Deux paires de qualites differentes ne doivent plus donner le meme 100."""
+    fort = matching.apply_bonus(90, 40)
+    faible = matching.apply_bonus(55, 40)
+    assert fort > faible
+    assert fort <= 100 and faible <= 100
+
+
+def test_apply_bonus_is_monotonic():
+    assert matching.apply_bonus(60, 10) < matching.apply_bonus(60, 30)
+    assert matching.apply_bonus(50, 20) < matching.apply_bonus(70, 20)
+
+
+def test_apply_bonus_keeps_malus_subtractive():
+    """Une contradiction doit couter cher, pas etre amortie."""
+    assert matching.apply_bonus(80, -40) == 40
+    assert matching.apply_bonus(10, -40) == 0
+
+
+def test_apply_bonus_bounds():
+    assert matching.apply_bonus(100, 100) == 100
+    assert matching.apply_bonus(0, 0) == 0
+
+
 def test_multicolore_never_creates_a_color_conflict():
     """'multicolore' est compatible avec n'importe quelle couleur : un sac
     multicolore decrit comme 'noir' par l'autre partie n'est pas une divergence."""

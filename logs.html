@@ -1,9 +1,0 @@
-{% macro storage_badge_class(lieu_lower) -%}
-{{-
-  'bg-danger text-white' if 'camping famille' in lieu_lower else
-  'bg-primary text-white' if 'point info festival' in lieu_lower else
-  'bg-success text-white' if 'festivalier' in lieu_lower else
-  'bg-secondary text-white' if 'autre' in lieu_lower else
-  'bg-warning text-dark'
--}}
-{%- endmacro %}
