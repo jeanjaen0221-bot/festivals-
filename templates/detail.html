@@ -146,10 +146,32 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
       <hr>
-      <h5>Informations déclarant</h5>
-      <p><strong>Nom :</strong> {{ item.reporter_name }}</p>
-      <p><strong>Email :</strong> {{ item.reporter_email }}</p>
-      <p><strong>Téléphone :</strong> {{ item.reporter_phone or '—' }}</p>
+      {# Pour un objet perdu, ce sont les coordonnées du festivalier à
+         recontacter : liens cliquables pour appeler d'un seul geste. #}
+      <h5>
+        {% if item.status == Status.LOST %}
+          <i class="bi bi-person-lines-fill text-danger"></i> Contact du propriétaire
+        {% else %}
+          <i class="bi bi-person"></i> Informations déclarant
+        {% endif %}
+      </h5>
+      <p class="mb-1"><strong>Nom :</strong> {{ item.reporter_name or '—' }}</p>
+      <p class="mb-1"><strong>Téléphone :</strong>
+        {% if item.reporter_phone %}
+          <a href="tel:{{ item.reporter_phone | replace(' ', '') }}" class="fw-semibold">{{ item.reporter_phone }}</a>
+        {% else %}—{% endif %}
+      </p>
+      <p class="mb-1"><strong>Email :</strong>
+        {% if item.reporter_email %}
+          <a href="mailto:{{ item.reporter_email }}">{{ item.reporter_email }}</a>
+        {% else %}—{% endif %}
+      </p>
+      {% if item.status == Status.LOST and not item.reporter_phone and not item.reporter_email %}
+        <div class="alert alert-warning py-2 small mt-2 mb-0">
+          <i class="bi bi-exclamation-triangle"></i> Aucun moyen de contact enregistré
+          pour cette déclaration : impossible de prévenir le propriétaire.
+        </div>
+      {% endif %}
 
       {# Si l'objet est déjà rendu #}
       {% if item.status == Status.PENDING_DELETION %}

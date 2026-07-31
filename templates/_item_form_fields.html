@@ -201,6 +201,50 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+{# ── Coordonnées ────────────────────────────────────────────────────────────
+   Ces champs étaient obligatoires côté formulaire mais n'étaient affichés nulle
+   part : aucune déclaration d'objet perdu ne pouvait aboutir, et le bénévole
+   voyait une erreur portant sur un champ invisible. Pour un objet perdu, ce
+   sont les coordonnées du FESTIVALIER, pas celles du bénévole connecté. #}
+{% if prefix == 'lost-' %}
+  <div class="card border-2 mb-3" style="border-color:#dc3545!important;background:#fff5f5;">
+    <div class="card-body py-3">
+      <div class="fw-bold mb-1" style="color:#b02a37">
+        <i class="bi bi-telephone-fill me-1"></i>Comment le recontacter&nbsp;?
+        <span class="text-danger">*</span>
+      </div>
+      <div class="small text-muted mb-3">
+        Coordonnées <b>du festivalier qui a perdu l’objet</b> — c’est ce qui permettra
+        de le prévenir si on le retrouve. Un téléphone <b>ou</b> un email suffit.
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-semibold" for="{{ prefix }}reporter-name">Nom du festivalier</label>
+        {{ form.reporter_name(class="form-control", id=prefix ~ 'reporter-name',
+                              placeholder="Prénom et nom", autocomplete="off") }}
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-semibold" for="{{ prefix }}reporter-phone">Téléphone</label>
+        {{ form.reporter_phone(class="form-control", type="tel", id=prefix ~ 'reporter-phone',
+                               placeholder="Ex : 0470 12 34 56", autocomplete="off") }}
+      </div>
+      <div class="mb-0">
+        <label class="form-label small fw-semibold" for="{{ prefix }}reporter-email">Email <span class="text-muted fw-normal">(facultatif si téléphone donné)</span></label>
+        {{ form.reporter_email(class="form-control", type="email", id=prefix ~ 'reporter-email',
+                               placeholder="nom@exemple.be", autocomplete="off") }}
+      </div>
+    </div>
+  </div>
+{% elif prefix == 'found-' %}
+  <div class="mb-3">
+    <label class="form-label small fw-semibold" for="{{ prefix }}reporter-phone">
+      <i class="bi bi-telephone"></i> Téléphone de la personne qui rapporte l’objet
+      <span class="text-muted fw-normal">(facultatif)</span>
+    </label>
+    {{ form.reporter_phone(class="form-control", type="tel", id=prefix ~ 'reporter-phone',
+                           placeholder="Utile seulement si elle souhaite être tenue au courant", autocomplete="off") }}
+  </div>
+{% endif %}
+
 {# Photos: seulement pour FOUND. Pour LOST, pas nécessaire. #}
 {% if prefix == 'found-' %}
   <div class="mb-3">

@@ -91,9 +91,12 @@ class ItemForm(FlaskForm):
         option_widget=CheckboxInput(),
     )
     # ─────────────────────────────────────────────────────────────────────────
-    reporter_name = StringField('Nom du déclarant', validators=[DataRequired(), Length(max=100)])
+    # Obligatoires uniquement pour un objet PERDU (voir validate()) : ce sont les
+    # coordonnées du festivalier à recontacter. Pour un objet trouvé, le
+    # déclarant est le bénévole connecté et ces champs restent facultatifs.
+    reporter_name = StringField('Nom du déclarant', validators=[Optional(), Length(max=100)])
     reporter_email = StringField('Email du déclarant', validators=[Optional(), Email(), Length(max=150)])
-    reporter_phone = StringField('Téléphone du déclarant', validators=[Length(max=50)])
+    reporter_phone = StringField('Téléphone du déclarant', validators=[Optional(), Length(max=50)])
 
     submit = SubmitField('Valider')
     
@@ -142,6 +145,18 @@ class ItemForm(FlaskForm):
         # était donc toujours faux et tout ce bloc ne s'exécutait jamais.
         contexte = self._prefix.rstrip('-_;:/.')
         if contexte == 'lost':
+            # Sans coordonnées, retrouver l'objet ne sert à rien : on ne peut
+            # pas prévenir son propriétaire. Le nom et un moyen de contact
+            # (téléphone OU email) sont donc exigés.
+            if not (self.reporter_name.data or '').strip():
+                self.reporter_name.errors.append('Merci d’indiquer le nom du festivalier.')
+                return False
+            a_telephone = bool((self.reporter_phone.data or '').strip())
+            a_email = bool((self.reporter_email.data or '').strip())
+            if not a_telephone and not a_email:
+                self.reporter_phone.errors.append(
+                    'Merci d’indiquer un téléphone ou un email pour pouvoir le recontacter.')
+                return False
             if not self.location.data:
                 self.location.errors.append('Merci de préciser le lieu de perte.')
                 return False

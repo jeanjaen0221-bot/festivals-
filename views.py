@@ -518,12 +518,12 @@ def report_item():
     lost_form = ItemForm(prefix='lost')
     found_form = ItemForm(prefix='found')
 
-    # Préremplir les champs déclarant pour objets perdus si connecté
-    if current_user.is_authenticated:
-        lost_form.reporter_name.data = f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email
-        lost_form.reporter_email.data = current_user.email
-        found_form.reporter_name.data = f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email
-        found_form.reporter_email.data = current_user.email
+    # Les champs de contact du formulaire « objet perdu » sont ceux du
+    # FESTIVALIER : les préremplir avec le compte du bénévole conduisait à
+    # enregistrer le mauvais interlocuteur. On les laisse donc vides.
+    # Pour un objet trouvé, le déclarant reste le bénévole connecté (rempli à
+    # l'enregistrement), le formulaire ne demande que le téléphone facultatif
+    # de la personne qui rapporte l'objet.
 
     # Charger les catégories existantes
     categories = [(c.id, c.name) for c in Category.query.order_by(Category.name).all()]
@@ -549,8 +549,12 @@ def report_item():
             comments=lost_form.comments.data,
             location=lost_zone,
             category_id=category_id,
-            reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
-            reporter_email=current_user.email,
+            # Coordonnées du FESTIVALIER, saisies par le bénévole. Elles étaient
+            # écrasées par celles du compte connecté : on enregistrait le
+            # bénévole, et il devenait impossible de prévenir le propriétaire.
+            # Qui a saisi la déclaration reste tracé par log_action ci-dessous.
+            reporter_name=(lost_form.reporter_name.data or '').strip(),
+            reporter_email=(lost_form.reporter_email.data or '').strip() or None,
             reporter_phone=(lost_form.reporter_phone.data or '').strip() or None,
             item_color=','.join(lost_form.item_color.data) if lost_form.item_color.data else None,
             item_brand=(lost_form.item_brand.data or '').strip() or None,
