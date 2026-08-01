@@ -36,6 +36,37 @@ ZONES = [
 OTHER_VALUE = 'autre'
 OTHER_LABEL = 'Autre (précisez)'
 
+# ── Lieux de stockage ────────────────────────────────────────────────────────
+# Un objet trouvé n'est entreposé qu'à trois endroits, et nulle part ailleurs :
+# c'est là que les bénévoles vont le rechercher. Cette liste est donc
+# volontairement fermée — pas de saisie libre, pas de « Autre » — pour qu'un
+# objet ne se retrouve jamais rangé dans un lieu que personne n'ira consulter.
+STOCKAGE = [
+    ('festival',        'Festival'),
+    ('camping_famille', 'Camping Famille'),
+    ('camping_festif',  'Camping Festif'),
+]
+
+STOCKAGE_CHOIX = [('', 'Sélectionnez un lieu de stockage')] + STOCKAGE
+
+STOCKAGE_LABELS = dict(STOCKAGE)
+_STOCKAGE_LABEL_TO_VALUE = {label: value for value, label in STOCKAGE}
+
+
+def resolve_stockage(select_value: str) -> str:
+    """Libellé à stocker pour le lieu d'entreposage (liste fermée)."""
+    return STOCKAGE_LABELS.get(select_value, '')
+
+
+def stockage_to_form_value(stored_label: str) -> str:
+    """Inverse : valeur du select à partir du libellé enregistré.
+
+    Retourne '' si le libellé ne fait pas partie des trois lieux — cas des
+    déclarations antérieures à la fermeture de cette liste. Le select s'affiche
+    alors vide, et la validation obligera à choisir un lieu valide.
+    """
+    return _STOCKAGE_LABEL_TO_VALUE.get((stored_label or '').strip(), '')
+
 # Utilisé tel quel par les SelectField de ItemForm.
 LIEUX_CHOIX = [('', 'Sélectionnez un lieu')] + ZONES + [(OTHER_VALUE, OTHER_LABEL)]
 

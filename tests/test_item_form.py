@@ -59,7 +59,9 @@ BASE_PERDU = {
 BASE_TROUVE = {
     'found-title': 'Telephone noir',
     'found-found_location': 'jardin',
-    'found-storage_location': 'point_info',
+    # Le lieu de stockage n'accepte plus que les trois points de depot reels
+    # (cf. zones.STOCKAGE) : 'point_info' n'en fait pas partie.
+    'found-storage_location': 'festival',
     'found-category': '1',
     'found-item_color': 'noir',
     'submit_found': '1',
@@ -119,6 +121,22 @@ def test_objet_trouve_ne_demande_pas_de_coordonnees(app):
     ne doit pas exiger de coordonnees."""
     ok, _ = _valider(app, 'found', BASE_TROUVE)
     assert ok
+
+
+def test_stockage_limite_aux_trois_lieux_prevus(app):
+    """Toute autre valeur doit etre refusee, y compris les zones du site."""
+    import zones
+    for valeur, _ in zones.STOCKAGE:
+        donnees = dict(BASE_TROUVE)
+        donnees['found-storage_location'] = valeur
+        ok, _ = _valider(app, 'found', donnees)
+        assert ok, f"{valeur} devrait etre accepte"
+    for valeur in ('autre', 'point_info', 'la_turbine', 'jardin'):
+        donnees = dict(BASE_TROUVE)
+        donnees['found-storage_location'] = valeur
+        ok, form = _valider(app, 'found', donnees)
+        assert not ok, f"{valeur} ne devrait pas etre accepte comme lieu de stockage"
+        assert form.storage_location.errors
 
 
 def test_objet_trouve_exige_lieu_et_stockage(app):

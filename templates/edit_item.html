@@ -43,10 +43,7 @@
       <div class="mb-3">
         <label class="form-label"><i class="bi bi-geo-alt-fill"></i> {{ form.storage_location.label.text }}</label>
         {{ form.storage_location(class="form-select", id="edit-storage-location-select") }}
-      </div>
-      <div class="mb-3" id="edit-storage-location-other-group" style="display:none;">
-        <label class="form-label"><i class="bi bi-pencil-fill"></i> {{ form.storage_location_other.label.text }}</label>
-        {{ form.storage_location_other(class="form-control", placeholder="Ex : local technique…") }}
+        <div class="form-text small">Seuls ces trois lieux servent de point de stockage.</div>
       </div>
     {% endif %}
     {# ── Signes distinctifs ── #}
@@ -112,7 +109,8 @@
         cb.addEventListener('change', sync);
       });
       // Champ « précisez » affiché seulement quand la zone « Autre » est choisie.
-      ['location', 'found-location', 'storage-location'].forEach(function(name) {
+      // Pas de 'storage-location' : sa liste est fermée, sans option « Autre ».
+      ['location', 'found-location'].forEach(function(name) {
         var sel = document.getElementById('edit-' + name + '-select');
         var grp = document.getElementById('edit-' + name + '-other-group');
         if (!sel || !grp) return;

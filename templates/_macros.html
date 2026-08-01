@@ -1,9 +1,14 @@
+{# Une couleur par point de stockage (cf. zones.STOCKAGE) : c'est ce badge que
+   les bénévoles lisent d'un coup d'œil pour savoir où aller chercher l'objet.
+   « camping festif » est testé avant « festival », sans quoi il tomberait dans
+   la branche « festival » et les deux campings seraient indiscernables.
+   Les libellés hérités (« point info festival », « festivalier ») restent
+   reconnus pour les déclarations antérieures à la fermeture de la liste. #}
 {% macro storage_badge_class(lieu_lower) -%}
 {{-
   'bg-danger text-white' if 'camping famille' in lieu_lower else
-  'bg-primary text-white' if 'point info festival' in lieu_lower else
-  'bg-success text-white' if 'festivalier' in lieu_lower else
-  'bg-secondary text-white' if 'autre' in lieu_lower else
-  'bg-warning text-dark'
+  'bg-success text-white' if 'camping festif' in lieu_lower or 'festivalier' in lieu_lower else
+  'bg-primary text-white' if 'festival' in lieu_lower or 'point info' in lieu_lower else
+  'bg-secondary text-white'
 -}}
 {%- endmacro %}

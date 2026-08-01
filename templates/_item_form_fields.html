@@ -94,12 +94,7 @@
   <div class="mb-3">
     <label class="form-label"><i class="bi bi-archive text-danger"></i> <strong>Où l’objet est-il stocké maintenant&nbsp;?</strong></label>
     {{ form.storage_location(class="form-select", id=prefix ~ 'storage-location-select') }}
-    <div class="form-text text-danger small">Exemple&nbsp;: “Point Info Festival”, “Stand Bénévoles”, etc.<br><b>Indiquez l’endroit où l’objet sera gardé jusqu’à restitution.</b></div>
-  </div>
-  <div class="mb-3" id="{{ prefix }}storage-location-other-group" style="display: none;">
-    <label class="form-label"><i class="bi bi-pencil"></i> Précisez le lieu de stockage</label>
-    {{ form.storage_location_other(class="form-control", placeholder="Ex : Stand Info Camping B, Entrée Nord…") }}
-    <div class="form-text small">Soyez clair pour que tout bénévole puisse retrouver l’objet facilement.</div>
+    <div class="form-text text-danger small">Ces trois lieux sont les seuls points de stockage. <b>C’est là que les bénévoles iront chercher l’objet</b>&nbsp;: n’indiquez pas où il a été trouvé, mais où vous le rangez.</div>
   </div>
 {% endif %}
 
@@ -296,24 +291,8 @@ document.addEventListener('DOMContentLoaded', function() {
     foundSelect.addEventListener('change', updateFoundOther);
     updateFoundOther();
   }
-  // FOUND: storage_location
-  var storageSelect = document.getElementById(prefix + 'storage-location-select');
-  var storageOtherGroup = document.getElementById(prefix + 'storage-location-other-group');
-  function updateStorageOther() {
-    if (storageSelect && storageOtherGroup) {
-      if (storageSelect.value === 'autre') {
-        storageOtherGroup.style.display = 'block';
-        storageOtherGroup.querySelector('input').required = true;
-      } else {
-        storageOtherGroup.style.display = 'none';
-        storageOtherGroup.querySelector('input').required = false;
-      }
-    }
-  }
-  if (storageSelect && storageOtherGroup) {
-    storageSelect.addEventListener('change', updateStorageOther);
-    updateStorageOther();
-  }
+  // Le lieu de stockage n'a plus de champ « Autre » : la liste est fermée aux
+  // trois points de dépôt réels, aucune bascule à gérer.
 });
 </script>
 {# Utilisation d'un préfixe pour chaque formulaire (lost/found) #}

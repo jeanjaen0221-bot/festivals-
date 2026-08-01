@@ -588,7 +588,7 @@ def report_item():
             title=found_form.title.data,
             comments=found_form.comments.data,
             found_location=found_zone,
-            storage_location=zones.resolve(found_form.storage_location.data, found_form.storage_location_other.data),
+            storage_location=zones.resolve_stockage(found_form.storage_location.data),
             category_id=category_id,
             reporter_name=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name and current_user.last_name else current_user.email,
             reporter_email=current_user.email,
@@ -835,7 +835,7 @@ def edit_item(item_id):
         form.reporter_phone.data = item.reporter_phone
         if item.status.name == 'FOUND':
             form.found_location.data, form.found_location_other.data = zones.to_form_values(item.found_location)
-            form.storage_location.data, form.storage_location_other.data = zones.to_form_values(item.storage_location)
+            form.storage_location.data = zones.stockage_to_form_value(item.storage_location)
         form.item_color.data = item.item_color.split(',') if item.item_color else []
         form.item_brand.data = item.item_brand or ''
         form.item_distinctive.data = item.item_distinctive.split(',') if item.item_distinctive else []
@@ -860,7 +860,7 @@ def edit_item(item_id):
         item.item_distinctive = ','.join(form.item_distinctive.data) if form.item_distinctive.data else None
         if item.status.name == 'FOUND':
             item.found_location = zones.resolve(form.found_location.data, form.found_location_other.data)
-            item.storage_location = zones.resolve(form.storage_location.data, form.storage_location_other.data)
+            item.storage_location = zones.resolve_stockage(form.storage_location.data)
         db.session.commit()
         # Suppression des photos cochées
         photo_ids_to_delete = request.form.getlist('delete_photos')

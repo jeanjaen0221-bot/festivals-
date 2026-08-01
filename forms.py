@@ -3,7 +3,7 @@ from wtforms import StringField, TextAreaField, SelectField, SelectMultipleField
 from wtforms.widgets import ListWidget, CheckboxInput
 from wtforms.validators import DataRequired, Length, Email, Optional, EqualTo, NumberRange
 from flask_wtf.file import FileField, FileAllowed, FileRequired
-from zones import LIEUX_CHOIX as ZONES_CHOIX
+from zones import LIEUX_CHOIX as ZONES_CHOIX, STOCKAGE_CHOIX
 from categories_families import CATEGORY_TO_FAMILY, FAMILY_NAMES
 
 class HeadphoneLoanForm(FlaskForm):
@@ -40,8 +40,10 @@ class ItemForm(FlaskForm):
     # Pour objets trouvés
     found_location = SelectField('Lieu de découverte', choices=LIEUX_CHOIX, validators=[Optional()])
     found_location_other = StringField('Précisez le lieu de découverte', validators=[Optional(), Length(max=100)])
-    storage_location = SelectField('Lieu de stockage', choices=LIEUX_CHOIX, validators=[Optional()])
-    storage_location_other = StringField('Précisez le lieu de stockage', validators=[Optional(), Length(max=100)])
+    # Liste fermée : un objet n'est entreposé qu'à ces trois endroits, sinon
+    # personne ne saurait où aller le chercher. Pas de « Autre », pas de saisie
+    # libre — d'où l'absence de champ storage_location_other.
+    storage_location = SelectField('Lieu de stockage', choices=STOCKAGE_CHOIX, validators=[Optional()])
     category = SelectField('Catégorie', coerce=lambda x: int(x) if x else None, validators=[], choices=[])
     new_category = StringField('Nouvelle catégorie', validators=[
         Optional(),
@@ -173,12 +175,9 @@ class ItemForm(FlaskForm):
             if self.found_location.data == 'autre' and (not self.found_location_other.data or not self.found_location_other.data.strip()):
                 self.found_location_other.errors.append('Merci de préciser le lieu de découverte.')
                 return False
-            # storage_location obligatoire
+            # Lieu de stockage obligatoire, et forcément l'un des trois prévus.
             if not self.storage_location.data:
-                self.storage_location.errors.append('Merci de préciser le lieu de stockage.')
-                return False
-            if self.storage_location.data == 'autre' and (not self.storage_location_other.data or not self.storage_location_other.data.strip()):
-                self.storage_location_other.errors.append('Merci de préciser le lieu de stockage.')
+                self.storage_location.errors.append('Merci d’indiquer où l’objet est rangé.')
                 return False
         return initial
 
