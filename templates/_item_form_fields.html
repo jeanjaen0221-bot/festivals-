@@ -244,8 +244,11 @@ document.addEventListener('DOMContentLoaded', function() {
 {% if prefix == 'found-' %}
   <div class="mb-3">
     <label class="form-label"><i class="bi bi-images"></i> Ajouter une ou plusieurs photos</label>
-    {{ form.photos(class="form-control", accept="image/*", capture="environment", multiple=True) }}
-    <div class="form-text">Formats autorisés : jpg, jpeg, png. Max 30 Mo. <b>Photo vivement conseillée&nbsp;!</b></div>
+    {# Sans capture="environment" : cet attribut ouvrait la caméra d'office et,
+       sur plusieurs navigateurs mobiles, empêchait de choisir une photo déjà
+       prise. Le bénévole a désormais le choix appareil photo ou galerie. #}
+    {{ form.photos(class="form-control", accept="image/jpeg,image/png", multiple=True) }}
+    <div class="form-text">Formats acceptés : <b>JPEG et PNG uniquement</b>. Max 30 Mo. <b>Photo vivement conseillée&nbsp;!</b></div>
   </div>
 {% elif prefix == 'lost-' %}
   <div class="mb-2 text-muted small"><i class="bi bi-info-circle"></i> Pour un objet perdu, la photo n’est pas requise.</div>

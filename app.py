@@ -171,6 +171,49 @@ def index_photo_embeddings_command(force):
     click.echo(f"{count} photo(s) indexed for {current_model_version()}.")
 
 
+@app.cli.command("photos-status")
+def photos_status_command():
+    """Dit si les photos d'objets sont réellement enregistrées, et lesquelles.
+
+    Sert à trancher entre deux causes qui donnent le même symptôme à l'écran
+    (une icône de catégorie à la place de l'image) : soit aucune photo n'a été
+    jointe à la déclaration, soit elle a été jointe mais n'a pas été persistée.
+    """
+    from models import Item, ItemPhoto, Status
+
+    total_photos = ItemPhoto.query.count()
+    sans_donnees = ItemPhoto.query.filter(
+        (ItemPhoto.data.is_(None)) | (ItemPhoto.data == b'')
+    ).count()
+    trouves = Item.query.filter_by(status=Status.FOUND).all()
+    avec_photo = [i for i in trouves if i.photos]
+
+    click.echo(f"Objets trouvés          : {len(trouves)}")
+    click.echo(f"  dont avec ≥1 photo    : {len(avec_photo)}")
+    click.echo(f"Lignes item_photos      : {total_photos}")
+    click.echo(f"  dont contenu vide     : {sans_donnees}")
+    click.echo("")
+
+    if total_photos == 0:
+        click.echo("Aucune photo en base : le problème est à l'ENREGISTREMENT.")
+        click.echo("Vérifiez qu'une photo est bien jointe au moment de la déclaration.")
+    elif sans_donnees:
+        click.echo("Des lignes existent mais sans contenu binaire : écriture incomplète.")
+    else:
+        click.echo("Les photos sont bien stockées : si l'écran n'affiche rien,")
+        click.echo("le problème est au SERVICE du fichier (route /uploads/<nom>).")
+
+    click.echo("")
+    click.echo("10 derniers objets trouvés :")
+    recents = (Item.query.filter_by(status=Status.FOUND)
+               .order_by(Item.date_reported.desc()).limit(10).all())
+    for item in recents:
+        noms = [p.filename for p in item.photos]
+        octets = sum(len(p.data or b'') for p in item.photos)
+        click.echo(f"  #{item.id:<5} {(item.title or '')[:28]:<28} "
+                   f"{len(noms)} photo(s), {octets // 1024} Ko  {noms[0] if noms else ''}")
+
+
 @app.cli.command("calibrate-matching")
 @click.option("--min-seuil", default=50, help="Seuil le plus bas balayé.")
 @click.option("--max-seuil", default=98, help="Seuil le plus haut balayé.")
