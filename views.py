@@ -187,24 +187,41 @@ def _persist_item_photo(item: Item, file: FileStorage) -> ItemPhoto | None:
 
 
 def _db_image_bytes_by_filename(filename: str):
-    """Return (bytes, mime_type) for a known filename stored in DB, else (None, None)."""
+    """Return (bytes, mime_type) for a known filename stored in DB, else (None, None).
+
+    Chaque source est interrogée séparément : un seul `try` englobant les quatre
+    faisait qu'une erreur sur la première (les produits de la boutique) empêchait
+    de chercher la photo de l'objet, et toutes les images disparaissaient d'un
+    coup sans la moindre trace. Les photos d'objets sont interrogées en premier
+    parce que c'est le cas courant.
+    """
     if not filename:
         return None, None
-    try:
-        p = Product.query.filter_by(image_filename=filename).first()
-        if p and p.image_data:
-            return bytes(p.image_data), (p.image_mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
-        ip = ItemPhoto.query.filter_by(filename=filename).first()
-        if ip and ip.data:
-            return bytes(ip.data), (ip.mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
-        it = Item.query.filter_by(photo_filename=filename).first()
-        if it and it.photo_data:
-            return bytes(it.photo_data), (it.photo_mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
-        it2 = Item.query.filter_by(return_photo_filename=filename).first()
-        if it2 and it2.return_photo_data:
-            return bytes(it2.return_photo_data), (it2.return_photo_mime_type or _guess_mime_from_ext(filename) or 'application/octet-stream')
-    except Exception:
-        return None, None
+
+    def _mime(valeur):
+        return valeur or _guess_mime_from_ext(filename) or 'application/octet-stream'
+
+    sources = (
+        ('photo objet',      lambda: ItemPhoto.query.filter_by(filename=filename).first(),
+         'data', 'mime_type'),
+        ('photo historique', lambda: Item.query.filter_by(photo_filename=filename).first(),
+         'photo_data', 'photo_mime_type'),
+        ('photo restitution', lambda: Item.query.filter_by(return_photo_filename=filename).first(),
+         'return_photo_data', 'return_photo_mime_type'),
+        ('produit boutique', lambda: Product.query.filter_by(image_filename=filename).first(),
+         'image_data', 'image_mime_type'),
+    )
+    for libelle, requete, champ_donnees, champ_mime in sources:
+        try:
+            ligne = requete()
+        except Exception:
+            # Une source en panne (table absente, modèle désynchronisé) ne doit
+            # pas masquer les autres : on note et on continue.
+            current_app.logger.exception("Recherche d'image impossible dans %s", libelle)
+            continue
+        donnees = getattr(ligne, champ_donnees, None) if ligne else None
+        if donnees:
+            return bytes(donnees), _mime(getattr(ligne, champ_mime, None))
     return None, None
 
 
@@ -982,6 +999,9 @@ def uploaded_file(filename):
         resp.headers['Content-Type'] = mime or 'application/octet-stream'
         resp.headers['Cache-Control'] = 'public, max-age=31536000'
         return resp
+    # Tracé : une image manquante ne doit pas rester un 404 muet, c'est ce qui
+    # a rendu le diagnostic si long.
+    current_app.logger.warning("Image introuvable, ni sur disque ni en base : %s", filename)
     return '', 404
 
 @bp.route('/api/check_similar', methods=['POST'])
