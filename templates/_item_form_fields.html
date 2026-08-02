@@ -244,12 +244,48 @@ document.addEventListener('DOMContentLoaded', function() {
 {% if prefix == 'found-' %}
   <div class="mb-3">
     <label class="form-label"><i class="bi bi-images"></i> Ajouter une ou plusieurs photos</label>
-    {# Sans capture="environment" : cet attribut ouvrait la caméra d'office et,
-       sur plusieurs navigateurs mobiles, empêchait de choisir une photo déjà
-       prise. Le bénévole a désormais le choix appareil photo ou galerie. #}
-    {{ form.photos(class="form-control", accept="image/jpeg,image/png", multiple=True) }}
-    <div class="form-text">Formats acceptés : <b>JPEG et PNG uniquement</b>. Max 30 Mo. <b>Photo vivement conseillée&nbsp;!</b></div>
+    {# Deux entrées distinctes plutôt qu'un seul champ : `capture` ouvre la
+       caméra d'office mais prive de la galerie, et son absence fait l'inverse.
+       Chacune porte le nom du champ WTForms, donc les deux alimentent
+       form.photos — les parts vides sont ignorées à l'enregistrement. #}
+    <div class="d-flex gap-2 flex-wrap">
+      <label class="btn btn-primary flex-fill mb-0 d-flex align-items-center justify-content-center gap-2">
+        <i class="bi bi-camera-fill"></i> Prendre une photo
+        <input type="file" class="d-none js-photo-source" id="{{ prefix }}photo-camera"
+               name="{{ form.photos.name }}" accept="image/jpeg,image/png" capture="environment">
+      </label>
+      <label class="btn btn-outline-secondary flex-fill mb-0 d-flex align-items-center justify-content-center gap-2">
+        <i class="bi bi-image"></i> Choisir dans le téléphone
+        <input type="file" class="d-none js-photo-source" id="{{ prefix }}photo-galerie"
+               name="{{ form.photos.name }}" accept="image/jpeg,image/png" multiple>
+      </label>
+    </div>
+    <div class="form-text" id="{{ prefix }}photo-etat">Formats acceptés : <b>JPEG et PNG</b>. <b>Photo vivement conseillée&nbsp;!</b></div>
   </div>
+  <script nonce="{{ csp_nonce }}">
+  // Les deux entrées sont masquées (seuls les boutons sont visibles) : sans
+  // retour à l'écran, le bénévole ne peut pas savoir si sa photo a bien été
+  // prise. On confirme donc la sélection sous les boutons.
+  (function() {
+    var etat = document.getElementById('{{ prefix }}photo-etat');
+    document.querySelectorAll('#{{ prefix }}photo-camera, #{{ prefix }}photo-galerie')
+      .forEach(function(entree) {
+        entree.addEventListener('change', function() {
+          var noms = Array.prototype.map.call(this.files, function(f) { return f.name; });
+          if (!noms.length) return;
+          // Une seule des deux entrées est retenue à la fois : vider l'autre
+          // évite d'envoyer deux fois la même photo sans s'en rendre compte.
+          var autre = this.id.indexOf('camera') > -1
+            ? document.getElementById('{{ prefix }}photo-galerie')
+            : document.getElementById('{{ prefix }}photo-camera');
+          if (autre) autre.value = '';
+          etat.innerHTML = '<span class="text-success fw-semibold">'
+            + '<i class="bi bi-check-circle-fill"></i> '
+            + noms.length + ' photo(s) prête(s) : ' + noms.join(', ') + '</span>';
+        });
+      });
+  })();
+  </script>
 {% elif prefix == 'lost-' %}
   <div class="mb-2 text-muted small"><i class="bi bi-info-circle"></i> Pour un objet perdu, la photo n’est pas requise.</div>
 {% endif %}
