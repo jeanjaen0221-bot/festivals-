@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort, make_response
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort, make_response, current_app
 import os
 import uuid
 import json
@@ -36,6 +36,7 @@ from flask_login import login_required, current_user
 from app import db
 from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, Message, ConvType, Category, get_app_settings
 from forms import SimpleCsrfForm, ProductForm, CategoryIconForm, RegisterForm
+from analytics import agreger_prets
 from datetime import datetime, timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -231,6 +232,17 @@ def visual_model_status():
     return jsonify(status), code
 
 
+def analytique_casques():
+    """Lit les prêts non supprimés et délègue le calcul à analytics.agreger_prets."""
+    champs = (HeadphoneLoan.quantity, HeadphoneLoan.deposit_type,
+              HeadphoneLoan.deposit_amount, HeadphoneLoan.loan_date,
+              HeadphoneLoan.return_date)
+    lignes = (HeadphoneLoan.query
+              .filter(HeadphoneLoan.status != LoanStatus.DELETED)
+              .with_entities(*champs).all())
+    return agreger_prets(lignes)
+
+
 @bp_admin.route('/')
 @login_required
 @admin_required
@@ -254,6 +266,13 @@ def admin_dashboard():
         pass
     from visual_matcher import model_status
     csrf_form = SimpleCsrfForm()
+    try:
+        casques = analytique_casques()
+    except Exception:
+        # Le tableau de bord doit rester consultable même si cette section
+        # échoue : elle est informative, pas critique.
+        current_app.logger.exception("Analytique des prêts de casques indisponible")
+        casques = None
     return render_template(
         'admin/dashboard.html',
         nb_found=nb_found,
@@ -263,6 +282,7 @@ def admin_dashboard():
         nb_deletions=nb_deletions,
         active_loans=active_loans,
         total_sales_eur=total_sales_eur,
+        casques=casques,
         visual_model_status=model_status(),
         csrf_form=csrf_form
     )

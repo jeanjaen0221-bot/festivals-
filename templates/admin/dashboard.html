@@ -122,6 +122,80 @@
   </div>
 </div>
 
+<!-- Analytique des prêts de casques -->
+{% if casques %}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <h6 class="fw-bold mb-0"><i class="bi bi-headphones text-warning me-1"></i> Prêts de casques</h6>
+      <a href="{{ url_for('main.headphone_loans') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-list-ul"></i> Voir les prêts
+      </a>
+    </div>
+
+    {# Les deux premiers chiffres engagent l'organisation : ce qui est dehors,
+       et ce qu'on détient en échange. Ils doivent tomber à zéro à la fermeture. #}
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-lg-3">
+        <div class="border rounded-3 p-3 h-100 {% if casques.casques_dehors %}border-warning bg-warning-subtle{% endif %}">
+          <div class="text-muted small">Casques dehors</div>
+          <div class="fw-bold fs-3">{{ casques.casques_dehors }}</div>
+          <div class="text-muted small">{{ casques.prets_en_cours }} prêt{{ 's' if casques.prets_en_cours != 1 }} en cours</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="border rounded-3 p-3 h-100 {% if casques.especes_detenues %}border-success bg-success-subtle{% endif %}">
+          <div class="text-muted small">Cautions en espèces détenues</div>
+          <div class="fw-bold fs-3">{{ '%.2f'|format(casques.especes_detenues) }} €</div>
+          <div class="text-muted small">à rendre aux festivaliers</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="border rounded-3 p-3 h-100 {% if casques.cartes_detenues %}border-danger bg-danger-subtle{% endif %}">
+          <div class="text-muted small">Cartes d’identité détenues</div>
+          <div class="fw-bold fs-3">{{ casques.cartes_detenues }}</div>
+          <div class="text-muted small">toutes à restituer</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="border rounded-3 p-3 h-100">
+          <div class="text-muted small">Durée moyenne d’un prêt</div>
+          <div class="fw-bold fs-3">
+            {% if casques.duree_moyenne_min is none %}—
+            {% elif casques.duree_moyenne_min >= 60 %}{{ (casques.duree_moyenne_min // 60)|int }} h {{ (casques.duree_moyenne_min % 60)|int }}
+            {% else %}{{ casques.duree_moyenne_min }} min{% endif %}
+          </div>
+          <div class="text-muted small">sur {{ casques.prets_rendus }} retour{{ 's' if casques.prets_rendus != 1 }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 align-items-center">
+      <div class="col-12 col-lg-7">
+        <div class="d-flex justify-content-between small mb-1">
+          <span class="fw-semibold">Taux de retour</span>
+          <span>{{ casques.prets_rendus }} / {{ casques.prets_total }} prêts — <b>{{ casques.taux_retour }} %</b></span>
+        </div>
+        <div class="progress" style="height:16px;" role="img"
+             aria-label="Taux de retour des casques : {{ casques.taux_retour }} %">
+          <div class="progress-bar {% if casques.taux_retour >= 90 %}bg-success{% elif casques.taux_retour >= 60 %}bg-warning{% else %}bg-danger{% endif %}"
+               data-taux="{{ casques.taux_retour }}">{{ casques.taux_retour }} %</div>
+        </div>
+        <div class="text-muted small mt-2">
+          <i class="bi bi-headphones"></i> {{ casques.casques_total }} casque{{ 's' if casques.casques_total != 1 }} prêté{{ 's' if casques.casques_total != 1 }} au total depuis le début.
+        </div>
+      </div>
+      <div class="col-12 col-lg-5">
+        <canvas id="cautionsChart" style="max-height:170px;" role="img"
+                aria-label="Répartition des cautions : {{ casques.caution_ci_total }} cartes d’identité, {{ casques.caution_especes_total }} en espèces">
+          <p class="visually-hidden">Cartes d’identité : {{ casques.caution_ci_total }}, Espèces : {{ casques.caution_especes_total }}</p>
+        </canvas>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Chart + Actions rapides -->
 <div class="row g-3 mb-4">
   <div class="col-12 col-lg-5">
@@ -191,4 +265,45 @@
   });
 })();
 </script>
+
+{% if casques %}
+<script nonce="{{ csp_nonce }}">
+(function(){
+  // La largeur de la barre est posée ici : un style inline serait bloqué par
+  // notre CSP au même titre que les gestionnaires onclick.
+  document.querySelectorAll('.progress-bar[data-taux]').forEach(function(barre){
+    barre.style.width = (barre.dataset.taux || 0) + '%';
+  });
+
+  const ctx = document.getElementById('cautionsChart');
+  if(!ctx || typeof Chart === 'undefined') return;
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Carte d’identité', 'Espèces'],
+      datasets: [{
+        data: [{{ casques.caution_ci_total }}, {{ casques.caution_especes_total }}],
+        backgroundColor: ['#dc3545', '#198754'],
+        borderWidth: 2,
+        borderColor: '#fff',
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: 'Type de caution' },
+        legend: { position: 'bottom', labels: { padding: 12, font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            label: c => ` ${c.label} : ${c.parsed} prêt${c.parsed > 1 ? 's' : ''}`
+          }
+        }
+      },
+      cutout: '55%'
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
