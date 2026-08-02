@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
-from analytics import agreger_prets, CAUTION_ESPECES, CAUTION_CARTE_IDENTITE
+from analytics import (agreger_prets, affluence_prets,
+                       CAUTION_ESPECES, CAUTION_CARTE_IDENTITE)
 
 DEPART = datetime(2026, 7, 31, 14, 0)
 
@@ -104,3 +105,109 @@ def test_montant_en_flottant_reste_exact():
         pret(caution=CAUTION_ESPECES, montant=20.20),
     ])
     assert r['especes_detenues'] == Decimal('30.30')
+
+
+# ── Heures d'affluence ───────────────────────────────────────────────────────
+
+def _pret_a(heure_utc, retour_utc=None, quantite=1):
+    """Prêt dont les horodatages sont naifs et en UTC, comme en base."""
+    return SimpleNamespace(
+        quantity=quantite,
+        deposit_type=CAUTION_CARTE_IDENTITE,
+        deposit_amount=None,
+        loan_date=datetime(2026, 7, 31, heure_utc, 0),
+        return_date=datetime(2026, 7, 31, retour_utc, 0) if retour_utc is not None else None,
+    )
+
+
+def test_affluence_convertit_en_heure_locale():
+    """Le coeur du sujet : 12 h UTC, c'est 14 h a Floreffe en ete. Afficher
+    l'heure brute ferait placer les effectifs deux heures trop tot."""
+    r = affluence_prets([_pret_a(12)])
+    assert r['prets_par_heure'][14] == 1
+    assert r['prets_par_heure'][12] == 0
+    assert r['heure_pointe_prets'] == 14
+
+
+def test_affluence_distingue_prets_et_retours():
+    r = affluence_prets([_pret_a(12, retour_utc=20)])
+    assert r['prets_par_heure'][14] == 1     # 12 h UTC -> 14 h locale
+    assert r['retours_par_heure'][22] == 1   # 20 h UTC -> 22 h locale
+    assert r['heure_pointe_prets'] == 14
+    assert r['heure_pointe_retours'] == 22
+
+
+def test_affluence_renvoie_toujours_24_heures():
+    """L'activite d'un festival deborde apres minuit : tronquer la plage
+    masquerait la nuit."""
+    r = affluence_prets([_pret_a(12)])
+    assert len(r['prets_par_heure']) == 24
+    assert len(r['retours_par_heure']) == 24
+    assert r['heures'] == list(range(24))
+
+
+def test_affluence_compte_les_casques_en_plus_des_prets():
+    r = affluence_prets([_pret_a(12, quantite=3)])
+    assert r['prets_par_heure'][14] == 1
+    assert r['casques_par_heure'][14] == 3
+
+
+def test_affluence_pic_sur_l_heure_la_plus_chargee():
+    r = affluence_prets([_pret_a(12), _pret_a(12), _pret_a(15)])
+    assert r['heure_pointe_prets'] == 14
+    assert r['max_prets_heure'] == 2
+
+
+def test_affluence_sans_donnees():
+    r = affluence_prets([])
+    assert r['heure_pointe_prets'] is None
+    assert r['heure_pointe_retours'] is None
+    assert r['max_prets_heure'] == 0
+    assert r['par_jour'] == []
+
+
+def test_affluence_pas_de_pic_quand_aucun_retour():
+    r = affluence_prets([_pret_a(12)])
+    assert r['heure_pointe_retours'] is None, "aucun retour ne doit pas designer minuit"
+
+
+def test_affluence_regroupe_par_journee_locale():
+    """Un pret a 23 h UTC tombe le lendemain a Floreffe : c'est la journee
+    locale qui compte pour le suivi."""
+    tard = SimpleNamespace(quantity=2, deposit_type=CAUTION_CARTE_IDENTITE, deposit_amount=None,
+                           loan_date=datetime(2026, 7, 31, 23, 0), return_date=None)
+    r = affluence_prets([tard])
+    assert len(r['par_jour']) == 1
+    assert r['par_jour'][0]['date'].day == 1, "1er aout en heure locale"
+    assert r['par_jour'][0]['casques'] == 2
+
+
+def test_affluence_journees_triees():
+    lignes = [_pret_a(12),
+              SimpleNamespace(quantity=1, deposit_type=CAUTION_CARTE_IDENTITE, deposit_amount=None,
+                              loan_date=datetime(2026, 8, 2, 10, 0), return_date=None)]
+    r = affluence_prets(lignes)
+    dates = [e['date'] for e in r['par_jour']]
+    assert dates == sorted(dates)
+
+
+def test_affluence_accepte_un_horodatage_deja_localise():
+    from datetime import timezone as _tz
+    aware = SimpleNamespace(quantity=1, deposit_type=CAUTION_CARTE_IDENTITE, deposit_amount=None,
+                            loan_date=datetime(2026, 7, 31, 12, 0, tzinfo=_tz.utc), return_date=None)
+    r = affluence_prets([aware])
+    assert r['prets_par_heure'][14] == 1
+
+
+def test_libelle_de_journee_en_francais():
+    """strftime('%A') suit la locale du serveur, anglaise par defaut : le
+    tableau affichait « Friday 31/07 » sur une interface francaise."""
+    from analytics import libelle_jour
+    from datetime import date
+    assert libelle_jour(date(2026, 7, 31)) == 'vendredi 31/07'
+    assert libelle_jour(date(2026, 8, 2)) == 'dimanche 02/08'
+
+
+def test_affluence_expose_le_libelle_de_journee():
+    r = affluence_prets([_pret_a(12)])
+    assert r['par_jour'][0]['libelle'] == 'vendredi 31/07'

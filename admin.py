@@ -36,7 +36,7 @@ from flask_login import login_required, current_user
 from app import db
 from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, Message, ConvType, Category, get_app_settings
 from forms import SimpleCsrfForm, ProductForm, CategoryIconForm, RegisterForm
-from analytics import agreger_prets
+from analytics import agreger_prets, affluence_prets
 from datetime import datetime, timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -233,14 +233,16 @@ def visual_model_status():
 
 
 def analytique_casques():
-    """Lit les prêts non supprimés et délègue le calcul à analytics.agreger_prets."""
+    """Lit les prêts non supprimés et délègue les calculs à analytics.py."""
     champs = (HeadphoneLoan.quantity, HeadphoneLoan.deposit_type,
               HeadphoneLoan.deposit_amount, HeadphoneLoan.loan_date,
               HeadphoneLoan.return_date)
     lignes = (HeadphoneLoan.query
               .filter(HeadphoneLoan.status != LoanStatus.DELETED)
               .with_entities(*champs).all())
-    return agreger_prets(lignes)
+    resume = agreger_prets(lignes)
+    resume['affluence'] = affluence_prets(lignes)
+    return resume
 
 
 @bp_admin.route('/')

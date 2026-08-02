@@ -192,6 +192,78 @@
         </canvas>
       </div>
     </div>
+
+    {% if casques.affluence and casques.affluence.par_jour %}
+      {% set aff = casques.affluence %}
+      <hr class="my-4">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <h6 class="fw-bold mb-0"><i class="bi bi-graph-up text-primary me-1"></i> Heures d’affluence</h6>
+        <span class="text-muted small">heures locales ({{ aff.fuseau }})</span>
+      </div>
+
+      {# Le pic des retours arrive bien après celui des prêts : c'est ce décalage
+         qui dit quand renforcer le stand, et jusqu'à quelle heure le tenir. #}
+      <div class="row g-2 mb-3">
+        <div class="col-12 col-md-6">
+          <div class="border rounded-3 p-2 px-3 d-flex align-items-center gap-3">
+            <i class="bi bi-box-arrow-up-right fs-4 text-warning"></i>
+            <div>
+              <div class="text-muted small">Pic de prêts</div>
+              <div class="fw-bold">
+                {% if aff.heure_pointe_prets is none %}—
+                {% else %}{{ '%02d'|format(aff.heure_pointe_prets) }} h – {{ '%02d'|format((aff.heure_pointe_prets + 1) % 24) }} h
+                  <span class="text-muted fw-normal small">({{ aff.max_prets_heure }} prêts)</span>{% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="border rounded-3 p-2 px-3 d-flex align-items-center gap-3">
+            <i class="bi bi-box-arrow-in-down-left fs-4 text-success"></i>
+            <div>
+              <div class="text-muted small">Pic de retours</div>
+              <div class="fw-bold">
+                {% if aff.heure_pointe_retours is none %}—
+                {% else %}{{ '%02d'|format(aff.heure_pointe_retours) }} h – {{ '%02d'|format((aff.heure_pointe_retours + 1) % 24) }} h
+                  <span class="text-muted fw-normal small">({{ aff.max_retours_heure }} retours)</span>{% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <canvas id="affluenceChart" style="max-height:230px;" role="img"
+              aria-label="Prêts et retours de casques par heure de la journée">
+        <p class="visually-hidden">
+          {% for h in aff.heures %}{% if aff.prets_par_heure[h] or aff.retours_par_heure[h] %}
+            {{ h }} h : {{ aff.prets_par_heure[h] }} prêt(s), {{ aff.retours_par_heure[h] }} retour(s).
+          {% endif %}{% endfor %}
+        </p>
+      </canvas>
+
+      <div class="table-responsive mt-3">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th scope="col">Journée</th>
+              <th scope="col" class="text-end">Prêts</th>
+              <th scope="col" class="text-end">Casques prêtés</th>
+              <th scope="col" class="text-end">Retours</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for j in aff.par_jour %}
+            <tr>
+              <td class="text-capitalize">{{ j.libelle }}</td>
+              <td class="text-end">{{ j.prets }}</td>
+              <td class="text-end">{{ j.casques }}</td>
+              <td class="text-end">{{ j.retours }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -303,6 +375,47 @@
       cutout: '55%'
     }
   });
+
+  {% if casques.affluence and casques.affluence.par_jour %}
+  const ctxAff = document.getElementById('affluenceChart');
+  if (ctxAff) {
+    new Chart(ctxAff, {
+      type: 'bar',
+      data: {
+        labels: [{% for h in casques.affluence.heures %}'{{ '%02d'|format(h) }} h'{{ ',' if not loop.last }}{% endfor %}],
+        datasets: [
+          {
+            label: 'Prêts',
+            data: [{{ casques.affluence.prets_par_heure|join(',') }}],
+            backgroundColor: '#fd7e14'
+          },
+          {
+            label: 'Retours',
+            data: [{{ casques.affluence.retours_par_heure|join(',') }}],
+            backgroundColor: '#198754'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { stacked: false, grid: { display: false },
+               ticks: { autoSkip: true, maxRotation: 0, font: { size: 10 } } },
+          // Pas de demi-casque : l'axe ne doit afficher que des entiers.
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        },
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              title: c => c[0].label + ' – ' + String((parseInt(c[0].label) + 1) % 24).padStart(2, '0') + ' h'
+            }
+          }
+        }
+      }
+    });
+  }
+  {% endif %}
 })();
 </script>
 {% endif %}

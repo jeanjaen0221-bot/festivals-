@@ -12,6 +12,10 @@ gunicorn==23.0.0
 requests==2.32.3
 Werkzeug==2.3.8
 python-dotenv==1.0.0
+# Base de fuseaux horaires : sans elle, ZoneInfo("Europe/Brussels") echoue selon
+# l'image de base. Les rapports Z et les heures d'affluence des prets seraient
+# alors calcules en UTC, decales de deux heures en ete.
+tzdata==2024.1
 Flask-Login==0.6.3
 google-cloud-vision==3.7.2
 reportlab==3.6.13
