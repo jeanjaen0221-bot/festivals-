@@ -37,6 +37,7 @@ from app import db
 from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, Message, ConvType, Category, get_app_settings
 from forms import SimpleCsrfForm, ProductForm, CategoryIconForm, RegisterForm
 from analytics import agreger_prets, affluence_prets
+from statuts import statut_apres_refus
 from datetime import datetime, timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -367,12 +368,11 @@ def reject_deletion(item_id):
         flash("Erreur de validation du formulaire.", "danger")
         return redirect(url_for('admin.deletion_requests'))
     item = db.get_or_404(Item, item_id)
-    # Restaure le statut original si connu, sinon LOST par défaut
-    if item.previous_status:
-        item.status = item.previous_status
-        item.previous_status = None
-    else:
-        item.status = Status.LOST
+    # Restaure le statut d'origine. Le repli ne renvoie plus systématiquement
+    # « perdu » : un objet trouvé réapparaissait dans la mauvaise liste et
+    # restait introuvable. statuts.py le déduit des champs de l'objet.
+    item.status = Status(statut_apres_refus(item))
+    item.previous_status = None
     db.session.commit()
     db.session.add(ActionLog(user_id=current_user.id, action_type='reject_deletion', details=f'Rejet suppression objet {item_id}'))
     db.session.commit()

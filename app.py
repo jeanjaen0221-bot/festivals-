@@ -425,6 +425,11 @@ with app.app_context():
                     ('return_photo_data', 'ALTER TABLE items ADD COLUMN return_photo_data BYTEA;'),
                     ('return_photo_mime_type', 'ALTER TABLE items ADD COLUMN return_photo_mime_type VARCHAR(100);'),
                     ('return_photo_original_filename', 'ALTER TABLE items ADD COLUMN return_photo_original_filename VARCHAR(200);'),
+                    # Statut d'avant une demande de suppression. Absente, le
+                    # statut d'origine n'était jamais mémorisé et un objet dont
+                    # la suppression était refusée revenait dans la mauvaise
+                    # liste. L'équivalent existait déjà pour headphone_loans.
+                    ('previous_status', 'ALTER TABLE items ADD COLUMN previous_status VARCHAR(20);'),
                 ]:
                     result = conn.execute(sqlalchemy.text(f"""
                         SELECT column_name FROM information_schema.columns
