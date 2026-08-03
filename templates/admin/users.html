@@ -47,8 +47,14 @@
           <td><a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="text-decoration-none">{{ user.email }}</a></td>
           <td>{% if user.is_admin %}<span class="badge bg-success">Oui</span>{% else %}Non{% endif %}</td>
           <td>{% if user.is_vendor_goodies %}<span class="badge bg-warning text-dark"><i class="bi bi-cart3"></i> Oui</span>{% else %}Non{% endif %}</td>
-          <td>
+          <td class="text-nowrap">
             <a href="{{ url_for('admin.user_detail', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">Détail</a>
+            <form method="post" action="{{ url_for('admin.generate_reset_link', user_id=user.id) }}" class="d-inline">
+              {{ csrf_form.hidden_tag() }}
+              <button class="btn btn-sm btn-outline-secondary" type="submit" title="Générer un lien de réinitialisation de mot de passe">
+                <i class="bi bi-key"></i>
+              </button>
+            </form>
           </td>
         </tr>
         {% endfor %}

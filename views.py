@@ -26,8 +26,9 @@ import imagehash
 from PIL import Image, UnidentifiedImageError
 
 from app import app, db, limiter
-from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure, AppSettings
-from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm, SimpleCsrfForm
+from models import Item, Category, Status, ItemPhoto, User, ActionLog, HeadphoneLoan, DepositType, LoanStatus, Match, RejectedPair, Product, Sale, SaleItem, PaymentMethod, ZClosure, AppSettings, PasswordResetToken
+from forms import ItemForm, ClaimForm, ConfirmReturnForm, MatchForm, LoginForm, RegisterForm, DeleteForm, HeadphoneLoanForm, SimpleCsrfForm, ResetPasswordForm, ChangePasswordForm
+import password_reset
 from ocr_utils import extract_id_card_data
 from admin import admin_required
 
@@ -43,7 +44,8 @@ def restrict_vendor_only():
         return
     if not getattr(current_user, 'is_vendor_goodies', False):
         return
-    allowed = {'main.caisse', 'main.caisse_last_z', 'main.logout', 'main.auth'}
+    allowed = {'main.caisse', 'main.caisse_last_z', 'main.logout', 'main.auth',
+               'main.reset_password', 'main.change_password'}
     if request.endpoint and request.endpoint not in allowed:
         return redirect(url_for('main.caisse'))
 
@@ -385,6 +387,66 @@ def auth():
                     flash('Compte créé. Connectez-vous.', 'success')
                     return redirect(url_for('main.auth', tab='login'))
     return render_template('auth.html', login_form=login_form, register_form=register_form, active_tab=active_tab, show_admin_checkbox=show_admin_checkbox, registration_open=registration_open)
+
+
+@bp.route('/reset-password/<token>', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
+def reset_password(token):
+    """Page de choix d'un nouveau mot de passe, atteinte via un lien généré par un admin."""
+    invalid_msg = "Ce lien est invalide ou expiré. Demandez un nouveau lien à un administrateur."
+    reset_token = PasswordResetToken.query.filter_by(
+        token_hash=password_reset.hash_token(token)
+    ).first()
+    if not password_reset.is_usable(reset_token):
+        flash(invalid_msg, 'danger')
+        return redirect(url_for('main.auth'))
+
+    user = db.session.get(User, reset_token.user_id)
+    if user is None:
+        flash(invalid_msg, 'danger')
+        return redirect(url_for('main.auth'))
+
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        user.set_password(form.password.data)
+        reset_token.used_at = password_reset.utcnow()
+        # Usage unique : les autres liens éventuels de cet utilisateur tombent aussi.
+        PasswordResetToken.query.filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.id != reset_token.id,
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.revoked.is_(False),
+        ).update({'revoked': True}, synchronize_session=False)
+        db.session.commit()
+        log_action(user.id, 'password_reset', 'Mot de passe réinitialisé via un lien administrateur')
+        if current_user.is_authenticated:
+            logout_user()
+        flash('Mot de passe mis à jour. Connectez-vous avec votre nouveau mot de passe.', 'success')
+        return redirect(url_for('main.auth', tab='login'))
+
+    return render_template('reset_password.html', form=form, user=user)
+
+
+@bp.route('/profil/mot-de-passe', methods=['GET', 'POST'])
+@login_required
+@limiter.limit("15 per minute")
+def change_password():
+    """Changement de son propre mot de passe."""
+    form = ChangePasswordForm()
+    user = db.session.get(User, current_user.id)
+    if form.validate_on_submit():
+        if not user.check_password(form.current_password.data):
+            flash('Mot de passe actuel incorrect.', 'danger')
+        else:
+            user.set_password(form.password.data)
+            db.session.commit()
+            log_action(user.id, 'password_change', 'Changement de mot de passe')
+            # get_id() dérive du hash : sans ré-authentification, la session courante
+            # serait invalidée elle aussi au prochain chargement.
+            login_user(user)
+            flash('Mot de passe mis à jour. Vos autres appareils ont été déconnectés.', 'success')
+            return redirect(url_for('main.change_password'))
+    return render_template('change_password.html', form=form)
 
 
 @bp.route('/logout', methods=['POST'])

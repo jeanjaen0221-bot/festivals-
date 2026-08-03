@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort, make_response, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort, make_response, current_app, session
 import os
 import uuid
 import json
@@ -34,8 +34,9 @@ ICONS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 # Ancien système d'icônes supprimé - plus besoin d'importer fetch_category_icons
 from flask_login import login_required, current_user
 from app import db
-from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, Message, ConvType, Category, get_app_settings
-from forms import SimpleCsrfForm, ProductForm, CategoryIconForm, RegisterForm
+from models import User, ActionLog, Item, Status, HeadphoneLoan, Product, Sale, SaleItem, PaymentMethod, ZClosure, ZTicketPDF, LoanStatus, Conversation, Message, ConvType, Category, PasswordResetToken, get_app_settings
+from forms import SimpleCsrfForm, ProductForm, CategoryIconForm, RegisterForm, AdminSetPasswordForm
+import password_reset
 from analytics import agreger_prets, affluence_prets
 from statuts import statut_apres_refus
 from datetime import datetime, timezone
@@ -414,7 +415,19 @@ def toggle_registration():
 def user_detail(user_id):
     user = db.get_or_404(User, user_id)
     csrf_form = SimpleCsrfForm()
-    return render_template('admin/user_detail.html', user=user, csrf_form=csrf_form)
+    # Le lien fraîchement généré n'est affiché qu'une fois, juste après le POST.
+    reset_link = None
+    if session.get('pwd_reset_user_id') == user_id:
+        reset_link = session.pop('pwd_reset_link', None)
+        session.pop('pwd_reset_user_id', None)
+    return render_template(
+        'admin/user_detail.html',
+        user=user,
+        csrf_form=csrf_form,
+        set_password_form=AdminSetPasswordForm(),
+        reset_link=reset_link,
+        reset_ttl_hours=password_reset.TOKEN_TTL_HOURS,
+    )
 
 @bp_admin.route('/users/<int:user_id>/toggle-admin', methods=['POST'])
 @login_required
@@ -466,6 +479,92 @@ def delete_user(user_id):
     else:
         flash("Erreur de validation du formulaire.", "danger")
         return redirect(url_for('admin.user_detail', user_id=user_id))
+
+
+def _revoke_active_reset_tokens(user_id):
+    """Révoque tous les liens de réinitialisation encore actifs d'un utilisateur.
+
+    Retourne le nombre de liens révoqués. Ne commit pas.
+    """
+    return PasswordResetToken.query.filter(
+        PasswordResetToken.user_id == user_id,
+        PasswordResetToken.used_at.is_(None),
+        PasswordResetToken.revoked.is_(False),
+    ).update({'revoked': True}, synchronize_session=False)
+
+
+@bp_admin.route('/users/<int:user_id>/reset-link', methods=['POST'])
+@login_required
+@admin_required
+def generate_reset_link(user_id):
+    """Génère un lien de réinitialisation à usage unique, affiché une seule fois à l'admin.
+
+    Il n'y a pas de mailer dans le projet : l'admin transmet lui-même le lien
+    à l'utilisateur (WhatsApp, SMS, oral).
+    """
+    form = SimpleCsrfForm()
+    user = db.get_or_404(User, user_id)
+    if not form.validate_on_submit():
+        flash("Erreur de validation du formulaire.", "danger")
+        return redirect(url_for('admin.user_detail', user_id=user_id))
+
+    # Un seul lien actif à la fois : générer en révoque les précédents.
+    _revoke_active_reset_tokens(user.id)
+    raw = password_reset.generate_raw_token()
+    now = password_reset.utcnow()
+    db.session.add(PasswordResetToken(
+        user_id=user.id,
+        token_hash=password_reset.hash_token(raw),
+        created_at=now,
+        expires_at=password_reset.expiry_from(now),
+        created_by_id=current_user.id,
+    ))
+    db.session.commit()
+    db.session.add(ActionLog(
+        user_id=current_user.id,
+        action_type='admin_password_reset_link',
+        details=f'Lien de réinitialisation généré pour utilisateur #{user.id} ({user.email})'
+    ))
+    db.session.commit()
+
+    session['pwd_reset_link'] = url_for('main.reset_password', token=raw, _external=True)
+    session['pwd_reset_user_id'] = user.id
+    flash("Lien de réinitialisation généré. Copiez-le et transmettez-le à l'utilisateur.", 'success')
+    return redirect(url_for('admin.user_detail', user_id=user_id))
+
+
+@bp_admin.route('/users/<int:user_id>/set-password', methods=['POST'])
+@login_required
+@admin_required
+def admin_set_password(user_id):
+    """Définit directement un nouveau mot de passe pour un utilisateur."""
+    user = db.get_or_404(User, user_id)
+    if user.id == current_user.id:
+        flash("Utilisez « Changer mon mot de passe » pour votre propre compte.", "warning")
+        return redirect(url_for('main.change_password'))
+
+    form = AdminSetPasswordForm()
+    if not form.validate_on_submit():
+        for errors in form.errors.values():
+            for error in errors:
+                flash(error, 'danger')
+        if not form.errors:
+            flash("Erreur de validation du formulaire.", "danger")
+        return redirect(url_for('admin.user_detail', user_id=user_id))
+
+    user.set_password(form.password.data)
+    # Les liens en circulation ne doivent plus permettre de reprendre la main.
+    _revoke_active_reset_tokens(user.id)
+    db.session.commit()
+    db.session.add(ActionLog(
+        user_id=current_user.id,
+        action_type='admin_set_password',
+        details=f'Mot de passe défini pour utilisateur #{user.id} ({user.email})'
+    ))
+    db.session.commit()
+    flash("Mot de passe mis à jour. L'utilisateur a été déconnecté de tous ses appareils.", 'success')
+    return redirect(url_for('admin.user_detail', user_id=user_id))
+
 
 @bp_admin.route('/helmet-rentals')
 @login_required

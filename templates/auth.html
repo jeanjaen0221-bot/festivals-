@@ -57,6 +57,9 @@
           {{ login_form.remember.label(class="form-check-label") }}
         </div>
         <button type="submit" class="btn btn-primary w-100" name="submit_login">Connexion</button>
+        <div class="small text-muted mt-3 text-center">
+          Mot de passe oublié&nbsp;? Contactez un administrateur, il vous générera un lien de réinitialisation.
+        </div>
         {% for field, errors in login_form.errors.items() %}
           {% for error in errors %}
             <div class="alert alert-danger mt-2">{{ error }}</div>
