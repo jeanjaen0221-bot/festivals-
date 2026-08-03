@@ -12,6 +12,7 @@ from flask_login import LoginManager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import sqlalchemy
+import password_reset
 
 # Charge un .env local si présent ; sans effet sur Railway où les variables
 # sont déjà injectées dans l'environnement du conteneur.
@@ -610,7 +611,19 @@ with app.app_context():
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, int(user_id))
+    """Charge l'utilisateur depuis un identifiant de session « <id>:<empreinte> ».
+
+    L'empreinte dérive du hash du mot de passe (User.get_id) : si le mot de passe
+    a changé depuis l'ouverture de la session, celle-ci est rejetée. Les sessions
+    à l'ancien format (identifiant nu) sont également rejetées.
+    """
+    parsed_id, digest = password_reset.parse_session_id(user_id)
+    if parsed_id is None:
+        return None
+    user = db.session.get(User, parsed_id)
+    if user is None or user.session_digest() != digest:
+        return None
+    return user
 
 # Register blueprints
 import views

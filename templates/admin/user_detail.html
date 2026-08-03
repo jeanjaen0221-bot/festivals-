@@ -40,4 +40,83 @@
     <a href="{{ url_for('admin.admin_users') }}" class="btn btn-link btn-sm ms-2">Retour à la liste</a>
   </div>
 </div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <h5 class="card-title mb-3"><i class="bi bi-key"></i> Mot de passe</h5>
+
+    {% if reset_link %}
+    <div class="alert alert-info">
+      <div class="fw-semibold mb-2">Lien de réinitialisation généré</div>
+      <div class="input-group input-group-sm mb-2">
+        <input type="text" class="form-control" id="resetLinkInput" value="{{ reset_link }}" readonly>
+        <button class="btn btn-outline-primary" type="button" id="copyResetLink">
+          <i class="bi bi-clipboard"></i> Copier
+        </button>
+      </div>
+      <div class="small text-muted mb-0">
+        Valable {{ reset_ttl_hours }} h, à usage unique. Transmettez-le à
+        {{ user.first_name }} {{ user.last_name }} (WhatsApp, SMS…).
+        Ce lien ne sera plus affiché après avoir quitté cette page.
+      </div>
+    </div>
+    {% endif %}
+
+    <p class="text-muted small">
+      L'application n'envoie pas d'e-mails : générez le lien puis transmettez-le vous-même.
+    </p>
+
+    <form method="post" action="{{ url_for('admin.generate_reset_link', user_id=user.id) }}" class="d-inline">
+      {{ csrf_form.hidden_tag() }}
+      <button class="btn btn-outline-primary btn-sm" type="submit">
+        <i class="bi bi-key"></i> Générer un lien de réinitialisation
+      </button>
+    </form>
+    <button class="btn btn-outline-secondary btn-sm ms-2" type="button"
+            data-bs-toggle="collapse" data-bs-target="#setPasswordBlock" aria-expanded="false">
+      <i class="bi bi-pencil"></i> Définir un mot de passe directement
+    </button>
+
+    <div class="collapse mt-3" id="setPasswordBlock">
+      <form method="post" action="{{ url_for('admin.admin_set_password', user_id=user.id) }}"
+            onsubmit="return confirm('Définir un nouveau mot de passe pour cet utilisateur ?\nIl sera déconnecté de tous ses appareils.');">
+        {{ set_password_form.hidden_tag() }}
+        <div class="row g-2 align-items-end" style="max-width: 640px;">
+          <div class="col-sm-5">
+            {{ set_password_form.password.label(class="form-label small mb-1") }}
+            {{ set_password_form.password(class="form-control form-control-sm", autocomplete="new-password") }}
+          </div>
+          <div class="col-sm-5">
+            {{ set_password_form.password2.label(class="form-label small mb-1") }}
+            {{ set_password_form.password2(class="form-control form-control-sm", autocomplete="new-password") }}
+          </div>
+          <div class="col-sm-2">
+            <button class="btn btn-warning btn-sm w-100" type="submit">Définir</button>
+          </div>
+        </div>
+        <div class="form-text">8 caractères minimum.</div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if reset_link %}
+<script nonce="{{ csp_nonce }}">
+  document.getElementById('copyResetLink').addEventListener('click', function () {
+    var input = document.getElementById('resetLinkInput');
+    var btn = this;
+    var done = function () {
+      btn.innerHTML = '<i class="bi bi-check2"></i> Copié';
+      setTimeout(function () { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copier'; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).then(done, function () { input.select(); });
+    } else {
+      input.select();
+      document.execCommand('copy');
+      done();
+    }
+  });
+</script>
+{% endif %}
 {% endblock %}

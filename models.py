@@ -1,5 +1,6 @@
 import enum
 from datetime import datetime, timezone
+import password_reset
 from app import db
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -297,6 +298,44 @@ class User(UserMixin, db.Model):
         self.password_hash = generate_password_hash(password)
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def get_id(self):
+        """Identifiant de session lié au hash du mot de passe.
+
+        Tout changement de mot de passe modifie l'empreinte, ce qui invalide
+        immédiatement toutes les sessions et cookies « remember me » existants
+        (cf. le user_loader dans app.py).
+        """
+        return password_reset.build_session_id(self.id, self.password_hash)
+
+    def session_digest(self):
+        return password_reset.session_digest(self.password_hash)
+
+class PasswordResetToken(db.Model):
+    """Lien de réinitialisation généré par un admin (usage unique, expirable).
+
+    Seule l'empreinte SHA-256 du token est stockée ; le token brut ne vit que
+    dans l'URL transmise à l'utilisateur.
+    """
+    __tablename__ = 'password_reset_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    revoked = db.Column(db.Boolean, default=False, nullable=False)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
+    user = db.relationship(
+        'User',
+        foreign_keys=[user_id],
+        backref=db.backref('reset_tokens', cascade='all, delete-orphan', lazy=True)
+    )
+    created_by = db.relationship('User', foreign_keys=[created_by_id])
+
+    def __repr__(self):
+        return f'<PasswordResetToken user={self.user_id} expires={self.expires_at}>'
 
 class ActionLog(db.Model):
     __tablename__ = 'action_logs'

@@ -264,6 +264,37 @@ class RegisterForm(FlaskForm):
     submit = SubmitField('Créer le compte')
 
 
+class ResetPasswordForm(FlaskForm):
+    """Choix d'un nouveau mot de passe depuis un lien de réinitialisation."""
+    password = PasswordField('Nouveau mot de passe', validators=[
+        DataRequired(),
+        Length(min=8, message='Le mot de passe doit contenir au moins 8 caractères.')
+    ])
+    password2 = PasswordField('Confirmer le mot de passe', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Définir mon mot de passe')
+
+
+class AdminSetPasswordForm(FlaskForm):
+    """Définition directe d'un mot de passe par un admin depuis la fiche utilisateur."""
+    password = PasswordField('Nouveau mot de passe', validators=[
+        DataRequired(),
+        Length(min=8, message='Le mot de passe doit contenir au moins 8 caractères.')
+    ])
+    password2 = PasswordField('Confirmer le mot de passe', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Définir le mot de passe')
+
+
+class ChangePasswordForm(FlaskForm):
+    """Changement de son propre mot de passe par un utilisateur connecté."""
+    current_password = PasswordField('Mot de passe actuel', validators=[DataRequired()])
+    password = PasswordField('Nouveau mot de passe', validators=[
+        DataRequired(),
+        Length(min=8, message='Le mot de passe doit contenir au moins 8 caractères.')
+    ])
+    password2 = PasswordField('Confirmer le nouveau mot de passe', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Changer mon mot de passe')
+
+
 class ShuttleScheduleDayForm(FlaskForm):
     date = DateField('Date', validators=[DataRequired()], format='%Y-%m-%d')
     label = StringField('Libellé du jour', validators=[DataRequired(), Length(max=100)])
